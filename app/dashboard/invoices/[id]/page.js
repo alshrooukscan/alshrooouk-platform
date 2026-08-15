@@ -28,7 +28,7 @@ export default function InvoiceViewPage() {
   }
 
   function handleDownloadPdf() {
-    window.print();
+    window.open(`/api/invoices/${id}/pdf`, "_blank");
   }
 
   function handleSendWhatsApp() {
