@@ -1,0 +1,81 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { supabase } from "../../../../lib/supabase";
+import { theme } from "../../../../lib/theme";
+
+export default function DoctorProfilePage() {
+  const { id } = useParams();
+  const [doctor, setDoctor] = useState(null);
+  const [visits, setVisits] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    load();
+  }, [id]);
+
+  async function load() {
+    setLoading(true);
+    const { data: d } = await supabase.from("doctors").select("*").eq("id", id).single();
+    const { data: v } = await supabase
+      .from("visits")
+      .select("id, scan_types, exam_date, payment_status, patients(name)")
+      .eq("doctor_id", id)
+      .order("exam_date", { ascending: false });
+    setDoctor(d);
+    setVisits(v || []);
+    setLoading(false);
+  }
+
+  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (!doctor) return <p style={{ color: theme.gray }}>Doctor not found.</p>;
+
+  const thisMonth = visits.filter((v) => {
+    const d = new Date(v.exam_date);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+  const pending = visits.filter((v) => v.payment_status !== "paid").length;
+
+  return (
+    <div>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
+        <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
+        <p style={{ color: theme.gray, margin: 0 }}>{doctor.phone} {doctor.email ? `· ${doctor.email}` : ""}</p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
+        <StatCard label="Total Referred" value={visits.length} />
+        <StatCard label="This Month" value={thisMonth} />
+        <StatCard label="Pending Payments" value={pending} />
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Referred Patients</h3>
+        {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No referrals yet.</p>}
+        {visits.map((v) => (
+          <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name}</div>
+              <div style={{ fontSize: 12, color: theme.gray }}>{(v.scan_types || []).join(", ")}</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
+              <div>{v.exam_date}</div>
+              <div>{v.payment_status}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }) {
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+      <div style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: theme.navy }}>{value}</div>
+    </div>
+  );
+}
