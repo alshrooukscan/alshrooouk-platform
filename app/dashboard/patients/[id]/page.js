@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
-import { customerWhatsAppLink, scanWhatsAppLink } from "../../../../lib/whatsapp";
+import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage } from "../../../../lib/whatsapp";
 
 export default function PatientProfilePage() {
   const { id } = useParams();
+  const router = useRouter();
   const [patient, setPatient] = useState(null);
   const [visits, setVisits] = useState([]);
   const [credentials, setCredentials] = useState(null);
@@ -41,18 +42,26 @@ export default function PatientProfilePage() {
   async function handleCustomerWhatsApp() {
     const pwd = await generateNewPassword();
     const portalUrl = `${window.location.origin.replace("/dashboard", "")}/portal`;
+    const username = credentials?.username || patient.mobile.replace(/\D/g, "");
     const link = customerWhatsAppLink({
       mobile: patient.mobile,
       patientName: patient.name,
       portalUrl,
-      username: credentials?.username || patient.mobile.replace(/\D/g, ""),
+      username,
       password: pwd,
+    });
+    const { data: session } = await supabase.auth.getUser();
+    await supabase.from("whatsapp_log").insert({
+      message_type: "customer",
+      rendered_text: buildCustomerMessage({ patientName: patient.name, portalUrl, username, password: pwd }),
+      sent_at: new Date().toISOString(),
+      sent_by: session?.user?.id || null,
     });
     window.open(link, "_blank");
   }
 
-  function handleScanWhatsApp(visit) {
-    const link = scanWhatsAppLink({
+  async function handleScanWhatsApp(visit) {
+    const payload = {
       branch: visit.branches?.name || "",
       patientName: patient.name,
       mobile: patient.mobile,
@@ -62,21 +71,38 @@ export default function PatientProfilePage() {
       doctorPhone: visit.doctors?.phone,
       doctorEmail: visit.doctors?.email,
       clinicCode: visit.doctors?.clinic_code,
+    };
+    const link = scanWhatsAppLink(payload);
+    const { data: session } = await supabase.auth.getUser();
+    await supabase.from("whatsapp_log").insert({
+      visit_id: visit.id,
+      message_type: "scan",
+      rendered_text: buildScanMessage(payload),
+      sent_at: new Date().toISOString(),
+      sent_by: session?.user?.id || null,
     });
     window.open(link, "_blank");
   }
 
   async function handleGenerateInvoice(visit) {
-    const invoiceNumber = "INV-" + Date.now().toString().slice(-8);
-    await supabase.from("invoices").insert({
-      visit_id: visit.id,
-      invoice_number: invoiceNumber,
-      amount: visit.amount_due,
-      patient_name: patient.name,
-      exam: (visit.scan_types || []).join(", "),
-      exam_date: visit.exam_date,
-    });
-    alert(`Invoice ${invoiceNumber} generated. PDF rendering lands in a follow-up sprint.`);
+    const { data: invoiceNumber } = await supabase.rpc("generate_invoice_number");
+    const { data: inv, error } = await supabase
+      .from("invoices")
+      .insert({
+        visit_id: visit.id,
+        invoice_number: invoiceNumber,
+        amount: visit.amount_due,
+        patient_name: patient.name,
+        exam: (visit.scan_types || []).join(", "),
+        exam_date: visit.exam_date,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    router.push(`/dashboard/invoices/${inv.id}`);
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
