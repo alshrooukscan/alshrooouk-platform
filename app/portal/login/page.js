@@ -33,8 +33,7 @@ export default function PortalLoginPage() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: theme.navyDark, padding: 16 }}>
       <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 16, padding: 36, width: 360, boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <div style={{ width: 52, height: 52, borderRadius: "50%", margin: "0 auto 10px", background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})` }} />
-          <h1 style={{ fontSize: 19, color: theme.navy, margin: 0 }}>Al Shrooouk Scan &amp; Lab</h1>
+          <img src="/logo-full.png" alt="Al Shrooouk Scan & Lab" style={{ height: 80, width: "auto", margin: "0 auto 6px" }} />
           <p style={{ fontSize: 13, color: theme.gray, marginTop: 4 }}>View your results, referrals, or payslips</p>
         </div>
 
