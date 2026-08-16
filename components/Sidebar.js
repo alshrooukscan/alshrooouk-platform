@@ -3,24 +3,28 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
+import { usePermissions } from "../lib/usePermissions";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: "\u25A6" },
-  { href: "/dashboard/patients", label: "Patients", icon: "\u25CB" },
-  { href: "/dashboard/doctors", label: "Doctors", icon: "\u2695" },
-  { href: "/dashboard/stock", label: "Stock", icon: "\u25A4" },
-  { href: "/dashboard/hr", label: "HR", icon: "\u25A3" },
-  { href: "/dashboard/settings", label: "Settings", icon: "\u2699" },
+  { href: "/dashboard", label: "Dashboard", icon: "\u25A6", key: "dashboard" },
+  { href: "/dashboard/patients", label: "Patients", icon: "\u25CB", key: "patients" },
+  { href: "/dashboard/doctors", label: "Doctors", icon: "\u2695", key: "doctors" },
+  { href: "/dashboard/stock", label: "Stock", icon: "\u25A4", key: "stock" },
+  { href: "/dashboard/hr", label: "HR", icon: "\u25A3", key: "hr" },
+  { href: "/dashboard/settings", label: "Settings", icon: "\u2699", key: "settings" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { can, profile, loading } = usePermissions();
 
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/login");
   }
+
+  const visibleNav = NAV.filter((item) => loading || can(item.key));
 
   return (
     <aside
@@ -41,7 +45,7 @@ export default function Sidebar() {
       </div>
 
       <nav style={{ flex: 1 }}>
-        {NAV.map((item) => {
+        {visibleNav.map((item) => {
           const active = pathname === item.href;
           return (
             <Link
@@ -70,6 +74,11 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {profile && (
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 8, paddingLeft: 4 }}>
+          {profile.name} &middot; {profile.role}
+        </div>
+      )}
       <button
         onClick={handleLogout}
         style={{
