@@ -9,6 +9,7 @@ export default function EmployeeProfilePage() {
   const [employee, setEmployee] = useState(null);
   const [payslip, setPayslip] = useState(null);
   const [events, setEvents] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
@@ -32,10 +33,21 @@ export default function EmployeeProfilePage() {
       .eq("employee_id", id)
       .order("event_time", { ascending: false })
       .limit(10);
+    const { data: lr } = await supabase
+      .from("leave_requests")
+      .select("*")
+      .eq("employee_id", id)
+      .order("created_at", { ascending: false });
     setEmployee(emp);
     setPayslip(latestPayslip);
     setEvents(tc || []);
+    setLeaveRequests(lr || []);
     setLoading(false);
+  }
+
+  async function handleReviewLeave(requestId, status) {
+    await supabase.from("leave_requests").update({ status }).eq("id", requestId);
+    load();
   }
 
   async function handleGeneratePayslip() {
@@ -95,10 +107,33 @@ export default function EmployeeProfilePage() {
             <div key={e.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "8px 0", fontSize: 13 }}>
               <div style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{e.event_type}</div>
               <div style={{ color: theme.gray, fontSize: 12 }}>{new Date(e.event_time).toLocaleString()}</div>
-              {e.lat && <div style={{ color: theme.gray, fontSize: 11 }}>{e.lat.toFixed(4)}, {e.lng.toFixed(4)}</div>}
+              {e.lat && <div style={{ color: theme.gray, fontSize: 11 }}>{e.lat.toFixed(4)}, {e.lng.toFixed(4)} {e.ip_address && `· IP ${e.ip_address}`}</div>}
             </div>
           ))}
         </div>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Vacation Requests</h3>
+        {leaveRequests.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No vacation requests yet.</p>}
+        {leaveRequests.map((r) => (
+          <div key={r.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 600, color: theme.navy, fontSize: 13 }}>{r.start_date} &rarr; {r.end_date}</div>
+              {r.reason && <div style={{ fontSize: 12, color: theme.gray }}>{r.reason}</div>}
+            </div>
+            {r.status === "pending" ? (
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => handleReviewLeave(r.id, "approved")} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#2e7d32", color: "#fff", fontSize: 12, cursor: "pointer" }}>Approve</button>
+                <button onClick={() => handleReviewLeave(r.id, "rejected")} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#ba1a1a", color: "#fff", fontSize: 12, cursor: "pointer" }}>Reject</button>
+              </div>
+            ) : (
+              <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: r.status === "approved" ? "#e8f5e9" : "#fdecea", color: r.status === "approved" ? "#2e7d32" : "#ba1a1a", fontWeight: 700, textTransform: "capitalize" }}>
+                {r.status}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
