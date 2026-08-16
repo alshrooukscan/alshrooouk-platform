@@ -166,6 +166,10 @@ async function main() {
 
   // --- cleanup ---
   console.log("\nCleaning up test data...");
+  cleanup.push(() => sb(`/rest/v1/cash_ledger?reference_type=eq.invoice&reference_id=eq.${invoice.id}`, { method: "DELETE" }, token));
+  cleanup.push(() => sb(`/rest/v1/cash_ledger?reference_type=eq.stock_transaction`, { method: "DELETE" }, token));
+  cleanup.push(() => sb(`/rest/v1/payroll_runs?employee_id=eq.${employee.id}`, { method: "DELETE" }, token));
+  cleanup.push(() => sb(`/rest/v1/cash_ledger?reference_type=eq.payroll_run`, { method: "DELETE" }, token));
   for (const fn of cleanup.reverse()) {
     try {
       await fn();
