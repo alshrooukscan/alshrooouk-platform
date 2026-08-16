@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import Loading from "../../../lib/Loading";
 
 export default function EmployeePortalPage() {
   const [data, setData] = useState(null);
@@ -53,15 +54,18 @@ export default function EmployeePortalPage() {
     );
   }
 
-  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.gray }}>Loading...</div>;
+  if (loading) return <Loading />;
 
   const lastEvent = data.events[0];
   const nextAction = lastEvent?.event_type === "login" ? "logout" : "login";
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
-      <div style={{ background: theme.navy, padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ color: "#fff", fontWeight: 700 }}>Al Shrooouk Scan &amp; Lab</span>
+      <div style={{ background: theme.navy, padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Al Shrooouk Scan &amp; Lab</span>
+        </div>
         <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
           Log Out
         </button>
