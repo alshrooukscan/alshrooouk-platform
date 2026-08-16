@@ -7,6 +7,9 @@ import Loading from "../../../lib/Loading";
 export default function DoctorPortalPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [openPatientId, setOpenPatientId] = useState(null);
+  const [filesByPatient, setFilesByPatient] = useState({});
+  const [filesLoading, setFilesLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -27,7 +30,30 @@ export default function DoctorPortalPage() {
     router.push("/portal/login");
   }
 
+  async function toggleFiles(patientId) {
+    if (openPatientId === patientId) {
+      setOpenPatientId(null);
+      return;
+    }
+    setOpenPatientId(patientId);
+    if (!filesByPatient[patientId]) {
+      setFilesLoading(true);
+      const res = await fetch(`/api/portal/doctor/patient-files?patientId=${patientId}`);
+      const result = await res.json();
+      setFilesByPatient((prev) => ({ ...prev, [patientId]: result.files || [] }));
+      setFilesLoading(false);
+    }
+  }
+
   if (loading) return <Loading />;
+
+  // Group visits by patient so each referred patient appears once with their full history and files
+  const patientGroups = {};
+  for (const v of data.visits) {
+    const pid = v.patient_id;
+    if (!patientGroups[pid]) patientGroups[pid] = { name: v.patients?.name, visits: [] };
+    patientGroups[pid].visits.push(v);
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
@@ -46,18 +72,51 @@ export default function DoctorPortalPage() {
         <p style={{ color: theme.gold, fontWeight: 600, marginBottom: 20 }}>{data.doctor?.clinic_code} &middot; {data.doctor?.clinic_name}</p>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Your Referrals</h3>
-          {data.visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No referrals yet.</p>}
-          {data.visits.map((v) => (
-            <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name}</div>
-                <div style={{ fontSize: 12, color: theme.gray }}>{(v.scan_types || []).join(", ")}</div>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Your Referred Patients</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>You can only see patients you've referred, and only their files for your referrals.</p>
+          {Object.keys(patientGroups).length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No referrals yet.</p>}
+          {Object.entries(patientGroups).map(([patientId, group]) => (
+            <div key={patientId} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0" }}>
+              <div
+                onClick={() => toggleFiles(patientId)}
+                style={{ display: "flex", justifyContent: "space-between", cursor: "pointer" }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, color: theme.navy }}>{group.name}</div>
+                  <div style={{ fontSize: 12, color: theme.gray }}>{group.visits.length} visit{group.visits.length > 1 ? "s" : ""}</div>
+                </div>
+                <span style={{ color: theme.gold, fontSize: 12, fontWeight: 600 }}>
+                  {openPatientId === patientId ? "Hide Files" : "View Files"}
+                </span>
               </div>
-              <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
-                <div>{v.exam_date}</div>
-                <div>{v.payment_status}</div>
-              </div>
+
+              {openPatientId === patientId && (
+                <div style={{ marginTop: 12, paddingLeft: 4 }}>
+                  {group.visits.map((v) => (
+                    <div key={v.id} style={{ fontSize: 12, color: theme.gray, marginBottom: 4 }}>
+                      {v.exam_date} &middot; {(v.scan_types || []).join(", ")} &middot; {v.payment_status}
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8 }}>
+                    {filesLoading && !filesByPatient[patientId] && <p style={{ fontSize: 12, color: theme.gray }}>Loading files...</p>}
+                    {filesByPatient[patientId]?.length === 0 && <p style={{ fontSize: 12, color: theme.gray }}>No files uploaded for this patient yet.</p>}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      {(filesByPatient[patientId] || []).map((f) => (
+                        <a
+                          key={f.id}
+                          href={f.webViewLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ background: "#faf9fb", borderRadius: 8, padding: 10, textDecoration: "none" }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                          <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
