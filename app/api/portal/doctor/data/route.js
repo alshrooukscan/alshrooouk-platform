@@ -13,7 +13,7 @@ export async function GET() {
   const { data: doctor } = await supabaseAdmin.from("doctors").select("id, name, clinic_name, clinic_code").eq("id", session.id).single();
   const { data: visits } = await supabaseAdmin
     .from("visits")
-    .select("id, scan_types, exam_date, payment_status, patients(name)")
+    .select("id, patient_id, scan_types, exam_date, payment_status, patients(name)")
     .eq("doctor_id", session.id)
     .order("exam_date", { ascending: false });
 
