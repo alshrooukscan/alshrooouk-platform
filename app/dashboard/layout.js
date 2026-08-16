@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import Sidebar from "../../components/Sidebar";
 import { usePermissions } from "../../lib/usePermissions";
+import Loading from "../../lib/Loading";
 
 const ROUTE_PERMISSION = {
   "/dashboard": "dashboard",
@@ -46,11 +47,7 @@ export default function DashboardLayout({ children }) {
   const denied = ready && !permsLoading && required && !can(required);
 
   if (!ready || permsLoading) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.navy }}>
-        Loading...
-      </div>
-    );
+    return <Loading />;
   }
 
   if (!profile) {
