@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
@@ -18,6 +19,16 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { can, profile, loading } = usePermissions();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function check() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -29,33 +40,43 @@ export default function Sidebar() {
   return (
     <aside
       style={{
-        width: 260,
+        width: isMobile ? 64 : 260,
         background: theme.navy,
         color: "#fff",
         minHeight: "100vh",
-        padding: "24px 16px",
+        padding: isMobile ? "16px 8px" : "24px 16px",
         display: "flex",
         flexDirection: "column",
         boxSizing: "border-box",
+        alignItems: isMobile ? "center" : "stretch",
+        transition: "width 0.15s ease",
+        flexShrink: 0,
       }}
     >
-      <div style={{ marginBottom: 32, paddingLeft: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 17 }}>Al Shrooouk</div>
-        <div style={{ fontSize: 11, letterSpacing: 1, color: theme.goldLight }}>SCAN &amp; LAB</div>
+      <div style={{ marginBottom: isMobile ? 20 : 32, paddingLeft: isMobile ? 0 : 8, textAlign: isMobile ? "center" : "left" }}>
+        <img src="/logo-mark.png" alt="Al Shrooouk" style={{ height: isMobile ? 36 : 44, width: "auto", display: "block", margin: isMobile ? "0 auto" : "0 0 6px 0" }} />
+        {!isMobile && (
+          <>
+            <div style={{ fontWeight: 700, fontSize: 17, marginTop: 6 }}>Al Shrooouk</div>
+            <div style={{ fontSize: 11, letterSpacing: 1, color: theme.goldLight }}>SCAN &amp; LAB</div>
+          </>
+        )}
       </div>
 
-      <nav style={{ flex: 1 }}>
+      <nav style={{ flex: 1, width: "100%" }}>
         {visibleNav.map((item) => {
           const active = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
+              title={item.label}
               style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: isMobile ? "center" : "flex-start",
                 gap: 10,
-                padding: "10px 12px",
+                padding: isMobile ? "12px 0" : "10px 12px",
                 marginBottom: 4,
                 borderRadius: 8,
                 textDecoration: "none",
@@ -64,34 +85,36 @@ export default function Sidebar() {
                   ? `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`
                   : "transparent",
                 fontWeight: active ? 700 : 500,
-                fontSize: 14,
+                fontSize: isMobile ? 18 : 14,
               }}
             >
               <span>{item.icon}</span>
-              {item.label}
+              {!isMobile && item.label}
             </Link>
           );
         })}
       </nav>
 
-      {profile && (
+      {profile && !isMobile && (
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 8, paddingLeft: 4 }}>
           {profile.name} &middot; {profile.role}
         </div>
       )}
       <button
         onClick={handleLogout}
+        title="Log Out"
         style={{
           background: "transparent",
           border: "1px solid rgba(255,255,255,0.2)",
           color: "#fff",
           borderRadius: 8,
-          padding: "10px 12px",
+          padding: isMobile ? "10px" : "10px 12px",
           cursor: "pointer",
-          fontSize: 13,
+          fontSize: isMobile ? 16 : 13,
+          width: isMobile ? 40 : "100%",
         }}
       >
-        Log Out
+        {isMobile ? "\u23FB" : "Log Out"}
       </button>
     </aside>
   );
