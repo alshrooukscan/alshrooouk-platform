@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role").eq("id", session.id).single();
+  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary").eq("id", session.id).single();
   const { data: payslips } = await supabaseAdmin
     .from("payroll_runs")
     .select("*")
@@ -23,6 +23,11 @@ export async function GET() {
     .eq("employee_id", session.id)
     .order("event_time", { ascending: false })
     .limit(10);
+  const { data: leaveRequests } = await supabaseAdmin
+    .from("leave_requests")
+    .select("*")
+    .eq("employee_id", session.id)
+    .order("created_at", { ascending: false });
 
-  return NextResponse.json({ employee, payslips: payslips || [], events: events || [] });
+  return NextResponse.json({ employee, payslips: payslips || [], events: events || [], leaveRequests: leaveRequests || [] });
 }
