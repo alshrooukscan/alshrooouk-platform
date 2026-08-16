@@ -45,17 +45,8 @@ export default function LoginPage() {
         }}
       >
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: "50%",
-              margin: "0 auto 12px",
-              background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
-            }}
-          />
+          <img src="/logo-full.png" alt="Al Shrooouk Scan & Lab" style={{ height: 90, width: "auto", margin: "0 auto 8px" }} />
           <h1 style={{ fontSize: 20, color: theme.navy, margin: 0 }}>Staff Portal</h1>
-          <p style={{ fontSize: 13, color: theme.gray, marginTop: 4 }}>Al Shrooouk Scan &amp; Lab</p>
         </div>
 
         <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>Email or Username</label>
