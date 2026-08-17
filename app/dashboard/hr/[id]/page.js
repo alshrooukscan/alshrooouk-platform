@@ -4,14 +4,18 @@ import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 export default function EmployeeProfilePage() {
   const { id } = useParams();
   const [employee, setEmployee] = useState(null);
   const [payslip, setPayslip] = useState(null);
   const [events, setEvents] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [savingShifts, setSavingShifts] = useState(false);
 
   useEffect(() => {
     load();
@@ -38,11 +42,41 @@ export default function EmployeeProfilePage() {
       .select("*")
       .eq("employee_id", id)
       .order("created_at", { ascending: false });
+    const { data: sh } = await supabase.from("employee_shifts").select("*").eq("employee_id", id);
+
+    const shiftMap = DAYS.map((_, dayIdx) => {
+      const existing = (sh || []).find((s) => s.day_of_week === dayIdx);
+      return existing || { day_of_week: dayIdx, start_time: "09:00", end_time: "17:00", is_day_off: dayIdx === 5 || dayIdx === 6 };
+    });
+
     setEmployee(emp);
     setPayslip(latestPayslip);
     setEvents(tc || []);
     setLeaveRequests(lr || []);
+    setShifts(shiftMap);
     setLoading(false);
+  }
+
+  async function handleSaveShifts() {
+    setSavingShifts(true);
+    for (const s of shifts) {
+      await supabase.from("employee_shifts").upsert(
+        {
+          employee_id: id,
+          day_of_week: s.day_of_week,
+          start_time: s.is_day_off ? null : s.start_time,
+          end_time: s.is_day_off ? null : s.end_time,
+          is_day_off: s.is_day_off,
+        },
+        { onConflict: "employee_id,day_of_week" }
+      );
+    }
+    setSavingShifts(false);
+    alert("Shift schedule saved.");
+  }
+
+  function updateShift(dayIdx, field, value) {
+    setShifts((prev) => prev.map((s) => (s.day_of_week === dayIdx ? { ...s, [field]: value } : s)));
   }
 
   async function handleReviewLeave(requestId, status) {
@@ -72,7 +106,10 @@ export default function EmployeeProfilePage() {
           <div>
             <h1 style={{ color: theme.navy, margin: 0 }}>{employee.name}</h1>
             <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
-            <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>{employee.phone} {employee.national_id ? `· ID ${employee.national_id}` : ""}</p>
+            <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
+              {employee.phone} {employee.national_id ? `· ID ${employee.national_id}` : ""}
+              {employee.hourly_rate ? ` · ${employee.hourly_rate} EGP/hr` : ""}
+            </p>
           </div>
           <button onClick={handleGeneratePayslip} disabled={generating} style={primaryBtn}>
             {generating ? "Generating..." : "Generate Payslip"}
@@ -111,6 +148,46 @@ export default function EmployeeProfilePage() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Weekly Shift Schedule</h3>
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+          Defines this employee's expected start/end time per day. Attendance flags (late, absent) are measured against this.
+        </p>
+        {shifts.map((s) => (
+          <div key={s.day_of_week} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #f5f5f5" }}>
+            <div style={{ width: 90, fontSize: 13, fontWeight: 600, color: theme.navy }}>{DAYS[s.day_of_week]}</div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: theme.gray, width: 90 }}>
+              <input type="checkbox" checked={s.is_day_off} onChange={(e) => updateShift(s.day_of_week, "is_day_off", e.target.checked)} />
+              Day off
+            </label>
+            {!s.is_day_off && (
+              <>
+                <input
+                  type="time"
+                  value={s.start_time || "09:00"}
+                  onChange={(e) => updateShift(s.day_of_week, "start_time", e.target.value)}
+                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }}
+                />
+                <span style={{ color: theme.gray, fontSize: 12 }}>to</span>
+                <input
+                  type="time"
+                  value={s.end_time || "17:00"}
+                  onChange={(e) => updateShift(s.day_of_week, "end_time", e.target.value)}
+                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }}
+                />
+              </>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={handleSaveShifts}
+          disabled={savingShifts}
+          style={{ marginTop: 16, padding: "10px 24px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+        >
+          {savingShifts ? "Saving..." : "Save Shift Schedule"}
+        </button>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
