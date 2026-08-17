@@ -31,21 +31,38 @@ export default function HRPage() {
           <h1 style={{ color: theme.navy, margin: 0 }}>Human Resources</h1>
           <p style={{ color: theme.gray, margin: "4px 0 0" }}>Manage clinic staff, salaries, and payslips.</p>
         </div>
-        <Link
-          href="/dashboard/hr/new"
-          style={{
-            padding: "10px 20px",
-            borderRadius: 8,
-            background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
-            color: theme.navy,
-            fontWeight: 700,
-            textDecoration: "none",
-            fontSize: 14,
-            whiteSpace: "nowrap",
-          }}
-        >
-          + Add Employee
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <a
+            href="/dashboard/hr/analytics"
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              border: `1px solid ${theme.navy}`,
+              color: theme.navy,
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 14,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Attendance Analytics
+          </a>
+          <Link
+            href="/dashboard/hr/new"
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
+              color: theme.navy,
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 14,
+              whiteSpace: "nowrap",
+            }}
+          >
+            + Add Employee
+          </Link>
+        </div>
       </div>
 
       <input
