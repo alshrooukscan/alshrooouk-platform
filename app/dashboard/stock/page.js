@@ -90,6 +90,7 @@ export default function StockPage() {
           placeholder="Search item name or code..."
           style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14 }}
         />
+        <a href="/dashboard/stock/analytics" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Analytics</a>
         <button onClick={() => setShowAddItem(true)} style={outlineBtn}>+ Add Item</button>
       </div>
 
@@ -212,8 +213,12 @@ function TransactionModal({ item, onClose, onSaved }) {
   const [type, setType] = useState("purchase");
   const [qty, setQty] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("paid");
+  const [amountPaid, setAmountPaid] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const total = (Number(qty) || 0) * (Number(unitPrice) || 0);
 
   async function handleSave() {
     if (!qty || !unitPrice) {
@@ -221,11 +226,14 @@ function TransactionModal({ item, onClose, onSaved }) {
       return;
     }
     setSaving(true);
+    const paid = paymentStatus === "paid" ? total : paymentStatus === "pending" ? 0 : Number(amountPaid) || 0;
     const { error: err } = await supabase.rpc("record_stock_transaction", {
       p_item_id: item.id,
       p_type: type,
       p_qty: Number(qty),
       p_unit_price: Number(unitPrice),
+      p_amount_paid: paid,
+      p_payment_status: paymentStatus,
     });
     setSaving(false);
     if (err) {
@@ -263,6 +271,38 @@ function TransactionModal({ item, onClose, onSaved }) {
       <input style={inp} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
       <FieldLabel>Unit Price (EGP)</FieldLabel>
       <input style={inp} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="0.00" />
+      {total > 0 && <p style={{ fontSize: 12, color: theme.gray, marginTop: -12, marginBottom: 12 }}>Total: {total.toFixed(2)} EGP</p>}
+
+      <FieldLabel>{type === "sale" ? "Payment from Customer" : "Payment to Supplier"}</FieldLabel>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        {["paid", "partial", "pending"].map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setPaymentStatus(s)}
+            style={{
+              flex: 1,
+              padding: "6px 0",
+              borderRadius: 6,
+              fontSize: 11,
+              border: `1px solid ${paymentStatus === s ? theme.gold : "#ddd"}`,
+              background: paymentStatus === s ? theme.goldLight : "#fff",
+              color: theme.navy,
+              cursor: "pointer",
+              textTransform: "capitalize",
+            }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+      {paymentStatus === "partial" && (
+        <>
+          <FieldLabel>Amount Actually Paid (EGP)</FieldLabel>
+          <input style={inp} value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="0.00" />
+        </>
+      )}
+
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
       <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Save Transaction"}</button>
     </Modal>
