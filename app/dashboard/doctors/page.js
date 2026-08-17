@@ -6,6 +6,7 @@ import { theme } from "../../../lib/theme";
 
 export default function DoctorsPage() {
   const [doctors, setDoctors] = useState([]);
+  const [engagement, setEngagement] = useState({});
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -20,6 +21,23 @@ export default function DoctorsPage() {
       .select("id, name, clinic_name, clinic_code, phone")
       .order("created_at", { ascending: false });
     setDoctors(data || []);
+
+    // Low engagement = real referral history exists, but fewer than 2 in the last 90 days
+    const { data: visits } = await supabase.from("visits").select("doctor_id, exam_date").not("doctor_id", "is", null);
+    const cutoff = new Date(Date.now() - 90 * 86400000);
+    const recentCount = {};
+    const everCount = {};
+    for (const v of visits || []) {
+      everCount[v.doctor_id] = (everCount[v.doctor_id] || 0) + 1;
+      if (v.exam_date && new Date(v.exam_date) >= cutoff) {
+        recentCount[v.doctor_id] = (recentCount[v.doctor_id] || 0) + 1;
+      }
+    }
+    const eng = {};
+    for (const docId of Object.keys(everCount)) {
+      eng[docId] = (recentCount[docId] || 0) < 2;
+    }
+    setEngagement(eng);
     setLoading(false);
   }
 
@@ -96,7 +114,14 @@ export default function DoctorsPage() {
               boxShadow: "0 4px 20px rgba(39,33,77,0.06)",
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name}</div>
+              {engagement[d.id] && (
+                <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a", fontWeight: 700, whiteSpace: "nowrap" }}>
+                  Low Engagement
+                </span>
+              )}
+            </div>
             <div style={{ fontSize: 12, color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{d.clinic_code}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.clinic_name}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.phone}</div>
