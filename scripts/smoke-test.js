@@ -74,8 +74,13 @@ async function main() {
   cleanup.push(() => sb(`/rest/v1/doctors?id=eq.${doctor.id}`, { method: "DELETE" }, token));
   assert(docRes.ok && doctor.id, "Doctor registration succeeds");
 
-  const dupRes = await sb("/rest/v1/doctors", { method: "POST", body: JSON.stringify({ name: "Dr. Duplicate", clinic_code: clinicCode }) }, token);
-  assert(dupRes.status === 409, "Duplicate Clinic Code is correctly rejected");
+  // Note: clinic_code alone is NOT guaranteed unique in real data (confirmed during
+  // migration: 12 legitimate collisions). The true unique identifier is unique_code
+  // (ClinicCode_Name compound), which is what's actually enforced at the DB level.
+  const uniqueCode = `${clinicCode}_Dr. Smoke Test`;
+  await sb("/rest/v1/doctors", { method: "PATCH", body: JSON.stringify({ unique_code: uniqueCode }) }, token);
+  const dupRes = await sb("/rest/v1/doctors", { method: "POST", body: JSON.stringify({ name: "Dr. Duplicate", clinic_code: `SMK2-${Date.now()}`, unique_code: uniqueCode }) }, token);
+  assert(dupRes.status === 409, "Duplicate Unique Code is correctly rejected (clinic_code alone is not unique in real data)");
 
   const visitRes = await sb("/rest/v1/visits", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ patient_id: patient.id, doctor_id: doctor.id, scan_types: ["3D CBCT Quadrant"], amount_due: 1100, payment_status: "paid" }) }, token);
   const visit = (await visitRes.json())[0];
