@@ -40,6 +40,7 @@ export default function NewDoctorPage() {
         email: form.email || null,
         clinic_name: form.clinic_name,
         clinic_code: form.clinic_code,
+        unique_code: `${form.clinic_code}_${form.name}`.trim(),
         branch_id: form.branch_id || null,
         discount_pct: form.discount_pct || 0,
       })
@@ -49,7 +50,7 @@ export default function NewDoctorPage() {
     if (err) {
       setSaving(false);
       if (err.code === "23505") {
-        setError(`Clinic Code "${form.clinic_code}" is already in use. Clinic Code must be unique.`);
+        setError(`A doctor with Clinic Code "${form.clinic_code}" and this exact name is already registered. If this is a different doctor sharing a clinic code, that's fine, just make sure the name differs.`);
       } else {
         setError(err.message);
       }
