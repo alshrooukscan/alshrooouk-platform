@@ -19,6 +19,7 @@ export default function NewEmployeePage() {
     role: "",
     fixed_salary: "",
     variable_salary: "",
+    hourly_rate: "",
   });
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function NewEmployeePage() {
         role: form.role,
         fixed_salary: form.fixed_salary || 0,
         variable_salary: form.variable_salary || 0,
+        hourly_rate: form.hourly_rate || null,
       })
       .select("id")
       .single();
@@ -107,6 +109,9 @@ export default function NewEmployeePage() {
               <input style={inp} value={form.variable_salary} onChange={(e) => setForm({ ...form, variable_salary: e.target.value })} />
             </Field>
           </Row>
+          <Field label="Hourly Rate (EGP, optional, leave blank for salaried employees)">
+            <input style={inp} value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} placeholder="e.g., 50" />
+          </Field>
         </Section>
 
         <Section title="Deduction Rules">
