@@ -38,21 +38,38 @@ export default function DoctorsPage() {
           <h1 style={{ color: theme.navy, margin: "4px 0" }}>Referring Doctors</h1>
           <p style={{ color: theme.gray, margin: 0 }}>Manage your network of affiliated clinics and referring physicians.</p>
         </div>
-        <Link
-          href="/dashboard/doctors/new"
-          style={{
-            padding: "10px 20px",
-            borderRadius: 8,
-            background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
-            color: theme.navy,
-            fontWeight: 700,
-            textDecoration: "none",
-            fontSize: 14,
-            whiteSpace: "nowrap",
-          }}
-        >
-          + New Doctor
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <a
+            href="/dashboard/doctors/analytics"
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              border: `1px solid ${theme.navy}`,
+              color: theme.navy,
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 14,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Analytics
+          </a>
+          <Link
+            href="/dashboard/doctors/new"
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
+              color: theme.navy,
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 14,
+              whiteSpace: "nowrap",
+            }}
+          >
+            + New Doctor
+          </Link>
+        </div>
       </div>
 
       <input
