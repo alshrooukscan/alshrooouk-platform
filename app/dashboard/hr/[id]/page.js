@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatMoney } from "../../../../lib/format";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -108,7 +109,7 @@ export default function EmployeeProfilePage() {
             <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
             <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
               {employee.phone} {employee.national_id ? `· ID ${employee.national_id}` : ""}
-              {employee.hourly_rate ? ` · ${employee.hourly_rate} EGP/hr` : ""}
+              {employee.hourly_rate ? ` · ${formatMoney(employee.hourly_rate, { decimals: 2 })} EGP/hr` : ""}
             </p>
           </div>
           <button onClick={handleGeneratePayslip} disabled={generating} style={primaryBtn}>
@@ -124,14 +125,14 @@ export default function EmployeeProfilePage() {
           {payslip && (
             <div>
               <p style={{ fontSize: 12, color: theme.gray }}>Period: {payslip.period}</p>
-              <Row label="Fixed Salary" value={`${Number(payslip.fixed_salary).toFixed(2)} EGP`} />
-              <Row label="Variable Salary" value={`${Number(payslip.variable_salary).toFixed(2)} EGP`} />
+              <Row label="Fixed Salary" value={`${formatMoney(payslip.fixed_salary, { decimals: 2 })} EGP`} />
+              <Row label="Variable Salary" value={`${formatMoney(payslip.variable_salary, { decimals: 2 })} EGP`} />
               {(payslip.deductions || []).map((d, i) => (
-                <Row key={i} label={d.name} value={`- ${Number(d.amount).toFixed(2)} EGP`} negative />
+                <Row key={i} label={d.name} value={`- ${formatMoney(d.amount, { decimals: 2 })} EGP`} negative />
               ))}
               <div style={{ borderTop: `2px solid ${theme.navy}`, marginTop: 12, paddingTop: 12, display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 700, color: theme.navy }}>Net Pay</span>
-                <span style={{ fontWeight: 700, color: theme.navy, fontSize: 20 }}>{Number(payslip.net_total).toFixed(2)} EGP</span>
+                <span style={{ fontWeight: 700, color: theme.navy, fontSize: 20 }}>{formatMoney(payslip.net_total, { decimals: 2 })} EGP</span>
               </div>
             </div>
           )}
