@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatMoney } from "../../../../lib/format";
 
 export default function StockAnalyticsPage() {
   const [category, setCategory] = useState("dental");
@@ -106,11 +107,11 @@ export default function StockAnalyticsPage() {
               .map((r) => (
                 <tr key={r.id} style={{ borderTop: "1px solid #f0f0f0" }}>
                   <Td><strong>{r.name}</strong> <span style={{ color: theme.gray }}>({r.item_code})</span></Td>
-                  <Td>{r.totalPurchased.toFixed(0)} EGP</Td>
-                  <Td>{r.totalSold.toFixed(0)} EGP</Td>
-                  <Td style={{ color: r.netProfit >= 0 ? "#2e7d32" : "#ba1a1a", fontWeight: 700 }}>{r.netProfit.toFixed(0)} EGP</Td>
-                  <Td style={{ color: r.salesPending > 0 ? "#a97c00" : theme.gray }}>{r.salesPending > 0 ? `${r.salesPending.toFixed(0)} EGP` : "—"}</Td>
-                  <Td style={{ color: r.purchasesPending > 0 ? "#ba1a1a" : theme.gray }}>{r.purchasesPending > 0 ? `${r.purchasesPending.toFixed(0)} EGP` : "—"}</Td>
+                  <Td>{formatMoney(r.totalPurchased)} EGP</Td>
+                  <Td>{formatMoney(r.totalSold)} EGP</Td>
+                  <Td style={{ color: r.netProfit >= 0 ? "#2e7d32" : "#ba1a1a", fontWeight: 700 }}>{formatMoney(r.netProfit)} EGP</Td>
+                  <Td style={{ color: r.salesPending > 0 ? "#a97c00" : theme.gray }}>{r.salesPending > 0 ? `${formatMoney(r.salesPending)} EGP` : "—"}</Td>
+                  <Td style={{ color: r.purchasesPending > 0 ? "#ba1a1a" : theme.gray }}>{r.purchasesPending > 0 ? `${formatMoney(r.purchasesPending)} EGP` : "—"}</Td>
                 </tr>
               ))}
           </tbody>
@@ -128,7 +129,7 @@ function KpiCard({ label, value, highlight, warn }) {
     <div style={{ background: highlight ? theme.navy : "#fff", borderRadius: 14, padding: 16, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
       <div style={{ fontSize: 10, color: highlight ? theme.goldLight : theme.gray, fontWeight: 700 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: highlight ? "#fff" : warn && value > 0 ? "#a97c00" : theme.navy, marginTop: 4 }}>
-        {value.toFixed(0)} <span style={{ fontSize: 11, fontWeight: 500 }}>EGP</span>
+        {formatMoney(value)} <span style={{ fontSize: 11, fontWeight: 500 }}>EGP</span>
       </div>
     </div>
   );
