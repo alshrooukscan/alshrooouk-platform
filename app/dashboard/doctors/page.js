@@ -3,12 +3,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
+import { usePermissions } from "../../../lib/usePermissions";
 
 export default function DoctorsPage() {
+  const { isAdmin } = usePermissions();
   const [doctors, setDoctors] = useState([]);
   const [engagement, setEngagement] = useState({});
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loginAsBusy, setLoginAsBusy] = useState(null);
 
   useEffect(() => {
     load();
@@ -48,6 +51,22 @@ export default function DoctorsPage() {
       d.clinic_name?.toLowerCase().includes(query.toLowerCase())
   );
 
+  async function handleLoginAs(e, doctor) {
+    e.preventDefault();
+    e.stopPropagation();
+    setLoginAsBusy(doctor.id);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/login-as", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ type: "doctor", id: doctor.id }),
+    });
+    const result = await res.json();
+    setLoginAsBusy(null);
+    if (result.redirect) window.open(result.redirect, "_blank");
+    else alert(result.error || "Could not log in as this doctor");
+  }
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -58,7 +77,7 @@ export default function DoctorsPage() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <a
-            href="/dashboard/doctors/analytics"
+            href="/dashboard?tab=doctors"
             style={{
               padding: "10px 20px",
               borderRadius: 8,
@@ -125,6 +144,15 @@ export default function DoctorsPage() {
             <div style={{ fontSize: 12, color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{d.clinic_code}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.clinic_name}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.phone}</div>
+            {isAdmin && (
+              <button
+                onClick={(e) => handleLoginAs(e, d)}
+                disabled={loginAsBusy === d.id}
+                style={{ marginTop: 10, padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
+              >
+                {loginAsBusy === d.id ? "..." : "Login As"}
+              </button>
+            )}
           </Link>
         ))}
       </div>
