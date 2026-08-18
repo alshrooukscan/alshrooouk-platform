@@ -104,7 +104,9 @@ export default function PurchaseOrdersPage() {
               {entries.map((e) => (
                 <div key={e.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
                   <div>
-                    <span style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{e.entry_type}</span>
+                    <span style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>
+                      {e.entry_type}{e.po_number ? ` — PO-${e.po_number}` : ""}
+                    </span>
                     {e.description && <span style={{ color: theme.gray }}> &middot; {e.description}</span>}
                     <div style={{ fontSize: 11, color: theme.gray }}>{e.entry_date}</div>
                   </div>
@@ -164,22 +166,41 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
+  const [assignedPoNumber, setAssignedPoNumber] = useState(null);
 
   async function handleSave() {
     if (!amount) return;
     setSaving(true);
-    // purchase = positive (debt owed), payment = negative (reduces debt)
     const signedAmount = type === "purchase" ? Math.abs(Number(amount)) : -Math.abs(Number(amount));
+
+    let poNumber = null;
+    if (type === "purchase") {
+      const { data } = await supabase.rpc("next_po_number");
+      poNumber = data;
+    }
+
     await supabase.from("purchase_orders").insert({
       supplier_id: supplier.id,
       amount: signedAmount,
       entry_type: type,
       description,
       entry_date: date,
+      po_number: poNumber,
     });
     setSaving(false);
+    if (poNumber) setAssignedPoNumber(poNumber);
     onSaved();
-    onClose();
+    if (!poNumber) onClose();
+  }
+
+  if (assignedPoNumber) {
+    return (
+      <Modal title="Purchase Order Created" onClose={onClose}>
+        <p style={{ fontSize: 14, color: theme.gray }}>Assigned automatically, continuing from the last PO on file.</p>
+        <div style={{ fontSize: 28, fontWeight: 700, color: theme.navy, textAlign: "center", padding: "16px 0" }}>PO-{assignedPoNumber}</div>
+        <button onClick={onClose} style={primaryBtn}>Done</button>
+      </Modal>
+    );
   }
 
   return (
@@ -209,6 +230,11 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
           </button>
         ))}
       </div>
+      {type === "purchase" && (
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
+          A PO number will be assigned automatically when you save, continuing from the last one used.
+        </p>
+      )}
       <FieldLabel>Amount (EGP)</FieldLabel>
       <input style={inp} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
       <FieldLabel>Description (optional)</FieldLabel>
