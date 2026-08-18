@@ -6,6 +6,14 @@ import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MODULES = [
+  { key: "dashboard", label: "Dashboard / P&L" },
+  { key: "patients", label: "Patients" },
+  { key: "doctors", label: "Doctors" },
+  { key: "stock", label: "Stock" },
+  { key: "hr", label: "HR & Payroll" },
+  { key: "settings", label: "Settings" },
+];
 
 export default function EmployeeProfilePage() {
   const { id } = useParams();
@@ -14,6 +22,9 @@ export default function EmployeeProfilePage() {
   const [events, setEvents] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [shifts, setShifts] = useState([]);
+  const [permissions, setPermissions] = useState({});
+  const [savingElevation, setSavingElevation] = useState(false);
+  const [elevationResult, setElevationResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [savingShifts, setSavingShifts] = useState(false);
@@ -51,11 +62,35 @@ export default function EmployeeProfilePage() {
     });
 
     setEmployee(emp);
+    setPermissions(emp?.permissions || {});
     setPayslip(latestPayslip);
     setEvents(tc || []);
     setLeaveRequests(lr || []);
     setShifts(shiftMap);
     setLoading(false);
+  }
+
+  function togglePermission(key) {
+    setPermissions((p) => ({ ...p, [key]: !p[key] }));
+    setElevationResult(null);
+  }
+
+  async function handleSaveElevation() {
+    setSavingElevation(true);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/elevate-employee", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ employeeId: id, permissions }),
+    });
+    const data = await res.json();
+    setSavingElevation(false);
+    if (!res.ok) {
+      alert(data.error || "Could not save access");
+      return;
+    }
+    setElevationResult(data);
+    load();
   }
 
   async function handleSaveShifts() {
@@ -189,6 +224,43 @@ export default function EmployeeProfilePage() {
         >
           {savingShifts ? "Saving..." : "Save Shift Schedule"}
         </button>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Staff Dashboard Access</h3>
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+          Grant this employee access to the same staff dashboard modules your team uses. They'll reach these from within their own portal login, no separate account to remember.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+          {MODULES.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => togglePermission(m.key)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                fontSize: 12,
+                border: `1px solid ${permissions[m.key] ? theme.gold : "#ddd"}`,
+                background: permissions[m.key] ? theme.goldLight : "#fff",
+                color: theme.navy,
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={handleSaveElevation} disabled={savingElevation} style={{ ...primaryBtn, fontSize: 13, padding: "10px 20px" }}>
+          {savingElevation ? "Saving..." : "Save Access"}
+        </button>
+        {elevationResult && (
+          <div style={{ marginTop: 16, background: "#faf9fb", borderRadius: 8, padding: 14, fontSize: 13 }}>
+            <p style={{ margin: 0, color: theme.navy }}>
+              {elevationResult.alreadyExisted ? "Access updated." : "Dashboard access created."} They'll see an "Open Staff Dashboard" button in their own portal after logging in, no second password to remember.
+            </p>
+          </div>
+        )}
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
