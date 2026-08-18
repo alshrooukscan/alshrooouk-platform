@@ -1,10 +1,76 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
+import ScanInsights from "../../components/analytics/ScanInsights";
+import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
+import HRAnalytics from "../../components/analytics/HRAnalytics";
+import StockAnalytics from "../../components/analytics/StockAnalytics";
+
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "scans", label: "Scans" },
+  { key: "doctors", label: "Doctors" },
+  { key: "hr", label: "HR" },
+  { key: "stock", label: "Stock" },
+];
 
 export default function DashboardHome() {
+  return (
+    <Suspense fallback={<p style={{ color: theme.gray }}>Loading...</p>}>
+      <DashboardTabs />
+    </Suspense>
+  );
+}
+
+function DashboardTabs() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") || "overview";
+
+  function setTab(key) {
+    router.push(key === "overview" ? "/dashboard" : `/dashboard?tab=${key}`);
+  }
+
+  return (
+    <div>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Dashboard &amp; Analytics</h1>
+      <p style={{ color: theme.gray, marginBottom: 20 }}>Everything measurable in the system, in one place.</p>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              padding: "8px 20px",
+              borderRadius: 8,
+              border: "none",
+              background: tab === t.key ? theme.navy : "#fff",
+              color: tab === t.key ? "#fff" : theme.navy,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontSize: 13,
+              boxShadow: "0 2px 8px rgba(39,33,77,0.06)",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && <Overview />}
+      {tab === "scans" && <ScanInsights />}
+      {tab === "doctors" && <DoctorAnalytics />}
+      {tab === "hr" && <HRAnalytics />}
+      {tab === "stock" && <StockAnalytics />}
+    </div>
+  );
+}
+
+function Overview() {
   const [ledger, setLedger] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
   const [el3awamaUnits, setEl3awamaUnits] = useState(0);
@@ -59,9 +125,6 @@ export default function DashboardHome() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>P&amp;L Dashboard</h1>
-      <p style={{ color: theme.gray, marginBottom: 24 }}>Executive summary &amp; financial performance, live from every transaction in the system.</p>
-
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
         <KpiCard label="Cash In: Scans" value={cashInScans} />
         <KpiCard label="Cash In: El3awama" value={cashInEl3awama} />
