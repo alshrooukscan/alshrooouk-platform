@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
+import { formatMoney } from "../../lib/format";
 
 export default function DashboardHome() {
   const [ledger, setLedger] = useState([]);
@@ -83,7 +84,7 @@ export default function DashboardHome() {
             <div key={r.label} style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                 <span style={{ color: theme.navy, fontWeight: 600 }}>{r.label}</span>
-                <span style={{ color: theme.gray }}>{r.value.toFixed(0)} EGP</span>
+                <span style={{ color: theme.gray }}>{formatMoney(r.value)} EGP</span>
               </div>
               <div style={{ height: 10, background: "#f0f0f0", borderRadius: 6, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(r.value / maxRevenue) * 100}%`, background: r.color, borderRadius: 6 }} />
@@ -92,7 +93,7 @@ export default function DashboardHome() {
           ))}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontWeight: 700, color: theme.navy }}>Total Revenue</span>
-            <span style={{ fontWeight: 700, color: theme.navy }}>{totalCashIn.toFixed(0)} EGP</span>
+            <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(totalCashIn)} EGP</span>
           </div>
         </div>
 
@@ -102,7 +103,7 @@ export default function DashboardHome() {
           {expenses.map((e) => (
             <div key={e.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
               <span style={{ color: theme.navy }}>{e.label}</span>
-              <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{e.value.toFixed(0)} EGP</span>
+              <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{formatMoney(e.value)} EGP</span>
             </div>
           ))}
         </div>
@@ -127,7 +128,7 @@ function KpiCard({ label, value, negative, highlight }) {
     >
       <div style={{ fontSize: 12, color: highlight ? theme.goldLight : theme.gray, fontWeight: 600 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: 24, fontWeight: 700, color: highlight ? "#fff" : negative ? "#ba1a1a" : theme.navy, marginTop: 6 }}>
-        {value.toFixed(0)} <span style={{ fontSize: 14, fontWeight: 500 }}>EGP</span>
+        {formatMoney(value)} <span style={{ fontSize: 14, fontWeight: 500 }}>EGP</span>
       </div>
     </div>
   );
