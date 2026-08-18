@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
+import { formatMoney } from "../../../lib/format";
 
 export default function StockPage() {
   const [category, setCategory] = useState("dental");
@@ -53,7 +54,7 @@ export default function StockPage() {
         <div style={{ display: "flex", gap: 24, textAlign: "right" }}>
           <div>
             <div style={{ fontSize: 11, color: theme.gray }}>TOTAL VALUE</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy }}>{totalValue.toFixed(0)} EGP</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy }}>{formatMoney(totalValue)} EGP</div>
           </div>
           <div>
             <div style={{ fontSize: 11, color: theme.gray }}>LOW STOCK ITEMS</div>
@@ -124,9 +125,9 @@ export default function StockPage() {
                       {item.qty_remaining ?? 0}
                     </span>
                   </Td>
-                  <Td>{item.purchase_price ?? "—"}</Td>
-                  <Td>{item.sale_price ?? "—"}</Td>
-                  <Td>{item.purchase_price ? `${profit.toFixed(0)} (${profitPct}%)` : "—"}</Td>
+                  <Td>{item.purchase_price != null ? formatMoney(item.purchase_price) : "—"}</Td>
+                  <Td>{item.sale_price != null ? formatMoney(item.sale_price) : "—"}</Td>
+                  <Td>{item.purchase_price ? `${formatMoney(profit)} (${profitPct}%)` : "—"}</Td>
                   <Td>
                     {variance ? (
                       <span
@@ -273,7 +274,7 @@ function TransactionModal({ item, onClose, onSaved }) {
       <input style={inp} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
       <FieldLabel>Unit Price (EGP)</FieldLabel>
       <input style={inp} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="0.00" />
-      {total > 0 && <p style={{ fontSize: 12, color: theme.gray, marginTop: -12, marginBottom: 12 }}>Total: {total.toFixed(2)} EGP</p>}
+      {total > 0 && <p style={{ fontSize: 12, color: theme.gray, marginTop: -12, marginBottom: 12 }}>Total: {formatMoney(total, { decimals: 2 })} EGP</p>}
 
       <FieldLabel>{type === "sale" ? "Payment from Customer" : "Payment to Supplier"}</FieldLabel>
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
