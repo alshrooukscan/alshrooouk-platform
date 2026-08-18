@@ -3,11 +3,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
+import { usePermissions } from "../../../lib/usePermissions";
 
 export default function HRPage() {
+  const { isAdmin } = usePermissions();
   const [employees, setEmployees] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loginAsBusy, setLoginAsBusy] = useState(null);
 
   useEffect(() => {
     supabase
@@ -24,6 +27,20 @@ export default function HRPage() {
     (e) => e.name?.toLowerCase().includes(query.toLowerCase()) || e.hr_id?.toLowerCase().includes(query.toLowerCase())
   );
 
+  async function handleLoginAs(employee) {
+    setLoginAsBusy(employee.id);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/login-as", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ type: "employee", id: employee.id }),
+    });
+    const result = await res.json();
+    setLoginAsBusy(null);
+    if (result.redirect) window.open(result.redirect, "_blank");
+    else alert(result.error || "Could not log in as this employee");
+  }
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -33,7 +50,7 @@ export default function HRPage() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <a
-            href="/dashboard/hr/analytics"
+            href="/dashboard?tab=hr"
             style={{
               padding: "10px 20px",
               borderRadius: 8,
@@ -80,6 +97,7 @@ export default function HRPage() {
               <th style={th}>HR ID</th>
               <th style={th}>Role</th>
               <th style={th}>Status</th>
+              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -104,6 +122,17 @@ export default function HRPage() {
                   >
                     {e.is_active ? "Active" : "Inactive"}
                   </span>
+                </td>
+                <td style={td}>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleLoginAs(e)}
+                      disabled={loginAsBusy === e.id}
+                      style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
+                    >
+                      {loginAsBusy === e.id ? "..." : "Login As"}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
