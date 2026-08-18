@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatMoney } from "../../../../lib/format";
 
 export default function PurchaseOrdersPage() {
   const [suppliers, setSuppliers] = useState([]);
@@ -54,7 +55,7 @@ export default function PurchaseOrdersPage() {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 12, color: theme.gray }}>TOTAL OWED TO SUPPLIERS</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: totalOwed > 0 ? "#ba1a1a" : theme.navy }}>{totalOwed.toFixed(2)} EGP</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: totalOwed > 0 ? "#ba1a1a" : theme.navy }}>{formatMoney(totalOwed, { decimals: 2 })} EGP</div>
         </div>
       </div>
 
@@ -85,7 +86,7 @@ export default function PurchaseOrdersPage() {
               >
                 <span style={{ color: theme.navy, fontWeight: 600 }}>{s.name}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: bal > 0 ? "#ba1a1a" : bal < 0 ? "#2e7d32" : theme.gray }}>
-                  {bal.toFixed(2)} EGP
+                  {formatMoney(bal, { decimals: 2 })} EGP
                 </span>
               </div>
             );
@@ -111,7 +112,7 @@ export default function PurchaseOrdersPage() {
                     <div style={{ fontSize: 11, color: theme.gray }}>{e.entry_date}</div>
                   </div>
                   <span style={{ fontWeight: 700, color: e.amount > 0 ? "#ba1a1a" : "#2e7d32" }}>
-                    {e.amount > 0 ? "+" : ""}{Number(e.amount).toFixed(2)} EGP
+                    {e.amount > 0 ? "+" : ""}{formatMoney(e.amount, { decimals: 2 })} EGP
                   </span>
                 </div>
               ))}
