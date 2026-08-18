@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 
@@ -92,6 +93,7 @@ export default function StockPage() {
         />
         <a href="/dashboard/stock/analytics" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Analytics</a>
         <button onClick={() => setShowAddItem(true)} style={outlineBtn}>+ Add Item</button>
+        <Link href="/dashboard/stock/purchase-orders" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Purchase Orders</Link>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
