@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import { formatMoney } from "../../../lib/format";
 import Loading from "../../../lib/Loading";
 
 export default function EmployeePortalPage() {
@@ -59,7 +60,7 @@ export default function EmployeePortalPage() {
 
   const lastEvent = data.events[0];
   const nextAction = lastEvent?.event_type === "login" ? "logout" : "login";
-  const annualBase = (Number(data.employee?.fixed_salary || 0) * 12).toFixed(0);
+  const annualBase = formatMoney(Number(data.employee?.fixed_salary || 0) * 12);
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
@@ -132,8 +133,8 @@ export default function EmployeePortalPage() {
 
             <div style={cardStyle}>
               <h3 style={{ color: theme.navy, marginTop: 0, fontSize: 15 }}>Salary Overview</h3>
-              <Row label="Fixed Salary (monthly)" value={`${Number(data.employee?.fixed_salary || 0).toFixed(2)} EGP`} />
-              <Row label="Variable Salary (monthly)" value={`${Number(data.employee?.variable_salary || 0).toFixed(2)} EGP`} />
+              <Row label="Fixed Salary (monthly)" value={`${formatMoney(data.employee?.fixed_salary, { decimals: 2 })} EGP`} />
+              <Row label="Variable Salary (monthly)" value={`${formatMoney(data.employee?.variable_salary, { decimals: 2 })} EGP`} />
               <Row label="Annual Base (fixed x 12)" value={`${annualBase} EGP`} bold />
             </div>
 
@@ -160,12 +161,12 @@ export default function EmployeePortalPage() {
               <div key={p.id} style={cardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontWeight: 600, color: theme.navy }}>{p.period}</span>
-                  <span style={{ fontWeight: 700, color: theme.navy }}>{Number(p.net_total).toFixed(2)} EGP</span>
+                  <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(p.net_total, { decimals: 2 })} EGP</span>
                 </div>
                 {(p.deductions || []).length > 0 && (
                   <div style={{ marginTop: 6 }}>
                     {p.deductions.map((d, i) => (
-                      <div key={i} style={{ fontSize: 11, color: "#ba1a1a" }}>- {d.name}: {Number(d.amount).toFixed(2)} EGP</div>
+                      <div key={i} style={{ fontSize: 11, color: "#ba1a1a" }}>- {d.name}: {formatMoney(d.amount, { decimals: 2 })} EGP</div>
                     ))}
                   </div>
                 )}
