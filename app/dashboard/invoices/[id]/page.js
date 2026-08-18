@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatMoney } from "../../../../lib/format";
 
 export default function InvoiceViewPage() {
   const { id } = useParams();
@@ -35,7 +36,7 @@ export default function InvoiceViewPage() {
     if (!patientMobile) return;
     const text =
       `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number}\n` +
-      `Amount: ${invoice.amount} EGP\n` +
+      `Amount: ${formatMoney(invoice.amount)} EGP\n` +
       `Patient: ${invoice.patient_name}\n` +
       `Exam: ${invoice.exam}\n` +
       `Date: ${invoice.exam_date}`;
@@ -98,7 +99,7 @@ export default function InvoiceViewPage() {
             SH
           </div>
 
-          <Row label="TOTAL AMOUNT DUE" value={`${invoice.amount} EGP`} big />
+          <Row label="TOTAL AMOUNT DUE" value={`${formatMoney(invoice.amount)} EGP`} big />
           <div style={{ display: "flex", gap: 24, marginTop: 20 }}>
             <Row label="PATIENT NAME" value={invoice.patient_name} />
           </div>
