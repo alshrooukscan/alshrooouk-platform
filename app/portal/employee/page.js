@@ -32,6 +32,16 @@ export default function EmployeePortalPage() {
     router.push("/portal/login");
   }
 
+  async function handleOpenDashboard() {
+    const res = await fetch("/api/portal/employee/dashboard-link", { method: "POST" });
+    const result = await res.json();
+    if (result.link) {
+      window.open(result.link, "_blank");
+    } else {
+      alert(result.error || "Could not open dashboard");
+    }
+  }
+
   function handlePunch(eventType) {
     setGeoError("");
     if (!navigator.geolocation) {
@@ -130,6 +140,27 @@ export default function EmployeePortalPage() {
               {geoError && <p style={{ color: "#ba1a1a", fontSize: 12, marginTop: 10 }}>{geoError}</p>}
               <p style={{ fontSize: 10, color: "#bbb", marginTop: 10 }}>Your location and IP address are recorded with each sign in/out for attendance tracking.</p>
             </div>
+
+            {data.employee?.staff_account_email && Object.values(data.employee?.permissions || {}).some(Boolean) && (
+              <div style={{ background: theme.navy, borderRadius: 16, padding: 20, marginBottom: 20, textAlign: "center" }}>
+                <p style={{ color: "#fff", fontSize: 13, marginBottom: 10 }}>You've been given access to additional workspace tools.</p>
+                <button
+                  onClick={handleOpenDashboard}
+                  style={{
+                    padding: "10px 24px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
+                    color: theme.navy,
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  Open Staff Dashboard
+                </button>
+              </div>
+            )}
 
             <div style={cardStyle}>
               <h3 style={{ color: theme.navy, marginTop: 0, fontSize: 15 }}>Salary Overview</h3>
