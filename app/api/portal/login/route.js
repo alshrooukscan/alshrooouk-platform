@@ -2,34 +2,42 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { signSession } from "../../../../lib/session";
 
-const FN = { patient: "verify_patient_credentials", doctor: "verify_doctor_credentials", employee: "verify_employee_credentials" };
+// Tries each account type in turn so the person never has to say who they are,
+// only one login exists, the system figures out the role from the credentials.
+async function tryPatient(username, password) {
+  const { data: id } = await supabaseAdmin.rpc("verify_patient_credentials", { p_username: username, p_password: password });
+  if (!id) return null;
+  const { data } = await supabaseAdmin.from("patients").select("name").eq("id", id).single();
+  return { role: "patient", id, name: data?.name };
+}
+async function tryDoctor(username, password) {
+  const { data: id } = await supabaseAdmin.rpc("verify_doctor_credentials", { p_username: username, p_password: password });
+  if (!id) return null;
+  const { data } = await supabaseAdmin.from("doctors").select("name").eq("id", id).single();
+  return { role: "doctor", id, name: data?.name };
+}
+async function tryEmployee(username, password) {
+  const { data: id } = await supabaseAdmin.rpc("verify_employee_credentials", { p_username: username, p_password: password });
+  if (!id) return null;
+  const { data } = await supabaseAdmin.from("employees").select("name, permissions").eq("id", id).single();
+  return { role: "employee", id, name: data?.name, permissions: data?.permissions };
+}
 
 export async function POST(req) {
   try {
-    const { role, username, password } = await req.json();
-    if (!role || !FN[role] || !username || !password) {
-      return NextResponse.json({ error: "role, username, and password are required" }, { status: 400 });
+    const { username, password } = await req.json();
+    if (!username || !password) {
+      return NextResponse.json({ error: "Username and password are required" }, { status: 400 });
     }
 
-    const { data: id, error } = await supabaseAdmin.rpc(FN[role], { p_username: username, p_password: password });
-    if (error || !id) {
+    const match = (await tryPatient(username, password)) || (await tryDoctor(username, password)) || (await tryEmployee(username, password));
+
+    if (!match) {
       return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
     }
 
-    let name = "";
-    if (role === "patient") {
-      const { data } = await supabaseAdmin.from("patients").select("name").eq("id", id).single();
-      name = data?.name;
-    } else if (role === "doctor") {
-      const { data } = await supabaseAdmin.from("doctors").select("name").eq("id", id).single();
-      name = data?.name;
-    } else {
-      const { data } = await supabaseAdmin.from("employees").select("name").eq("id", id).single();
-      name = data?.name;
-    }
-
-    const token = signSession({ role, id, name });
-    const res = NextResponse.json({ ok: true, role, name });
+    const token = signSession(match);
+    const res = NextResponse.json({ ok: true, role: match.role, name: match.name });
     res.cookies.set("portal_session", token, {
       httpOnly: true,
       secure: true,
