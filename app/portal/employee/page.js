@@ -178,7 +178,17 @@ export default function EmployeePortalPage() {
                   <span style={{ fontSize: 12, color: theme.gray }}>{new Date(e.event_time).toLocaleString()}</span>
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
-                  {e.lat && `${e.lat.toFixed(4)}, ${e.lng.toFixed(4)}`} {e.ip_address && `· IP ${e.ip_address}`}
+                  {e.lat && (
+                    <div>
+                      {e.address && <span>{e.address}</span>}
+                      {e.lat && (
+                        <a href={`https://maps.google.com/?q=${e.lat},${e.lng}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, marginLeft: e.address ? 6 : 0 }}>
+                          View on map
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {e.ip_address && <span>IP {e.ip_address}</span>}
                 </div>
               </div>
             ))}
