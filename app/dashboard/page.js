@@ -15,18 +15,17 @@ export default function DashboardHome() {
 
   async function load() {
     setLoading(true);
-    const { data: cl } = await supabase.from("cash_ledger").select("*");
+    const { data: summary } = await supabase.rpc("get_pl_summary");
     const { data: items } = await supabase.from("stock_items").select("category, qty_remaining");
-    setLedger(cl || []);
+    setLedger(summary || []);
     setDentalUnits((items || []).filter((i) => i.category === "dental").reduce((s, i) => s + (i.qty_remaining || 0), 0));
     setEl3awamaUnits((items || []).filter((i) => i.category === "el3awama").reduce((s, i) => s + (i.qty_remaining || 0), 0));
     setLoading(false);
   }
 
   function sum(stream, direction) {
-    return ledger
-      .filter((l) => l.source_stream === stream && l.direction === direction)
-      .reduce((s, l) => s + Number(l.amount || 0), 0);
+    const row = ledger.find((l) => l.source_stream === stream && l.direction === direction);
+    return row ? Number(row.total) : 0;
   }
 
   const cashInScans = sum("scans", "in");
