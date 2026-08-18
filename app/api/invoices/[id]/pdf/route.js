@@ -40,7 +40,8 @@ export async function GET(req, { params }) {
     y -= big ? 60 : 46;
   }
 
-  row("TOTAL AMOUNT DUE", `${invoice.amount} EGP`, true);
+  const formattedAmount = Number(invoice.amount).toLocaleString("en-US");
+  row("TOTAL AMOUNT DUE", `${formattedAmount} EGP`, true);
   row("PATIENT NAME", invoice.patient_name);
   row("EXAM / SCAN TYPE", invoice.exam);
   row("EXAM DATE", invoice.exam_date);
