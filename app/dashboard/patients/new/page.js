@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatMoney } from "../../../../lib/format";
 
 export default function NewPatientPage() {
   const router = useRouter();
@@ -196,7 +197,7 @@ export default function NewPatientPage() {
                     cursor: "pointer",
                   }}
                 >
-                  {ex.name} {ex.price ? `— ${ex.price} EGP` : ""}
+                  {ex.name} {ex.price ? `— ${formatMoney(ex.price)} EGP` : ""}
                 </button>
               );
             })}
