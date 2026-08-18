@@ -3,6 +3,21 @@ import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
+async function reverseGeocode(lat, lng) {
+  if (lat == null || lng == null) return null;
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18&addressdetails=1`,
+      { headers: { "User-Agent": "AlShrooouk-Platform/1.0" } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.display_name || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export async function POST(req) {
   const token = cookies().get("portal_session")?.value;
   const session = verifySession(token);
@@ -21,9 +36,11 @@ export async function POST(req) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : req.headers.get("x-real-ip") || null;
 
+  const address = await reverseGeocode(lat, lng);
+
   const { data, error } = await supabaseAdmin
     .from("timeclock_events")
-    .insert({ employee_id: session.id, event_type: eventType, lat, lng, ip_address: ip })
+    .insert({ employee_id: session.id, event_type: eventType, lat, lng, ip_address: ip, address })
     .select("*")
     .single();
 
