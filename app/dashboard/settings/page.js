@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
@@ -84,6 +85,26 @@ export default function SettingsPage() {
   return (
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 24 }}>Settings</h1>
+
+      {!permsLoading && isAdmin && (
+        <Section title="Login As" subtitle="See exactly what any patient, doctor, employee, or staff member sees.">
+          <Link
+            href="/dashboard/settings/login-as"
+            style={{
+              display: "inline-block",
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: theme.navy,
+              color: "#fff",
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 13,
+            }}
+          >
+            Open Login As
+          </Link>
+        </Section>
+      )}
 
       {!permsLoading && isAdmin && (
         <Section title="Staff Users" subtitle="Admin only. Control which parts of the system each staff member can access.">
