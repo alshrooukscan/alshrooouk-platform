@@ -92,7 +92,7 @@ export default function StockPage() {
           placeholder="Search item name or code..."
           style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14 }}
         />
-        <a href="/dashboard/stock/analytics" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Analytics</a>
+        <a href="/dashboard?tab=stock" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Analytics</a>
         <button onClick={() => setShowAddItem(true)} style={outlineBtn}>+ Add Item</button>
         <Link href="/dashboard/stock/purchase-orders" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Purchase Orders</Link>
       </div>
