@@ -180,7 +180,14 @@ export default function EmployeeProfilePage() {
             <div key={e.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "8px 0", fontSize: 13 }}>
               <div style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{e.event_type}</div>
               <div style={{ color: theme.gray, fontSize: 12 }}>{new Date(e.event_time).toLocaleString()}</div>
-              {e.lat && <div style={{ color: theme.gray, fontSize: 11 }}>{e.lat.toFixed(4)}, {e.lng.toFixed(4)} {e.ip_address && `· IP ${e.ip_address}`}</div>}
+              {e.lat && (
+                <div style={{ color: theme.gray, fontSize: 11 }}>
+                  {e.address ? e.address : `${e.lat.toFixed(4)}, ${e.lng.toFixed(4)}`}
+                  {" "}
+                  <a href={`https://maps.google.com/?q=${e.lat},${e.lng}`} target="_blank" rel="noreferrer" style={{ color: theme.gold }}>View on map</a>
+                  {e.ip_address && ` · IP ${e.ip_address}`}
+                </div>
+              )}
             </div>
           ))}
         </div>
