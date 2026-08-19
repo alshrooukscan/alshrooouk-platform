@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import MonthlySchedule from "../../../../components/MonthlySchedule";
 import { formatMoney } from "../../../../lib/format";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -232,6 +233,8 @@ export default function EmployeeProfilePage() {
           {savingShifts ? "Saving..." : "Save Shift Schedule"}
         </button>
       </div>
+
+      <MonthlySchedule employeeId={id} />
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Staff Dashboard Access</h3>
