@@ -29,5 +29,14 @@ export async function GET() {
     .eq("employee_id", session.id)
     .order("created_at", { ascending: false });
 
-  return NextResponse.json({ employee, payslips: payslips || [], events: events || [], leaveRequests: leaveRequests || [] });
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: schedule } = await supabaseAdmin
+    .from("employee_schedule_days")
+    .select("*")
+    .eq("employee_id", session.id)
+    .gte("work_date", today)
+    .order("work_date", { ascending: true })
+    .limit(45);
+
+  return NextResponse.json({ employee, payslips: payslips || [], events: events || [], leaveRequests: leaveRequests || [], schedule: schedule || [] });
 }
