@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
+import { exportToCsv } from "../../../lib/exportCsv";
 
 export default function DoctorsPage() {
   const { isAdmin } = usePermissions();
@@ -21,7 +22,7 @@ export default function DoctorsPage() {
     setLoading(true);
     const { data } = await supabase
       .from("doctors")
-      .select("id, name, clinic_name, clinic_code, phone")
+      .select("id, name, clinic_name, clinic_code, phone, drive_folder_id")
       .order("created_at", { ascending: false });
     setDoctors(data || []);
 
@@ -76,6 +77,12 @@ export default function DoctorsPage() {
           <p style={{ color: theme.gray, margin: 0 }}>Manage your network of affiliated clinics and referring physicians.</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => exportToCsv("doctors.csv", filtered.map((d) => ({ Name: d.name, "Clinic Code": d.clinic_code, "Clinic Name": d.clinic_name || "", Phone: d.phone || "", "Has Drive Folder": d.drive_folder_id ? "Yes" : "No" })))}
+            style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 14 }}
+          >
+            Export CSV
+          </button>
           <a
             href="/dashboard?tab=doctors"
             style={{
