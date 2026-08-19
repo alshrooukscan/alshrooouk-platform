@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const TREND_DAYS = 30;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -160,7 +161,24 @@ export default function HRAnalytics() {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>30-Day Trend</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>30-Day Trend by Employee</h3>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Hover a bar for exact counts. Click a row below for full detail.</p>
+        <ResponsiveContainer width="100%" height={Math.max(200, trend.length * 32)}>
+          <BarChart data={trend.map((t) => ({ name: t.emp.name, Late: t.lateDays, Absent: t.absentDays, Vacation: t.vacationDays }))} layout="vertical" margin={{ left: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+            <XAxis type="number" tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="Late" fill="#a97c00" radius={[0, 3, 3, 0]} />
+            <Bar dataKey="Absent" fill="#ba1a1a" radius={[0, 3, 3, 0]} />
+            <Bar dataKey="Vacation" fill="#1565c0" radius={[0, 3, 3, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>30-Day Trend, Detail</h3>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
