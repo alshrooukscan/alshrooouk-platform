@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
+import { exportToCsv } from "../../../../lib/exportCsv";
 
 export default function PurchaseOrdersPage() {
   const [suppliers, setSuppliers] = useState([]);
@@ -99,7 +100,15 @@ export default function PurchaseOrdersPage() {
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <h3 style={{ color: theme.navy, margin: 0 }}>{selectedSupplier.name}</h3>
-                <button onClick={() => setShowAddEntry(true)} style={smallPrimary}>+ Add Entry</button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => exportToCsv(`${selectedSupplier.name}-ledger.csv`, entries.map((e) => ({ Date: e.entry_date, Type: e.entry_type, "PO Number": e.po_number || "", Description: e.description || "", Amount: e.amount })))}
+                    style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, fontSize: 12, cursor: "pointer" }}
+                  >
+                    Export CSV
+                  </button>
+                  <button onClick={() => setShowAddEntry(true)} style={smallPrimary}>+ Add Entry</button>
+                </div>
               </div>
               {entries.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No entries yet.</p>}
               {entries.map((e) => (
