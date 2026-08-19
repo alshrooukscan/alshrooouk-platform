@@ -51,11 +51,15 @@ export default function EmployeePortalPage() {
     setPunching(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        await fetch("/api/portal/employee/clock", {
+        const res = await fetch("/api/portal/employee/clock", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ eventType, lat: pos.coords.latitude, lng: pos.coords.longitude }),
         });
+        const result = await res.json();
+        if (!res.ok) {
+          setGeoError(result.error || "Could not sign in/out.");
+        }
         setPunching(false);
         load();
       },
@@ -91,6 +95,7 @@ export default function EmployeePortalPage() {
         <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
           {[
             { key: "overview", label: "Overview" },
+            { key: "schedule", label: "Schedule" },
             { key: "payslips", label: "Payslips" },
             { key: "vacations", label: "Vacations" },
           ].map((t) => (
@@ -138,7 +143,7 @@ export default function EmployeePortalPage() {
                 {punching ? "Getting location..." : nextAction === "login" ? "Sign In" : "Sign Out"}
               </button>
               {geoError && <p style={{ color: "#ba1a1a", fontSize: 12, marginTop: 10 }}>{geoError}</p>}
-              <p style={{ fontSize: 10, color: "#bbb", marginTop: 10 }}>Your location and IP address are recorded with each sign in/out for attendance tracking.</p>
+              <p style={{ fontSize: 10, color: "#bbb", marginTop: 10 }}>Sign in/out only works from the clinic. Your location and IP address are recorded with each entry for attendance tracking.</p>
             </div>
 
             {data.employee?.staff_account_email && Object.values(data.employee?.permissions || {}).some(Boolean) && (
@@ -216,8 +221,46 @@ export default function EmployeePortalPage() {
           </>
         )}
 
+        {tab === "schedule" && <ScheduleTab schedule={data.schedule} />}
+
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
       </div>
+    </div>
+  );
+}
+
+function ScheduleTab({ schedule }) {
+  if (!schedule || schedule.length === 0) {
+    return <div style={cardStyle}>No schedule has been set for you yet, check with HR.</div>;
+  }
+  const grouped = {};
+  for (const d of schedule) {
+    const monthKey = d.work_date.slice(0, 7);
+    grouped[monthKey] = grouped[monthKey] || [];
+    grouped[monthKey].push(d);
+  }
+  return (
+    <div>
+      {Object.entries(grouped).map(([month, days]) => (
+        <div key={month} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>
+            {new Date(month + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </div>
+          {days.map((d) => {
+            const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
+            return (
+              <div key={d.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{dow}, {d.work_date}</span>
+                {d.is_day_off ? (
+                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "#f0f0f0", color: "#888", fontWeight: 700 }}>Day Off</span>
+                ) : (
+                  <span style={{ fontSize: 13, color: theme.gray }}>{d.start_time?.slice(0, 5)} – {d.end_time?.slice(0, 5)}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
