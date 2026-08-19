@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
+import { exportToCsv } from "../../lib/exportCsv";
 
 export default function StockAnalytics() {
   const [category, setCategory] = useState("dental");
   const [items, setItems] = useState([]);
   const [txns, setTxns] = useState([]);
+  const [supplierOwed, setSupplierOwed] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,13 +18,15 @@ export default function StockAnalytics() {
 
   async function load() {
     setLoading(true);
-    const { data: itemRows } = await supabase.from("stock_items").select("id, name, item_code").eq("category", category);
+    const { data: itemRows } = await supabase.from("stock_items").select("id, name, item_code, purchase_price, sale_price, qty_remaining").eq("category", category);
     const ids = (itemRows || []).map((i) => i.id);
     const { data: txnRows } = ids.length
       ? await supabase.from("stock_transactions").select("*").in("item_id", ids)
       : { data: [] };
+    const { data: balances } = await supabase.rpc("get_supplier_balances");
     setItems(itemRows || []);
     setTxns(txnRows || []);
+    setSupplierOwed((balances || []).reduce((s, b) => s + Math.max(0, Number(b.balance)), 0));
     setLoading(false);
   }
 
@@ -33,31 +37,52 @@ export default function StockAnalytics() {
 
     const totalPurchased = purchases.reduce((s, t) => s + Number(t.total || 0), 0);
     const totalSold = sales.reduce((s, t) => s + Number(t.total || 0), 0);
-    const netProfit = totalSold - totalPurchased;
+    const txnProfit = totalSold - totalPurchased;
 
     const salesPaid = sales.reduce((s, t) => s + Number(t.amount_paid || 0), 0);
     const salesPending = totalSold - salesPaid;
 
-    const purchasesPaid = purchases.reduce((s, t) => s + Number(t.amount_paid || 0), 0);
-    const purchasesPending = totalPurchased - purchasesPaid;
+    const qty = Number(item.qty_remaining) || 0;
+    const inventoryCost = qty * Number(item.purchase_price || 0);
+    const inventoryPotentialRevenue = qty * Number(item.sale_price || 0);
+    const inventoryPotentialProfit = inventoryPotentialRevenue - inventoryCost;
 
-    return { ...item, totalPurchased, totalSold, netProfit, salesPaid, salesPending, purchasesPaid, purchasesPending };
+    return { ...item, totalPurchased, totalSold, txnProfit, salesPending, qty, inventoryCost, inventoryPotentialRevenue, inventoryPotentialProfit };
   });
 
   const totals = rows.reduce(
     (acc, r) => ({
+      inventoryCost: acc.inventoryCost + r.inventoryCost,
+      inventoryPotentialRevenue: acc.inventoryPotentialRevenue + r.inventoryPotentialRevenue,
+      inventoryPotentialProfit: acc.inventoryPotentialProfit + r.inventoryPotentialProfit,
       totalPurchased: acc.totalPurchased + r.totalPurchased,
       totalSold: acc.totalSold + r.totalSold,
-      netProfit: acc.netProfit + r.netProfit,
-      salesPending: acc.salesPending + r.salesPending,
-      purchasesPending: acc.purchasesPending + r.purchasesPending,
+      lowStock: acc.lowStock + (r.qty <= 5 ? 1 : 0),
     }),
-    { totalPurchased: 0, totalSold: 0, netProfit: 0, salesPending: 0, purchasesPending: 0 }
+    { inventoryCost: 0, inventoryPotentialRevenue: 0, inventoryPotentialProfit: 0, totalPurchased: 0, totalSold: 0, lowStock: 0 }
   );
+
+  const hasAnyTransactions = rows.some((r) => r.totalPurchased > 0 || r.totalSold > 0);
+
+  function handleExport() {
+    exportToCsv(`stock-${category}.csv`, rows.map((r) => ({
+      Item: r.name,
+      Code: r.item_code,
+      "Qty Remaining": r.qty,
+      "Purchase Price": r.purchase_price,
+      "Sale Price": r.sale_price,
+      "Inventory Cost": r.inventoryCost.toFixed(2),
+      "Potential Revenue": r.inventoryPotentialRevenue.toFixed(2),
+      "Potential Profit": r.inventoryPotentialProfit.toFixed(2),
+    })));
+  }
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 20 }}>Stock Analytics</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h1 style={{ color: theme.navy, margin: 0 }}>Stock Analytics</h1>
+        <button onClick={handleExport} style={exportBtn}>Export CSV</button>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         {["dental", "el3awama"].map((c) => (
@@ -75,12 +100,21 @@ export default function StockAnalytics() {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
-        <KpiCard label="Total Purchased" value={totals.totalPurchased} />
-        <KpiCard label="Total Sold" value={totals.totalSold} />
-        <KpiCard label="Net Profit" value={totals.netProfit} highlight />
-        <KpiCard label="Sales Still Pending" value={totals.salesPending} warn />
-        <KpiCard label="Owed to Suppliers" value={totals.purchasesPending} warn />
+      <p style={{ fontSize: 12, color: theme.gray, marginTop: -10, marginBottom: 16 }}>
+        Inventory value below is computed from current stock on hand (real quantities × real prices). Purchase/Sale activity reflects transactions recorded through Stock → Transaction since go-live.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}>
+        <KpiCard label="Inventory Cost (on hand)" value={totals.inventoryCost} />
+        <KpiCard label="Potential Revenue (on hand)" value={totals.inventoryPotentialRevenue} />
+        <KpiCard label="Potential Profit (on hand)" value={totals.inventoryPotentialProfit} highlight />
+        <KpiCard label="Low Stock Items (≤5)" value={totals.lowStock} isCount warn={totals.lowStock > 0} />
+        <KpiCard label="Owed to Suppliers (all)" value={supplierOwed} warn={supplierOwed > 0} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 24 }}>
+        <KpiCard label="Recorded Purchases (transactions)" value={totals.totalPurchased} small />
+        <KpiCard label="Recorded Sales (transactions)" value={totals.totalSold} small />
       </div>
 
       {loading && <p style={{ color: theme.gray }}>Loading...</p>}
@@ -90,43 +124,47 @@ export default function StockAnalytics() {
           <thead>
             <tr style={{ background: "#faf9fb", textAlign: "left" }}>
               <Th>Item</Th>
-              <Th>Purchased</Th>
-              <Th>Sold</Th>
-              <Th>Net Profit</Th>
-              <Th>Customer Owes You</Th>
-              <Th>You Owe Supplier</Th>
+              <Th>Qty on Hand</Th>
+              <Th>Inventory Cost</Th>
+              <Th>Potential Revenue</Th>
+              <Th>Potential Profit</Th>
             </tr>
           </thead>
           <tbody>
             {rows
-              .filter((r) => r.totalPurchased > 0 || r.totalSold > 0)
-              .sort((a, b) => b.netProfit - a.netProfit)
+              .filter((r) => r.qty > 0)
+              .sort((a, b) => b.inventoryPotentialProfit - a.inventoryPotentialProfit)
               .map((r) => (
                 <tr key={r.id} style={{ borderTop: "1px solid #f0f0f0" }}>
                   <Td><strong>{r.name}</strong> <span style={{ color: theme.gray }}>({r.item_code})</span></Td>
-                  <Td>{formatMoney(r.totalPurchased)} EGP</Td>
-                  <Td>{formatMoney(r.totalSold)} EGP</Td>
-                  <Td style={{ color: r.netProfit >= 0 ? "#2e7d32" : "#ba1a1a", fontWeight: 700 }}>{formatMoney(r.netProfit)} EGP</Td>
-                  <Td style={{ color: r.salesPending > 0 ? "#a97c00" : theme.gray }}>{r.salesPending > 0 ? `${formatMoney(r.salesPending)} EGP` : "—"}</Td>
-                  <Td style={{ color: r.purchasesPending > 0 ? "#ba1a1a" : theme.gray }}>{r.purchasesPending > 0 ? `${formatMoney(r.purchasesPending)} EGP` : "—"}</Td>
+                  <Td>{r.qty}</Td>
+                  <Td>{formatMoney(r.inventoryCost)} EGP</Td>
+                  <Td>{formatMoney(r.inventoryPotentialRevenue)} EGP</Td>
+                  <Td style={{ color: r.inventoryPotentialProfit >= 0 ? "#2e7d32" : "#ba1a1a", fontWeight: 700 }}>{formatMoney(r.inventoryPotentialProfit)} EGP</Td>
                 </tr>
               ))}
           </tbody>
         </table>
-        {!loading && rows.filter((r) => r.totalPurchased > 0 || r.totalSold > 0).length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No transactions recorded yet for this category.</div>
+        {!loading && rows.filter((r) => r.qty > 0).length === 0 && (
+          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No stock on hand for this category.</div>
         )}
       </div>
+
+      {!hasAnyTransactions && (
+        <p style={{ fontSize: 11, color: "#bbb", marginTop: 12 }}>
+          No purchase or sale transactions have been recorded through the system yet, that activity will appear here once staff use Stock → Transaction.
+        </p>
+      )}
     </div>
   );
 }
 
-function KpiCard({ label, value, highlight, warn }) {
+function KpiCard({ label, value, highlight, warn, isCount, small }) {
   return (
-    <div style={{ background: highlight ? theme.navy : "#fff", borderRadius: 14, padding: 16, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+    <div style={{ background: highlight ? theme.navy : "#fff", borderRadius: 14, padding: small ? 12 : 16, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
       <div style={{ fontSize: 10, color: highlight ? theme.goldLight : theme.gray, fontWeight: 700 }}>{label.toUpperCase()}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: highlight ? "#fff" : warn && value > 0 ? "#a97c00" : theme.navy, marginTop: 4 }}>
-        {formatMoney(value)} <span style={{ fontSize: 11, fontWeight: 500 }}>EGP</span>
+      <div style={{ fontSize: small ? 15 : 18, fontWeight: 700, color: highlight ? "#fff" : warn && value > 0 ? "#a97c00" : theme.navy, marginTop: 4 }}>
+        {isCount ? value : <>{formatMoney(value)} <span style={{ fontSize: 11, fontWeight: 500 }}>EGP</span></>}
       </div>
     </div>
   );
@@ -137,3 +175,5 @@ function Th({ children }) {
 function Td({ children, style }) {
   return <td style={{ padding: "10px 14px", color: "#27214D", ...style }}>{children}</td>;
 }
+
+const exportBtn = { padding: "8px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 12 };
