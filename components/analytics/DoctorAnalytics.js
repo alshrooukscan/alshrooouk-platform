@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import DrillDownModal from "./DrillDownModal";
 
 const PERIODS = {
   month: { label: "Month", days: 30 },
@@ -15,6 +18,7 @@ export default function DoctorAnalytics() {
   const [doctors, setDoctors] = useState([]);
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [drill, setDrill] = useState(null);
 
   useEffect(() => {
     load();
@@ -23,10 +27,28 @@ export default function DoctorAnalytics() {
   async function load() {
     setLoading(true);
     const { data: docs } = await supabase.from("doctors").select("id, name, clinic_code");
-    const { data: v } = await supabase.from("visits").select("doctor_id, exam_date, scan_types").not("doctor_id", "is", null);
+    const { data: v } = await supabase.from("visits").select("doctor_id, exam_date, scan_types, patients(name)").not("doctor_id", "is", null);
     setDoctors(docs || []);
     setVisits(v || []);
     setLoading(false);
+  }
+
+  function openMonthDrill(monthLabel, key) {
+    const docById = Object.fromEntries(doctors.map((d) => [d.id, d.name]));
+    const rows = visits
+      .filter((v) => v.exam_date && v.exam_date.startsWith(key))
+      .map((v) => ({ doctor: docById[v.doctor_id] || "—", patient: v.patients?.name || "—", date: v.exam_date, scans: (v.scan_types || []).join(", ") }));
+    setDrill({
+      title: `Referrals in ${monthLabel}`,
+      subtitle: `${rows.length} referral${rows.length === 1 ? "" : "s"}`,
+      columns: [
+        { key: "doctor", label: "Doctor" },
+        { key: "patient", label: "Patient" },
+        { key: "scans", label: "Scan Types" },
+        { key: "date", label: "Date" },
+      ],
+      rows,
+    });
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
@@ -132,21 +154,19 @@ export default function DoctorAnalytics() {
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Referrals, Last 12 Months</h3>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 140 }}>
-            {Object.entries(monthBuckets).map(([key, count]) => (
-              <div key={key} style={{ flex: 1, textAlign: "center" }}>
-                <div
-                  title={`${key}: ${count}`}
-                  style={{
-                    height: `${Math.max((count / maxMonth) * 110, 2)}px`,
-                    background: `linear-gradient(180deg, ${theme.gold}, ${theme.goldLight})`,
-                    borderRadius: "3px 3px 0 0",
-                  }}
-                />
-                <div style={{ fontSize: 8, color: theme.gray, marginTop: 4 }}>{key.slice(5)}</div>
-              </div>
-            ))}
-          </div>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>Click a bar to see that month's referrals.</p>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart
+              data={Object.entries(monthBuckets).map(([key, count]) => ({ key, month: key.slice(5), count }))}
+              onClick={(e) => { if (e && e.activePayload) openMonthDrill(e.activePayload[0].payload.month, e.activePayload[0].payload.key); }}
+            >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip cursor={{ fill: "rgba(169,139,77,0.08)" }} />
+              <Bar dataKey="count" fill={theme.gold} radius={[4, 4, 0, 0]} style={{ cursor: "pointer" }} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -159,7 +179,7 @@ export default function DoctorAnalytics() {
         {dormant.map((d) => (
           <div key={d.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
             <div>
-              <span style={{ fontWeight: 600, color: theme.navy }}>{d.name}</span>
+              <Link href={`/dashboard/doctors/${d.id}`} style={{ fontWeight: 600, color: theme.navy, textDecoration: "none" }}>{d.name}</Link>
               <span style={{ color: theme.gold, fontSize: 12, marginLeft: 8 }}>{d.clinic_code}</span>
             </div>
             <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
@@ -180,7 +200,9 @@ export default function DoctorAnalytics() {
           return (
             <div key={d.id} style={{ padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontWeight: 600, color: theme.navy, fontSize: 13 }}>{d.name}</span>
+                <span style={{ fontWeight: 600, color: theme.navy, fontSize: 13 }}>
+                  <Link href={`/dashboard/doctors/${d.id}`} style={{ color: theme.navy, textDecoration: "none" }}>{d.name}</Link>
+                </span>
                 <span style={{ fontSize: 11, color: theme.gray }}>{d.total} referrals, {types.length} distinct scan type{types.length !== 1 ? "s" : ""}</span>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -199,6 +221,10 @@ export default function DoctorAnalytics() {
           );
         })}
       </div>
+
+      {drill && (
+        <DrillDownModal title={drill.title} subtitle={drill.subtitle} columns={drill.columns} rows={drill.rows} onClose={() => setDrill(null)} />
+      )}
     </div>
   );
 }
