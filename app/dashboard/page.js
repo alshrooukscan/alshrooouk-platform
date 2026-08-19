@@ -102,9 +102,10 @@ function Overview() {
   const cashOutStock = sum("stock", "out");
   const cashOutScans = sum("scans", "out");
   const cashOutPayroll = sum("payroll", "out");
+  const cashOutSuppliers = sum("suppliers", "out");
 
   const totalCashIn = cashInScans + cashInEl3awama + cashInStock;
-  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutPayroll;
+  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutPayroll + cashOutSuppliers;
   const netPL = totalCashIn - totalCashOut;
 
   const revenueStreams = [
@@ -119,6 +120,7 @@ function Overview() {
     { label: "Stock purchases", value: cashOutStock },
     { label: "Scans-related costs", value: cashOutScans },
     { label: "Payroll", value: cashOutPayroll },
+    { label: "Supplier payments (Purchase Orders)", value: cashOutSuppliers },
   ].filter((e) => e.value > 0);
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
@@ -174,6 +176,7 @@ function Overview() {
 
       <p style={{ fontSize: 11, color: "#bbb", marginTop: 20 }}>
         Every figure above reads live from the cash_ledger table, populated automatically when invoices, stock sales/purchases, or payroll runs happen anywhere in the system.
+        {(cashInEl3awama === 0 || cashInStock === 0) && " Stock and El3awama show 0 in Cash In because no sale has been recorded through the system yet, current quantities were loaded as opening stock, not as sales history. The first real sale through Stock → Transaction will start reflecting here."}
       </p>
     </div>
   );
