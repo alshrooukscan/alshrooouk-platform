@@ -8,6 +8,8 @@ import ScanInsights from "../../components/analytics/ScanInsights";
 import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
 import HRAnalytics from "../../components/analytics/HRAnalytics";
 import StockAnalytics from "../../components/analytics/StockAnalytics";
+import DrillDownModal from "../../components/analytics/DrillDownModal";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -75,6 +77,8 @@ function Overview() {
   const [dentalUnits, setDentalUnits] = useState(0);
   const [el3awamaUnits, setEl3awamaUnits] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [drill, setDrill] = useState(null);
+  const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
     load();
@@ -88,6 +92,38 @@ function Overview() {
     setDentalUnits((items || []).filter((i) => i.category === "dental").reduce((s, i) => s + (i.qty_remaining || 0), 0));
     setEl3awamaUnits((items || []).filter((i) => i.category === "el3awama").reduce((s, i) => s + (i.qty_remaining || 0), 0));
     setLoading(false);
+  }
+
+  async function openRevenueDrill(streamLabel) {
+    setDrill({ title: `${streamLabel} — Revenue`, subtitle: "Loading real transactions...", columns: [], rows: [] });
+    setDrillLoading(true);
+    if (streamLabel === "Scans") {
+      const { data } = await supabase
+        .from("visits")
+        .select("exam_date, amount_paid, payment_method, patients(name)")
+        .gt("amount_paid", 0)
+        .order("exam_date", { ascending: false })
+        .limit(200);
+      setDrill({
+        title: "Scans — Recent Revenue",
+        subtitle: `Most recent 200 of the visits behind this figure`,
+        columns: [
+          { key: "patient", label: "Patient", render: (r) => r.patients?.name || "—" },
+          { key: "amount_paid", label: "Amount Paid (EGP)" },
+          { key: "payment_method", label: "Method" },
+          { key: "exam_date", label: "Date" },
+        ],
+        rows: data || [],
+      });
+    } else {
+      setDrill({
+        title: `${streamLabel} — Revenue`,
+        subtitle: "No transactions recorded through the system yet for this stream.",
+        columns: [],
+        rows: [],
+      });
+    }
+    setDrillLoading(false);
   }
 
   function sum(stream, direction) {
@@ -145,18 +181,21 @@ function Overview() {
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Stream</h3>
-          {revenueStreams.map((r) => (
-            <div key={r.label} style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                <span style={{ color: theme.navy, fontWeight: 600 }}>{r.label}</span>
-                <span style={{ color: theme.gray }}>{formatMoney(r.value)} EGP</span>
-              </div>
-              <div style={{ height: 10, background: "#f0f0f0", borderRadius: 6, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(r.value / maxRevenue) * 100}%`, background: r.color, borderRadius: 6 }} />
-              </div>
-            </div>
-          ))}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>Click a bar to see the real transactions behind it.</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={revenueStreams} onClick={(e) => { if (e && e.activePayload) openRevenueDrill(e.activePayload[0].payload.label); }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v) => [`${formatMoney(v)} EGP`, "Revenue"]} cursor={{ fill: "rgba(39,33,77,0.05)" }} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} style={{ cursor: "pointer" }}>
+                {revenueStreams.map((r, i) => (
+                  <Cell key={i} fill={r.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ marginTop: 12, paddingTop: 16, borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontWeight: 700, color: theme.navy }}>Total Revenue</span>
             <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(totalCashIn)} EGP</span>
           </div>
@@ -178,6 +217,17 @@ function Overview() {
         Every figure above reads live from the cash_ledger table, populated automatically when invoices, stock sales/purchases, or payroll runs happen anywhere in the system.
         {(cashInEl3awama === 0 || cashInStock === 0) && " Stock and El3awama show 0 in Cash In because no sale has been recorded through the system yet, current quantities were loaded as opening stock, not as sales history. The first real sale through Stock → Transaction will start reflecting here."}
       </p>
+
+      {drill && (
+        <DrillDownModal
+          title={drill.title}
+          subtitle={drill.subtitle}
+          columns={drill.columns}
+          rows={drill.rows}
+          loading={drillLoading}
+          onClose={() => setDrill(null)}
+        />
+      )}
     </div>
   );
 }
