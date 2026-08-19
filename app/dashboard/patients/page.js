@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
+import { exportToCsv } from "../../../lib/exportCsv";
 
 const PAGE_SIZE = 50;
 
@@ -18,13 +19,16 @@ export default function PatientsPage() {
   const [examTypes, setExamTypes] = useState([]);
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [withoutFolderCount, setWithoutFolderCount] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loginAsBusy, setLoginAsBusy] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     supabase.from("doctors").select("id, name, clinic_code").order("name").then(({ data }) => setDoctors(data || []));
     supabase.from("exam_types").select("name").eq("is_active", true).order("name").then(({ data }) => setExamTypes(data || []));
+    supabase.from("patients").select("id", { count: "exact", head: true }).is("drive_folder_id", null).then(({ count }) => setWithoutFolderCount(count || 0));
   }, []);
 
   useEffect(() => {
@@ -39,7 +43,7 @@ export default function PatientsPage() {
     const hasVisitFilter = dateFrom || dateTo || doctorId || scanType;
 
     if (hasVisitFilter) {
-      let vq = supabase.from("visits").select("patient_id, patients!inner(id, name, mobile, dob, created_at)", { count: "exact" });
+      let vq = supabase.from("visits").select("patient_id, patients!inner(id, name, mobile, dob, created_at, drive_folder_id)", { count: "exact" });
       if (dateFrom) vq = vq.gte("exam_date", dateFrom);
       if (dateTo) vq = vq.lte("exam_date", dateTo);
       if (doctorId) vq = vq.eq("doctor_id", doctorId);
@@ -59,7 +63,7 @@ export default function PatientsPage() {
       setResults(patients);
       setTotalCount(count || 0);
     } else {
-      let pq = supabase.from("patients").select("id, name, mobile, dob, created_at", { count: "exact" });
+      let pq = supabase.from("patients").select("id, name, mobile, dob, created_at, drive_folder_id", { count: "exact" });
       if (mobileQuery) pq = pq.ilike("mobile", `%${mobileQuery}%`);
       pq = pq.order("created_at", { ascending: false }).range(from, to);
       const { data, count } = await pq;
@@ -90,6 +94,26 @@ export default function PatientsPage() {
     else alert(result.error || "Could not log in as this patient");
   }
 
+  async function handleExportCurrent() {
+    exportToCsv("patients-current-view.csv", results.map((p) => ({
+      Name: p.name,
+      Mobile: p.mobile || "",
+      DOB: p.dob || "",
+      "Has Drive Folder": p.drive_folder_id ? "Yes" : "No",
+    })));
+  }
+
+  async function handleExportMissingFolders() {
+    setExporting(true);
+    const { data } = await supabase.from("patients").select("name, mobile, created_at").is("drive_folder_id", null).order("name");
+    setExporting(false);
+    exportToCsv("patients-without-drive-folder.csv", (data || []).map((p) => ({
+      Name: p.name,
+      Mobile: p.mobile || "",
+      "Registered": p.created_at ? p.created_at.slice(0, 10) : "",
+    })));
+  }
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
@@ -98,6 +122,17 @@ export default function PatientsPage() {
       <p style={{ color: theme.gray, marginBottom: 20 }}>
         {totalCount.toLocaleString()} patients on record. Search by mobile number or filter by visit details below.
       </p>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 20px", boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>PATIENTS WITHOUT A DRIVE FOLDER</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: withoutFolderCount > 0 ? "#a97c00" : theme.navy }}>{withoutFolderCount.toLocaleString()}</div>
+        </div>
+        <button onClick={handleExportMissingFolders} disabled={exporting} style={{ ...pageBtn, alignSelf: "center" }}>
+          {exporting ? "Preparing..." : "Export List (No Folder)"}
+        </button>
+        <button onClick={handleExportCurrent} style={{ ...pageBtn, alignSelf: "center" }}>Export Current View</button>
+      </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
         <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
