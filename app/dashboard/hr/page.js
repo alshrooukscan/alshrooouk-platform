@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
+import { exportToCsv } from "../../../lib/exportCsv";
 
 export default function HRPage() {
   const { isAdmin } = usePermissions();
@@ -49,6 +50,12 @@ export default function HRPage() {
           <p style={{ color: theme.gray, margin: "4px 0 0" }}>Manage clinic staff, salaries, and payslips.</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => exportToCsv("employees.csv", filtered.map((e) => ({ Name: e.name, "HR ID": e.hr_id, Role: e.role || "", Status: e.is_active ? "Active" : "Inactive" })))}
+            style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 14 }}
+          >
+            Export CSV
+          </button>
           <a
             href="/dashboard?tab=hr"
             style={{
