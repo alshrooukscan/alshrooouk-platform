@@ -178,22 +178,83 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [assignedPoNumber, setAssignedPoNumber] = useState(null);
 
-  async function handleSave() {
-    if (!amount) return;
-    setSaving(true);
-    const signedAmount = type === "purchase" ? Math.abs(Number(amount)) : -Math.abs(Number(amount));
+  const [stockItems, setStockItems] = useState([]);
+  const [lineItems, setLineItems] = useState([{ mode: "existing", itemId: "", newName: "", newCategory: "dental", qty: "", unitPrice: "" }]);
 
+  useEffect(() => {
+    if (type === "purchase") {
+      supabase.from("stock_items").select("id, name, item_code, category, purchase_price").order("name").then(({ data }) => setStockItems(data || []));
+    }
+  }, [type]);
+
+  const lineItemsTotal = lineItems.reduce((sum, li) => sum + (Number(li.qty) || 0) * (Number(li.unitPrice) || 0), 0);
+  const useLineItems = type === "purchase" && lineItems.some((li) => (li.mode === "existing" && li.itemId) || (li.mode === "new" && li.newName));
+
+  function updateLine(idx, field, value) {
+    setLineItems((prev) => prev.map((li, i) => (i === idx ? { ...li, [field]: value } : li)));
+  }
+  function addLine() {
+    setLineItems((prev) => [...prev, { mode: "existing", itemId: "", newName: "", newCategory: "dental", qty: "", unitPrice: "" }]);
+  }
+  function removeLine(idx) {
+    setLineItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleSave() {
+    const finalAmount = useLineItems ? lineItemsTotal : Number(amount);
+    if (!finalAmount) return;
+    setSaving(true);
+
+    // Apply real inventory changes for each line item. Purchased on credit doesn't hit
+    // cash_ledger here, only the supplier debt ledger, cash_ledger reflects it later
+    // when an actual payment entry is recorded, avoiding double-counting.
+    if (useLineItems) {
+      for (const li of lineItems) {
+        const qty = Number(li.qty) || 0;
+        const unitPrice = Number(li.unitPrice) || 0;
+        if (!qty) continue;
+
+        if (li.mode === "existing" && li.itemId) {
+          const { data: fresh } = await supabase.from("stock_items").select("qty_remaining").eq("id", li.itemId).single();
+          await supabase
+            .from("stock_items")
+            .update({ qty_remaining: (fresh?.qty_remaining || 0) + qty, purchase_price: unitPrice || undefined })
+            .eq("id", li.itemId);
+        } else if (li.mode === "new" && li.newName) {
+          const code = `${li.newCategory === "dental" ? "DEN" : "EL"}-${Date.now().toString().slice(-5)}`;
+          await supabase.from("stock_items").insert({
+            category: li.newCategory,
+            item_code: code,
+            name: li.newName,
+            purchase_price: unitPrice,
+            qty_remaining: qty,
+          });
+        }
+      }
+    }
+
+    const signedAmount = type === "purchase" ? Math.abs(finalAmount) : -Math.abs(finalAmount);
     let poNumber = null;
     if (type === "purchase") {
       const { data } = await supabase.rpc("next_po_number");
       poNumber = data;
     }
 
+    const itemsSummary = useLineItems
+      ? lineItems
+          .filter((li) => (li.mode === "existing" && li.itemId) || (li.mode === "new" && li.newName))
+          .map((li) => {
+            const name = li.mode === "existing" ? stockItems.find((s) => s.id === li.itemId)?.name : li.newName;
+            return `${name} x${li.qty}`;
+          })
+          .join(", ")
+      : null;
+
     await supabase.from("purchase_orders").insert({
       supplier_id: supplier.id,
       amount: signedAmount,
       entry_type: type,
-      description,
+      description: description || itemsSummary,
       entry_date: date,
       po_number: poNumber,
     });
@@ -206,7 +267,7 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
   if (assignedPoNumber) {
     return (
       <Modal title="Purchase Order Created" onClose={onClose}>
-        <p style={{ fontSize: 14, color: theme.gray }}>Assigned automatically, continuing from the last PO on file.</p>
+        <p style={{ fontSize: 14, color: theme.gray }}>Assigned automatically, continuing from the last PO on file. Inventory has been updated for any items added.</p>
         <div style={{ fontSize: 28, fontWeight: 700, color: theme.navy, textAlign: "center", padding: "16px 0" }}>PO-{assignedPoNumber}</div>
         <button onClick={onClose} style={primaryBtn}>Done</button>
       </Modal>
@@ -214,7 +275,7 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`Add Entry — ${supplier.name}`} onClose={onClose}>
+    <Modal title={`Add Entry — ${supplier.name}`} onClose={onClose} wide={type === "purchase"}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {[
           { key: "purchase", label: "Purchase (we owe)" },
@@ -240,13 +301,68 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
           </button>
         ))}
       </div>
-      {type === "purchase" && (
-        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
-          A PO number will be assigned automatically when you save, continuing from the last one used.
-        </p>
+
+      {type === "purchase" ? (
+        <>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
+            Select items from your current stock, or add a new item on the fly for either Dental or El3awama. Quantities update inventory immediately. A PO number is assigned automatically.
+          </p>
+          {lineItems.map((li, idx) => (
+            <div key={idx} style={{ border: "1px solid #eee", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button type="button" onClick={() => updateLine(idx, "mode", "existing")} style={{ ...miniToggle, ...(li.mode === "existing" ? miniToggleActive : {}) }}>Existing Item</button>
+                <button type="button" onClick={() => updateLine(idx, "mode", "new")} style={{ ...miniToggle, ...(li.mode === "new" ? miniToggleActive : {}) }}>Add New Item</button>
+                {lineItems.length > 1 && (
+                  <button type="button" onClick={() => removeLine(idx)} style={{ marginLeft: "auto", border: "none", background: "none", color: "#ba1a1a", cursor: "pointer", fontSize: 12 }}>Remove</button>
+                )}
+              </div>
+
+              {li.mode === "existing" ? (
+                <select value={li.itemId} onChange={(e) => updateLine(idx, "itemId", e.target.value)} style={{ ...inp, marginBottom: 8 }}>
+                  <option value="">Select item...</option>
+                  {stockItems.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.category}, {s.item_code})</option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <input placeholder="New item name" value={li.newName} onChange={(e) => updateLine(idx, "newName", e.target.value)} style={{ ...inp, marginBottom: 0, flex: 2 }} />
+                  <select value={li.newCategory} onChange={(e) => updateLine(idx, "newCategory", e.target.value)} style={{ ...inp, marginBottom: 0, flex: 1 }}>
+                    <option value="dental">Dental</option>
+                    <option value="el3awama">El3awama</option>
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="number" placeholder="Qty" value={li.qty} onChange={(e) => updateLine(idx, "qty", e.target.value)} style={{ ...inp, marginBottom: 0 }} />
+                <input type="number" placeholder="Unit Price (EGP)" value={li.unitPrice} onChange={(e) => updateLine(idx, "unitPrice", e.target.value)} style={{ ...inp, marginBottom: 0 }} />
+              </div>
+            </div>
+          ))}
+          <button type="button" onClick={addLine} style={{ ...outlineBtn, marginBottom: 16, fontSize: 12, padding: "6px 14px" }}>+ Add Another Item</button>
+
+          {useLineItems && (
+            <div style={{ background: "#faf9fb", borderRadius: 8, padding: 12, marginBottom: 16, display: "flex", justifyContent: "space-between", fontWeight: 700, color: theme.navy }}>
+              <span>Total</span>
+              <span>{lineItemsTotal.toFixed(2)} EGP</span>
+            </div>
+          )}
+
+          {!useLineItems && (
+            <>
+              <FieldLabel>Or just enter a total amount (no items)</FieldLabel>
+              <input style={inp} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <FieldLabel>Amount (EGP)</FieldLabel>
+          <input style={inp} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+        </>
       )}
-      <FieldLabel>Amount (EGP)</FieldLabel>
-      <input style={inp} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+
       <FieldLabel>Description (optional)</FieldLabel>
       <input style={inp} value={description} onChange={(e) => setDescription(e.target.value)} />
       <FieldLabel>Date</FieldLabel>
@@ -256,10 +372,10 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, children, onClose, wide }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 380 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: wide ? 480 : 380, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ margin: 0, color: theme.navy }}>{title}</h3>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: theme.gray }}>×</button>
@@ -277,3 +393,5 @@ const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px
 const primaryBtn = { width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" };
 const outlineBtn = { padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const smallPrimary = { padding: "6px 14px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 12 };
+const miniToggle = { padding: "4px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, cursor: "pointer" };
+const miniToggleActive = { border: `1px solid ${theme.gold}`, background: theme.goldLight, fontWeight: 700 };
