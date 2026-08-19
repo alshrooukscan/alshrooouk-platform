@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
-import { theme } from "../../lib/theme";
+import { supabase } from "../lib/supabase";
+import { theme } from "../lib/theme";
 
 function ymKey(year, month) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
