@@ -3,6 +3,22 @@ import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
+// The clinic's real location (resolved from the CEO-provided Google Maps link).
+// Radius is generous enough to absorb normal GPS drift (indoor/multi-floor) while
+// still ruling out signing in from home or elsewhere.
+const CLINIC_LAT = 30.0592582;
+const CLINIC_LNG = 31.3682106;
+const ALLOWED_RADIUS_METERS = 250;
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
 async function reverseGeocode(lat, lng) {
   if (lat == null || lng == null) return null;
   try {
@@ -28,6 +44,18 @@ export async function POST(req) {
   const { eventType, lat, lng } = await req.json();
   if (!["login", "logout"].includes(eventType)) {
     return NextResponse.json({ error: "eventType must be login or logout" }, { status: 400 });
+  }
+
+  if (lat == null || lng == null) {
+    return NextResponse.json({ error: "Location is required to sign in or out." }, { status: 400 });
+  }
+
+  const distance = haversineMeters(CLINIC_LAT, CLINIC_LNG, lat, lng);
+  if (distance > ALLOWED_RADIUS_METERS) {
+    return NextResponse.json(
+      { error: `You must be at the clinic to sign in or out. You appear to be about ${Math.round(distance)}m away.` },
+      { status: 403 }
+    );
   }
 
   // IP is read server-side from the request itself, never trusted from the client body,
