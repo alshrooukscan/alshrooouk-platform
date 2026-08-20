@@ -32,14 +32,39 @@ export default function InvoiceViewPage() {
     window.open(`/api/invoices/${id}/pdf`, "_blank");
   }
 
-  function handleSendWhatsApp() {
+  async function handleSendWhatsApp() {
     if (!patientMobile) return;
+    const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf`;
+
+    // Try to share the actual PDF file (works on most mobile browsers via the native
+    // share sheet, letting the person pick WhatsApp and attach the real file).
+    if (navigator.canShare) {
+      try {
+        const res = await fetch(pdfUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `${invoice.invoice_number}.pdf`, { type: "application/pdf" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `Receipt ${invoice.invoice_number}`,
+            text: `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number} for ${invoice.patient_name}`,
+          });
+          return;
+        }
+      } catch (e) {
+        // fall through to link-based send below
+      }
+    }
+
+    // Desktop / unsupported browsers: WhatsApp's click-to-chat link can't attach files
+    // directly, so send a message with a direct link to the real PDF instead of plain text.
     const text =
       `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number}\n` +
       `Amount: ${formatMoney(invoice.amount)} EGP\n` +
       `Patient: ${invoice.patient_name}\n` +
       `Exam: ${invoice.exam}\n` +
-      `Date: ${invoice.exam_date}`;
+      `Date: ${invoice.exam_date}\n\n` +
+      `View/Download PDF: ${pdfUrl}`;
     const link = `https://api.whatsapp.com/send?phone=${patientMobile}&text=${encodeURIComponent(text)}`;
     window.open(link, "_blank");
   }
