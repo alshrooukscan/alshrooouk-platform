@@ -32,6 +32,14 @@ async function loadPublicAsset(req, relativePath, cacheRef) {
 }
 
 export async function GET(req, { params }) {
+  try {
+    return await generateInvoicePdf(req, params);
+  } catch (e) {
+    return NextResponse.json({ error: e.message, stack: e.stack }, { status: 500 });
+  }
+}
+
+async function generateInvoicePdf(req, params) {
   const { data: invoice, error } = await supabaseAdmin.from("invoices").select("*").eq("id", params.id).single();
   if (error || !invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
