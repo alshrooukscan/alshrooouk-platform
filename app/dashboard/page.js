@@ -9,6 +9,7 @@ import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
 import HRAnalytics from "../../components/analytics/HRAnalytics";
 import StockAnalytics from "../../components/analytics/StockAnalytics";
 import DrillDownModal from "../../components/analytics/DrillDownModal";
+import PeriodFilterBar, { getDateRange } from "../../components/analytics/PeriodFilterBar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 const TABS = [
@@ -73,12 +74,13 @@ function DashboardTabs() {
 }
 
 function Overview() {
-  const [ledger, setLedger] = useState([]);
+  const [allLedger, setAllLedger] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
   const [el3awamaUnits, setEl3awamaUnits] = useState(0);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
+  const [filter, setFilter] = useState({ year: "", quarter: "", month: "" });
 
   useEffect(() => {
     load();
@@ -86,27 +88,45 @@ function Overview() {
 
   async function load() {
     setLoading(true);
-    const { data: summary } = await supabase.rpc("get_pl_summary");
+    let all = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data } = await supabase.from("cash_ledger").select("source_stream, direction, amount, entry_date").range(from, from + pageSize - 1);
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    // Real supplier payments (actual cash out), pulled in as a synthetic 'suppliers' stream.
+    const { data: poPayments } = await supabase.from("purchase_orders").select("amount, entry_date").eq("entry_type", "payment");
+    const supplierRows = (poPayments || []).map((p) => ({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(p.amount)), entry_date: p.entry_date }));
+
     const { data: items } = await supabase.from("stock_items").select("category, qty_remaining");
-    setLedger(summary || []);
+    setAllLedger(all.concat(supplierRows));
     setDentalUnits((items || []).filter((i) => i.category === "dental").reduce((s, i) => s + (i.qty_remaining || 0), 0));
     setEl3awamaUnits((items || []).filter((i) => i.category === "el3awama").reduce((s, i) => s + (i.qty_remaining || 0), 0));
     setLoading(false);
+  }
+
+  const years = [...new Set(allLedger.filter((l) => l.entry_date).map((l) => l.entry_date.slice(0, 4)))].sort().reverse();
+  const { start, end } = getDateRange(filter);
+  const ledger = start ? allLedger.filter((l) => l.entry_date && l.entry_date >= start && l.entry_date <= end) : allLedger;
+
+  function sum(stream, direction) {
+    return ledger.filter((l) => l.source_stream === stream && l.direction === direction).reduce((s, l) => s + Number(l.amount || 0), 0);
   }
 
   async function openRevenueDrill(streamLabel) {
     setDrill({ title: `${streamLabel} — Revenue`, subtitle: "Loading real transactions...", columns: [], rows: [] });
     setDrillLoading(true);
     if (streamLabel === "Scans") {
-      const { data } = await supabase
-        .from("visits")
-        .select("exam_date, amount_paid, payment_method, patients(name)")
-        .gt("amount_paid", 0)
-        .order("exam_date", { ascending: false })
-        .limit(200);
+      let q = supabase.from("visits").select("exam_date, amount_paid, payment_method, patients(name)").gt("amount_paid", 0);
+      if (start) q = q.gte("exam_date", start).lte("exam_date", end);
+      const { data } = await q.order("exam_date", { ascending: false }).limit(200);
       setDrill({
         title: "Scans — Recent Revenue",
-        subtitle: `Most recent 200 of the visits behind this figure`,
+        subtitle: `Most recent 200 of the visits behind this figure${start ? " (within selected period)" : ""}`,
         columns: [
           { key: "patient", label: "Patient", render: (r) => r.patients?.name || "—" },
           { key: "amount_paid", label: "Amount Paid (EGP)" },
@@ -124,11 +144,6 @@ function Overview() {
       });
     }
     setDrillLoading(false);
-  }
-
-  function sum(stream, direction) {
-    const row = ledger.find((l) => l.source_stream === stream && l.direction === direction);
-    return row ? Number(row.total) : 0;
   }
 
   const cashInScans = sum("scans", "in");
@@ -163,6 +178,8 @@ function Overview() {
 
   return (
     <div>
+      <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} onChange={setFilter} />
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
         <KpiCard label="Cash In: Scans" value={cashInScans} />
         <KpiCard label="Cash In: El3awama" value={cashInEl3awama} />
