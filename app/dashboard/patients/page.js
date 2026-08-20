@@ -63,7 +63,7 @@ export default function PatientsPage() {
       if (dateTo) vq = vq.lte("exam_date", dateTo);
       if (doctorId) vq = vq.eq("doctor_id", doctorId);
       if (scanType) vq = vq.contains("scan_types", [scanType]);
-      if (mobileQuery) vq = vq.ilike("patients.mobile", `%${mobileQuery}%`);
+      if (mobileQuery) vq = vq.or(`mobile.ilike.%${mobileQuery}%,name.ilike.%${mobileQuery}%`, { foreignTable: "patients" });
       if (stageFilters.paid) vq = vq.eq("payment_status", "paid");
       if (stageFilters.scanned) vq = vq.eq("scanned", true);
       if (stageFilters.raw_data_uploaded) vq = vq.eq("raw_data_uploaded", true);
@@ -81,7 +81,7 @@ export default function PatientsPage() {
       count = c || 0;
     } else {
       let pq = supabase.from("patients").select("id, name, mobile, dob, created_at, drive_folder_id", { count: "exact" });
-      if (mobileQuery) pq = pq.ilike("mobile", `%${mobileQuery}%`);
+      if (mobileQuery) pq = pq.or(`mobile.ilike.%${mobileQuery}%,name.ilike.%${mobileQuery}%`);
       pq = pq.order("created_at", { ascending: false }).range(from, to);
       const { data, count: c } = await pq;
       patientsPage = data || [];
@@ -164,7 +164,7 @@ export default function PatientsPage() {
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Patient Directory</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        {totalCount.toLocaleString()} patients on record. Search by mobile number or filter by visit details below.
+        {totalCount.toLocaleString()} patients on record. Search by name or mobile number, or filter by visit details below.
       </p>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
@@ -183,7 +183,7 @@ export default function PatientsPage() {
           <input
             value={mobileQuery}
             onChange={(e) => resetToFirstPage(setMobileQuery)(e.target.value)}
-            placeholder="Search by mobile number..."
+            placeholder="Search by name or mobile number..."
             style={{ flex: 1, padding: "12px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14 }}
           />
           <Link
