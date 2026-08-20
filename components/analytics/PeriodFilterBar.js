@@ -1,5 +1,5 @@
 "use client";
-import { theme } from "../lib/theme";
+import { theme } from "../../lib/theme";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
