@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 
-const TREND_DAYS = 30;
+const TREND_DAYS_DEFAULT = 30;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function HRAnalytics() {
@@ -13,6 +14,7 @@ export default function HRAnalytics() {
   const [events, setEvents] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
 
   useEffect(() => {
     load();
@@ -79,11 +81,26 @@ export default function HRAnalytics() {
     return { emp, status: late ? "late" : "on_time", loginTime: login.event_time, logoutTime: logout.event_time };
   });
 
-  // ---------- 30-day trend, shift-aware ----------
+  // ---------- Trend: selected calendar period, or last 30 days by default ----------
+  const years = [...new Set(events.filter((e) => e.event_time).map((e) => e.event_time.slice(0, 4)))].sort().reverse();
+  const { start: filterStart, end: filterEnd } = getDateRange(dateFilter);
+  let trendDates = [];
+  if (filterStart) {
+    let cursor = new Date(filterStart);
+    const endDate = new Date(Math.min(new Date(filterEnd), today));
+    while (cursor <= endDate) {
+      trendDates.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } else {
+    for (let i = TREND_DAYS_DEFAULT - 1; i >= 0; i--) {
+      trendDates.push(new Date(today.getTime() - i * 86400000));
+    }
+  }
+
   const trend = employees.map((emp) => {
     let lateDays = 0, absentDays = 0, missingSignoutDays = 0, vacationDays = 0, noShiftDays = 0;
-    for (let i = 0; i < TREND_DAYS; i++) {
-      const d = new Date(today.getTime() - i * 86400000);
+    for (const d of trendDates) {
       const dow = d.getDay();
       const shift = shiftFor(emp.id, dow);
       const key = dateKey(d);
@@ -134,7 +151,9 @@ export default function HRAnalytics() {
   return (
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Attendance Tracking</h1>
-      <p style={{ color: theme.gray, marginBottom: 20 }}>Daily flags and 30-day trends, measured against each employee's own weekly shift schedule.</p>
+      <p style={{ color: theme.gray, marginBottom: 20 }}>Daily flags and trends, measured against each employee's own weekly shift schedule.</p>
+
+      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} onChange={setDateFilter} />
 
       {noShiftCount > 0 && (
         <div style={{ background: "#fff3e0", border: "1px solid #ffe0b2", borderRadius: 12, padding: 14, marginBottom: 20, fontSize: 13, color: "#a97c00" }}>
@@ -161,7 +180,7 @@ export default function HRAnalytics() {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>30-Day Trend by Employee</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Trend by Employee</h3>
         <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Hover a bar for exact counts. Click a row below for full detail.</p>
         <ResponsiveContainer width="100%" height={Math.max(200, trend.length * 32)}>
           <BarChart data={trend.map((t) => ({ name: t.emp.name, Late: t.lateDays, Absent: t.absentDays, Vacation: t.vacationDays }))} layout="vertical" margin={{ left: 10 }}>
@@ -178,7 +197,7 @@ export default function HRAnalytics() {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>30-Day Trend, Detail</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Trend, Detail</h3>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
