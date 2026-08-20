@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import DrillDownModal from "./DrillDownModal";
+import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend,
@@ -11,9 +12,10 @@ import {
 const COLORS = [theme.navy, theme.gold, "#6D5A3A", "#A98B4D", "#48464E", "#8a7ba0", "#c9a86a", "#3d3564"];
 
 export default function ScanInsights() {
-  const [visits, setVisits] = useState([]);
+  const [allVisits, setAllVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
+  const [filter, setFilter] = useState({ year: "", quarter: "", month: "" });
 
   useEffect(() => {
     load();
@@ -34,11 +36,15 @@ export default function ScanInsights() {
       if (data.length < pageSize) break;
       from += pageSize;
     }
-    setVisits(all);
+    setAllVisits(all);
     setLoading(false);
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+
+  const years = [...new Set(allVisits.filter((v) => v.exam_date).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
+  const { start, end } = getDateRange(filter);
+  const visits = start ? allVisits.filter((v) => v.exam_date && v.exam_date >= start && v.exam_date <= end) : allVisits;
 
   const totalScans = visits.reduce((s, v) => s + (v.scan_types?.length || 0), 0);
   const totalVisits = visits.length;
@@ -50,16 +56,33 @@ export default function ScanInsights() {
   const topTypes = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
 
   const now = new Date();
-  const monthKeys = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  let monthData = [];
+  if (start) {
+    // A specific year/quarter/month is selected: show that range at month granularity.
+    let cursor = new Date(start);
+    const endDate = new Date(end);
+    while (cursor <= endDate) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+      monthData.push({ month: key.slice(5) + "/" + key.slice(2, 4), key, scans: 0 });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  } else {
+    // No filter: show every month across all real data on file, not just a recent slice.
+    const datedVisits = allVisits.filter((v) => v.exam_date);
+    if (datedVisits.length > 0) {
+      const minDate = new Date(Math.min(...datedVisits.map((v) => new Date(v.exam_date))));
+      const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+      const endCursor = new Date(now.getFullYear(), now.getMonth(), 1);
+      while (cursor <= endCursor) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        monthData.push({ month: key.slice(5) + "/" + key.slice(2), key, scans: 0 });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
   }
-  const monthData = monthKeys.map((key) => ({ month: key.slice(5) + "/" + key.slice(2, 4), key, scans: 0 }));
   for (const v of visits) {
     if (!v.exam_date) continue;
-    const d = new Date(v.exam_date);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const key = v.exam_date.slice(0, 7);
     const bucket = monthData.find((m) => m.key === key);
     if (bucket) bucket.scans += v.scan_types?.length || 0;
   }
@@ -109,6 +132,8 @@ export default function ScanInsights() {
 
   return (
     <div>
+      <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} onChange={setFilter} />
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
         <StatCard label="Total Scans" value={totalScans.toLocaleString()} />
         <StatCard label="Total Visits" value={totalVisits.toLocaleString()} />
