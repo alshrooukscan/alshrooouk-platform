@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DrillDownModal from "./DrillDownModal";
+import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 
 const PERIODS = {
   month: { label: "Month", days: 30 },
@@ -19,6 +20,7 @@ export default function DoctorAnalytics() {
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
+  const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
 
   useEffect(() => {
     load();
@@ -89,17 +91,34 @@ export default function DoctorAnalytics() {
     .map((d) => ({ ...d, lastVisit: lastVisitByDoctor[d.id], totalHistorical: visits.filter((v) => v.doctor_id === d.id).length }))
     .sort((a, b) => a.lastVisit - b.lastVisit);
 
-  // 12-month trend, all doctors combined
+  // Referral trend: full available range by default, or the selected calendar period
+  const years = [...new Set(visits.filter((v) => v.exam_date).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
+  const { start: filterStart, end: filterEnd } = getDateRange(dateFilter);
   const monthBuckets = {};
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    monthBuckets[key] = 0;
+  if (filterStart) {
+    let cursor = new Date(filterStart);
+    const endDate = new Date(filterEnd);
+    while (cursor <= endDate) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+      monthBuckets[key] = 0;
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  } else {
+    const datedVisits = visits.filter((v) => v.exam_date);
+    if (datedVisits.length > 0) {
+      const minDate = new Date(Math.min(...datedVisits.map((v) => new Date(v.exam_date))));
+      const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+      const endCursor = new Date(now.getFullYear(), now.getMonth(), 1);
+      while (cursor <= endCursor) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        monthBuckets[key] = 0;
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
   }
   for (const v of visits) {
     if (!v.exam_date) continue;
-    const d = new Date(v.exam_date);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const key = v.exam_date.slice(0, 7);
     if (key in monthBuckets) monthBuckets[key]++;
   }
   const maxMonth = Math.max(...Object.values(monthBuckets), 1);
@@ -126,6 +145,8 @@ export default function DoctorAnalytics() {
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Doctor Tracking</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>Referral patterns to decide who to visit and who needs re-engaging.</p>
+
+      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} onChange={setDateFilter} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         {Object.entries(PERIODS).map(([key, p]) => (
