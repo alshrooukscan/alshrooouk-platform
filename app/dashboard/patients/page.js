@@ -7,6 +7,13 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 
 const PAGE_SIZE = 50;
+const STAGE_LABELS = [
+  { key: "paid", label: "Paid" },
+  { key: "scanned", label: "Scanned" },
+  { key: "raw_data_uploaded", label: "Raw Data Uploaded" },
+  { key: "report_done", label: "Report Done" },
+  { key: "invoice_generated", label: "Invoice Generated" },
+];
 
 export default function PatientsPage() {
   const { isAdmin } = usePermissions();
@@ -15,9 +22,11 @@ export default function PatientsPage() {
   const [dateTo, setDateTo] = useState("");
   const [doctorId, setDoctorId] = useState("");
   const [scanType, setScanType] = useState("");
+  const [stageFilters, setStageFilters] = useState({ paid: false, scanned: false, raw_data_uploaded: false, report_done: false, invoice_generated: false });
   const [doctors, setDoctors] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
   const [results, setResults] = useState([]);
+  const [statusByPatient, setStatusByPatient] = useState({});
   const [totalCount, setTotalCount] = useState(0);
   const [withoutFolderCount, setWithoutFolderCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -33,43 +42,78 @@ export default function PatientsPage() {
 
   useEffect(() => {
     search();
-  }, [page, mobileQuery, dateFrom, dateTo, doctorId, scanType]);
+  }, [page, mobileQuery, dateFrom, dateTo, doctorId, scanType, stageFilters]);
+
+  const anyStageFilter = Object.values(stageFilters).some(Boolean);
 
   async function search() {
     setLoading(true);
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
-    const hasVisitFilter = dateFrom || dateTo || doctorId || scanType;
+    const hasVisitFilter = dateFrom || dateTo || doctorId || scanType || anyStageFilter;
+
+    let patientsPage = [];
+    let count = 0;
 
     if (hasVisitFilter) {
-      let vq = supabase.from("visits").select("patient_id, patients!inner(id, name, mobile, dob, created_at, drive_folder_id)", { count: "exact" });
+      const invoiceJoin = stageFilters.invoice_generated ? "invoices!inner(id)" : "invoices(id)";
+      let vq = supabase.from("visits").select(`patient_id, patients!inner(id, name, mobile, dob, created_at, drive_folder_id), ${invoiceJoin}`, { count: "exact" });
       if (dateFrom) vq = vq.gte("exam_date", dateFrom);
       if (dateTo) vq = vq.lte("exam_date", dateTo);
       if (doctorId) vq = vq.eq("doctor_id", doctorId);
       if (scanType) vq = vq.contains("scan_types", [scanType]);
       if (mobileQuery) vq = vq.ilike("patients.mobile", `%${mobileQuery}%`);
+      if (stageFilters.paid) vq = vq.eq("payment_status", "paid");
+      if (stageFilters.scanned) vq = vq.eq("scanned", true);
+      if (stageFilters.raw_data_uploaded) vq = vq.eq("raw_data_uploaded", true);
+      if (stageFilters.report_done) vq = vq.eq("report_done", true);
       vq = vq.order("exam_date", { ascending: false }).range(from, to);
 
-      const { data, count } = await vq;
+      const { data, count: c } = await vq;
       const seen = new Set();
-      const patients = [];
       (data || []).forEach((row) => {
         if (row.patients && !seen.has(row.patients.id)) {
           seen.add(row.patients.id);
-          patients.push(row.patients);
+          patientsPage.push(row.patients);
         }
       });
-      setResults(patients);
-      setTotalCount(count || 0);
+      count = c || 0;
     } else {
       let pq = supabase.from("patients").select("id, name, mobile, dob, created_at, drive_folder_id", { count: "exact" });
       if (mobileQuery) pq = pq.ilike("mobile", `%${mobileQuery}%`);
       pq = pq.order("created_at", { ascending: false }).range(from, to);
-      const { data, count } = await pq;
-      setResults(data || []);
-      setTotalCount(count || 0);
+      const { data, count: c } = await pq;
+      patientsPage = data || [];
+      count = c || 0;
     }
+
+    setResults(patientsPage);
+    setTotalCount(count);
+
+    // Fetch each visible patient's most recent visit for status badges.
+    if (patientsPage.length > 0) {
+      const ids = patientsPage.map((p) => p.id);
+      const { data: recentVisits } = await supabase
+        .from("visits")
+        .select("patient_id, payment_status, scanned, raw_data_uploaded, report_done, invoices(id)")
+        .in("patient_id", ids)
+        .order("created_at", { ascending: false });
+      const statusMap = {};
+      for (const v of recentVisits || []) {
+        if (!statusMap[v.patient_id]) {
+          statusMap[v.patient_id] = {
+            paid: v.payment_status === "paid",
+            scanned: v.scanned,
+            raw_data_uploaded: v.raw_data_uploaded,
+            report_done: v.report_done,
+            invoice_generated: (v.invoices || []).length > 0,
+          };
+        }
+      }
+      setStatusByPatient(statusMap);
+    }
+
     setLoading(false);
   }
 
@@ -189,16 +233,40 @@ export default function PatientsPage() {
             </select>
           </div>
         </div>
-        {(dateFrom || dateTo || doctorId || scanType || mobileQuery) && (
+        {(dateFrom || dateTo || doctorId || scanType || mobileQuery || anyStageFilter) && (
           <button
             onClick={() => {
-              setMobileQuery(""); setDateFrom(""); setDateTo(""); setDoctorId(""); setScanType(""); setPage(0);
+              setMobileQuery(""); setDateFrom(""); setDateTo(""); setDoctorId(""); setScanType("");
+              setStageFilters({ paid: false, scanned: false, raw_data_uploaded: false, report_done: false, invoice_generated: false });
+              setPage(0);
             }}
             style={{ marginTop: 10, background: "none", border: "none", color: theme.gold, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
           >
             Clear all filters
           </button>
         )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0f0f0" }}>
+          {STAGE_LABELS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => resetToFirstPage(() => setStageFilters((prev) => ({ ...prev, [s.key]: !prev[s.key] })))()}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                fontSize: 12,
+                border: `1px solid ${stageFilters[s.key] ? theme.gold : "#ddd"}`,
+                background: stageFilters[s.key] ? theme.goldLight : "#fff",
+                color: theme.navy,
+                cursor: "pointer",
+                fontWeight: stageFilters[s.key] ? 700 : 500,
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && <p style={{ color: theme.gray }}>Loading...</p>}
@@ -209,34 +277,56 @@ export default function PatientsPage() {
       )}
 
       <div style={{ display: "grid", gap: 10 }}>
-        {results.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              background: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 2px 10px rgba(39,33,77,0.05)",
-            }}
-          >
-            <Link href={`/dashboard/patients/${p.id}`} style={{ textDecoration: "none", color: theme.navy, flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{p.name}</div>
-              <div style={{ fontSize: 13, color: theme.gray }}>{p.mobile || "no mobile on file"}</div>
-            </Link>
-            {isAdmin && (
-              <button
-                onClick={() => handleLoginAs(p)}
-                disabled={loginAsBusy === p.id}
-                style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
-              >
-                {loginAsBusy === p.id ? "..." : "Login As"}
-              </button>
-            )}
-          </div>
-        ))}
+        {results.map((p) => {
+          const status = statusByPatient[p.id];
+          return (
+            <div
+              key={p.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "#fff",
+                borderRadius: 12,
+                padding: 16,
+                boxShadow: "0 2px 10px rgba(39,33,77,0.05)",
+              }}
+            >
+              <Link href={`/dashboard/patients/${p.id}`} target="_blank" style={{ textDecoration: "none", color: theme.navy, flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>{p.name}</div>
+                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status ? 6 : 0 }}>{p.mobile || "no mobile on file"}</div>
+                {status && (
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {STAGE_LABELS.map((s) => (
+                      <span
+                        key={s.key}
+                        style={{
+                          fontSize: 10,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontWeight: 600,
+                          background: status[s.key] ? "#e8f5e9" : "#f5f5f5",
+                          color: status[s.key] ? "#2e7d32" : "#aaa",
+                        }}
+                      >
+                        {status[s.key] ? "✓" : "○"} {s.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Link>
+              {isAdmin && (
+                <button
+                  onClick={() => handleLoginAs(p)}
+                  disabled={loginAsBusy === p.id}
+                  style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
+                >
+                  {loginAsBusy === p.id ? "..." : "Login As"}
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {totalPages > 1 && (
