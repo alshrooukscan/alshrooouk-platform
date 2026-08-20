@@ -87,6 +87,26 @@ export default function SettingsPage() {
       <h1 style={{ color: theme.navy, marginBottom: 24 }}>Settings</h1>
 
       {!permsLoading && isAdmin && (
+        <Section title="Drive Folder Name Review" subtitle="1,765 patients found with a similarly-named, unlinked Drive folder. Review and link the real matches.">
+          <Link
+            href="/dashboard/settings/drive-review"
+            style={{
+              display: "inline-block",
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: theme.navy,
+              color: "#fff",
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 13,
+            }}
+          >
+            Review Matches
+          </Link>
+        </Section>
+      )}
+
+      {!permsLoading && isAdmin && (
         <Section title="Login As" subtitle="See exactly what any patient, doctor, employee, or staff member sees.">
           <Link
             href="/dashboard/settings/login-as"
