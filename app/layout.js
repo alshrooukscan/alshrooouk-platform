@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Al Shrooouk Scan & Lab",
   description: "Staff Portal",
