@@ -4,13 +4,15 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { exportToCsv } from "../../lib/exportCsv";
+import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 
 export default function StockAnalytics() {
   const [category, setCategory] = useState("dental");
   const [items, setItems] = useState([]);
-  const [txns, setTxns] = useState([]);
+  const [allTxns, setAllTxns] = useState([]);
   const [supplierOwed, setSupplierOwed] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
 
   useEffect(() => {
     load();
@@ -25,10 +27,14 @@ export default function StockAnalytics() {
       : { data: [] };
     const { data: balances } = await supabase.rpc("get_supplier_balances");
     setItems(itemRows || []);
-    setTxns(txnRows || []);
+    setAllTxns(txnRows || []);
     setSupplierOwed((balances || []).reduce((s, b) => s + Math.max(0, Number(b.balance)), 0));
     setLoading(false);
   }
+
+  const years = [...new Set(allTxns.filter((t) => t.transaction_date).map((t) => t.transaction_date.slice(0, 4)))].sort().reverse();
+  const { start, end } = getDateRange(dateFilter);
+  const txns = start ? allTxns.filter((t) => t.transaction_date && t.transaction_date >= start && t.transaction_date <= end) : allTxns;
 
   const rows = items.map((item) => {
     const itemTxns = txns.filter((t) => t.item_id === item.id);
@@ -100,8 +106,10 @@ export default function StockAnalytics() {
         ))}
       </div>
 
+      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} onChange={setDateFilter} />
+
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -10, marginBottom: 16 }}>
-        Inventory value below is computed from current stock on hand (real quantities × real prices). Purchase/Sale activity reflects transactions recorded through Stock → Transaction since go-live.
+        Inventory value below always reflects current stock on hand (real quantities × real prices), the period filter above applies only to Recorded Purchases/Sales, which are transaction history, not a point-in-time snapshot.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}>
