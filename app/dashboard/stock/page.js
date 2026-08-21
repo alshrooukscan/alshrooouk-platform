@@ -93,7 +93,6 @@ export default function StockPage() {
           placeholder="Search item name or code..."
           style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14 }}
         />
-        <a href="/dashboard?tab=stock" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Analytics</a>
         <button
           onClick={() => exportToCsv(`stock-${category}.csv`, filtered.map((i) => ({ Item: i.name, Code: i.item_code, "Qty Remaining": i.qty_remaining ?? 0, "Purchase Price": i.purchase_price ?? "", "Sale Price": i.sale_price ?? "" })))}
           style={outlineBtn}
