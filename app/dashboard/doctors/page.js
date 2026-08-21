@@ -83,21 +83,6 @@ export default function DoctorsPage() {
           >
             Export CSV
           </button>
-          <a
-            href="/dashboard?tab=doctors"
-            style={{
-              padding: "10px 20px",
-              borderRadius: 8,
-              border: `1px solid ${theme.navy}`,
-              color: theme.navy,
-              fontWeight: 700,
-              textDecoration: "none",
-              fontSize: 14,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Analytics
-          </a>
           <Link
             href="/dashboard/doctors/new"
             style={{
