@@ -35,7 +35,7 @@ export async function GET(req, { params }) {
   try {
     return await generateInvoicePdf(req, params);
   } catch (e) {
-    return NextResponse.json({ error: e.message, stack: e.stack }, { status: 500 });
+    return NextResponse.json({ error: "Could not generate invoice PDF" }, { status: 500 });
   }
 }
 
