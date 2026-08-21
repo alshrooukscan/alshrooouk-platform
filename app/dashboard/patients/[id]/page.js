@@ -54,7 +54,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, doctors(name, phone, email, clinic_code), branches(name)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, doctors(name, phone, email, clinic_code), branches(name), invoices(id)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -137,6 +137,12 @@ export default function PatientProfilePage() {
     router.push(`/dashboard/invoices/${inv.id}`);
   }
 
+  async function toggleStage(visit, field) {
+    const newValue = !visit[field];
+    await supabase.from("visits").update({ [field]: newValue }).eq("id", visit.id);
+    setVisits((prev) => prev.map((v) => (v.id === visit.id ? { ...v, [field]: newValue } : v)));
+  }
+
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
   if (!patient) return <p style={{ color: theme.gray }}>Patient not found.</p>;
 
@@ -164,7 +170,26 @@ export default function PatientProfilePage() {
               <div style={{ fontSize: 12, color: theme.gray }}>
                 {v.exam_date} · {v.branches?.name || "—"} · {v.payment_status}
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                <StageChip label="Paid" active={v.payment_status === "paid"} />
+                <StageChip
+                  label="Scanned"
+                  active={v.scanned}
+                  onClick={() => toggleStage(v, "scanned")}
+                />
+                <StageChip
+                  label="Raw Data Uploaded"
+                  active={v.raw_data_uploaded}
+                  onClick={() => toggleStage(v, "raw_data_uploaded")}
+                />
+                <StageChip
+                  label="Report Done"
+                  active={v.report_done}
+                  onClick={() => toggleStage(v, "report_done")}
+                />
+                <StageChip label="Invoice Generated" active={(v.invoices || []).length > 0} />
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>
                 <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>Generate Invoice</button>
               </div>
@@ -204,6 +229,29 @@ export default function PatientProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function StageChip({ label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      title={onClick ? "Click to toggle" : undefined}
+      style={{
+        fontSize: 11,
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontWeight: 700,
+        border: "none",
+        background: active ? "#e8f5e9" : "#f5f5f5",
+        color: active ? "#2e7d32" : "#aaa",
+        cursor: onClick ? "pointer" : "default",
+      }}
+    >
+      {active ? "✓" : "○"} {label}
+    </button>
   );
 }
 
