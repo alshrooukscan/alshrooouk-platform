@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
+import { createCanvas, registerFont } from "canvas";
 import fs from "fs";
 import path from "path";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 import { numberToArabicWords } from "../../../../../lib/arabicNumberWords";
-import { arabicVisualRuns, toArabicVisual } from "../../../../../lib/arabicText";
 
 const NAVY = rgb(0x27 / 255, 0x21 / 255, 0x4d / 255);
 const GOLD = rgb(0xa9 / 255, 0x8b / 255, 0x4d / 255);
@@ -13,22 +12,45 @@ const RED = rgb(0.75, 0.1, 0.1);
 const GRAY = rgb(0.35, 0.35, 0.35);
 const BLACK = rgb(0.1, 0.1, 0.1);
 
-const arabicFontCache = { value: null };
-const logoCache = { value: null };
+let fontRegistered = false;
+function ensureFontRegistered() {
+  if (fontRegistered) return;
+  const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansArabic.ttf");
+  registerFont(fontPath, { family: "NotoArabic" });
+  fontRegistered = true;
+}
 
-async function loadPublicAsset(req, relativePath, cacheRef) {
-  if (cacheRef.value) return cacheRef.value;
-  const filePath = path.join(process.cwd(), "public", relativePath);
+// Renders Arabic (or mixed Arabic+number) text to a PNG using node-canvas, which
+// uses real OS-level text shaping (Pango/Cairo), correctly handling Arabic letter
+// joining and non-connecting letters. This avoids the broken glyph rendering that
+// comes from manually reversing/reshaping strings for pdf-lib's raw glyph drawing.
+function renderArabicToPng(text, { size = 24, color = "#000", widthPx = 900, heightPx = 60, align = "right" } = {}) {
+  ensureFontRegistered();
+  const canvas = createCanvas(widthPx, heightPx);
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, widthPx, heightPx);
+  ctx.fillStyle = color;
+  ctx.font = `${size}px NotoArabic`;
+  ctx.textAlign = align;
+  ctx.textBaseline = "middle";
+  const x = align === "right" ? widthPx - 4 : align === "center" ? widthPx / 2 : 4;
+  ctx.fillText(text, x, heightPx / 2);
+  const measured = ctx.measureText(text);
+  return { buffer: canvas.toBuffer("image/png"), textWidthPx: measured.width };
+}
+
+const logoCache = { value: null };
+async function loadLogo(req) {
+  if (logoCache.value) return logoCache.value;
+  const filePath = path.join(process.cwd(), "public", "logo-full.png");
   try {
-    cacheRef.value = fs.readFileSync(filePath);
-    return cacheRef.value;
+    logoCache.value = fs.readFileSync(filePath);
   } catch (e) {
     const origin = new URL(req.url).origin;
-    const res = await fetch(`${origin}/${relativePath}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    cacheRef.value = buf;
-    return buf;
+    const res = await fetch(`${origin}/logo-full.png`);
+    logoCache.value = Buffer.from(await res.arrayBuffer());
   }
+  return logoCache.value;
 }
 
 export async function GET(req, { params }) {
@@ -46,60 +68,25 @@ async function generateInvoicePdf(req, params) {
   }
 
   const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
   const page = pdf.addPage([420, 400]);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const { width, height } = page.getSize();
+  const margin = 24;
+  const PX_TO_PT = 0.75; // canvas rendered at ~96dpi-equivalent px, PDF points are 72dpi
 
-  const arabicFontBytes = await loadPublicAsset(req, "fonts/NotoSansArabic.ttf", arabicFontCache);
-  const arabicFont = await pdf.embedFont(arabicFontBytes);
+  async function drawArabicImage(text, opts) {
+    const { buffer, textWidthPx } = renderArabicToPng(text, opts);
+    const img = await pdf.embedPng(buffer);
+    return { img, textWidthPt: textWidthPx * PX_TO_PT };
+  }
 
   let logoImage = null;
   try {
-    const logoBytes = await loadPublicAsset(req, "logo-full.png", logoCache);
+    const logoBytes = await loadLogo(req);
     logoImage = await pdf.embedPng(logoBytes);
   } catch (e) {
     // logo optional
-  }
-
-  const { width, height } = page.getSize();
-  const margin = 24;
-
-  // Draws mixed Arabic+Latin text right-aligned at `rightX`, rendering each run
-  // with the correct font so digits never get reversed by the Arabic font.
-  function drawMixedRight(text, rightX, y, size, color) {
-    const runs = arabicVisualRuns(text);
-    let totalW = 0;
-    const widths = runs.map((r) => {
-      const f = r.arabic ? arabicFont : font;
-      const w = f.widthOfTextAtSize(r.text, size);
-      totalW += w;
-      return w;
-    });
-    let x = rightX - totalW;
-    runs.forEach((r, i) => {
-      const f = r.arabic ? arabicFont : font;
-      page.drawText(r.text, { x, y, size, font: f, color });
-      x += widths[i];
-    });
-    return totalW;
-  }
-
-  function drawMixedCentered(text, centerX, y, size, color) {
-    const runs = arabicVisualRuns(text);
-    let totalW = 0;
-    const widths = runs.map((r) => {
-      const f = r.arabic ? arabicFont : font;
-      const w = f.widthOfTextAtSize(r.text, size);
-      totalW += w;
-      return w;
-    });
-    let x = centerX - totalW / 2;
-    runs.forEach((r, i) => {
-      const f = r.arabic ? arabicFont : font;
-      page.drawText(r.text, { x, y, size, font: f, color });
-      x += widths[i];
-    });
   }
 
   // Border
@@ -112,12 +99,13 @@ async function generateInvoicePdf(req, params) {
     page.drawImage(logoImage, { x: margin, y: height - 30 - logoH, width: logoW, height: logoH });
   }
 
-  // Title, top-right (pure Arabic, safe as a single run)
-  const titleVisual = toArabicVisual("إيصال استلام نقدية");
-  const titleW = arabicFont.widthOfTextAtSize(titleVisual, 16);
-  page.drawText(titleVisual, { x: width - margin - titleW, y: height - 50, size: 16, font: arabicFont, color: BLACK });
+  // Title, top-right
+  const titlePng = await drawArabicImage("إيصال استلام نقدية", { size: 30, widthPx: 700, heightPx: 60, align: "right" });
+  const titleDrawW = 180;
+  const titleDrawH = (titlePng.img.height / titlePng.img.width) * titleDrawW;
+  page.drawImage(titlePng.img, { x: width - margin - titleDrawW, y: height - 44 - titleDrawH / 2, width: titleDrawW, height: titleDrawH });
 
-  // Receipt number, in red, just the sequential portion (e.g. INV-2026-00015 -> 00015)
+  // Receipt number, red
   const seqMatch = invoice.invoice_number.match(/(\d+)$/);
   const receiptStr = seqMatch ? seqMatch[1] : invoice.invoice_number;
   const numW = bold.widthOfTextAtSize(receiptStr, 14);
@@ -125,11 +113,27 @@ async function generateInvoicePdf(req, params) {
 
   page.drawLine({ start: { x: margin, y: height - 96 }, end: { x: width - margin, y: height - 96 }, thickness: 1, color: rgb(0.15, 0.15, 0.15) });
 
+  // Fields
   let y = height - 130;
-  function field(labelAr, value, showUnit) {
-    drawMixedRight(labelAr, width - margin, y, 12, BLACK);
+  const fieldLabels = {
+    amount: "المبلغ",
+    name: "الاسم",
+    exam: "الفحص",
+    date: "تاريخ الفحص",
+    unit: "جم",
+  };
+
+  async function field(labelKey, value, showUnit) {
+    const { img, textWidthPt } = await drawArabicImage(fieldLabels[labelKey], { size: 26, widthPx: 260, heightPx: 44, align: "right" });
+    const drawH = 15;
+    const drawW = (img.width / img.height) * drawH;
+    page.drawImage(img, { x: width - margin - drawW, y: y - 4, width: drawW, height: drawH });
+
     if (showUnit) {
-      drawMixedRight("جم", width - margin - 90, y, 11, GRAY);
+      const unitImg = await drawArabicImage(fieldLabels.unit, { size: 22, widthPx: 100, heightPx: 34, align: "right" });
+      const unitH = 12;
+      const unitW = (unitImg.img.width / unitImg.img.height) * unitH;
+      page.drawImage(unitImg.img, { x: width - margin - drawW - 66, y: y - 3, width: unitW, height: unitH });
     }
     if (value) {
       page.drawText(String(value), { x: margin, y, size: 12, font: bold, color: NAVY });
@@ -139,25 +143,36 @@ async function generateInvoicePdf(req, params) {
     y -= 34;
   }
 
-  field("المبلغ", `${Number(invoice.amount).toLocaleString("en-US")}`, true);
-  field("الاسم", invoice.patient_name, false);
-  field("الفحص", invoice.exam, false);
-  field("تاريخ الفحص", invoice.exam_date, false);
+  await field("amount", `${Number(invoice.amount).toLocaleString("en-US")}`, true);
+  await field("name", invoice.patient_name, false);
+  await field("exam", invoice.exam, false);
+  await field("date", invoice.exam_date, false);
 
-  // Amount in words (pure Arabic phrase, safe as single run)
+  // Amount in words
   const arabicWords = numberToArabicWords(invoice.amount);
-  const wordsVisual = toArabicVisual(arabicWords);
-  const wordsW = arabicFont.widthOfTextAtSize(wordsVisual, 9);
-  page.drawText(wordsVisual, { x: width - margin - wordsW, y: y - 4, size: 9, font: arabicFont, color: GRAY });
+  const wordsImg = await drawArabicImage(arabicWords, { size: 22, widthPx: 900, heightPx: 40, align: "right" });
+  const wordsDrawH = 12;
+  const wordsDrawW = (wordsImg.img.width / wordsImg.img.height) * wordsDrawH;
+  page.drawImage(wordsImg.img, { x: width - margin - wordsDrawW, y: y - 8, width: wordsDrawW, height: wordsDrawH });
   y -= 30;
 
   page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 1, color: rgb(0.15, 0.15, 0.15) });
   y -= 22;
 
-  // Footer: real clinic address + phone (mixed Arabic/numbers, drawn run-by-run)
-  drawMixedCentered("عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر", width / 2, y, 8, GRAY);
+  // Footer: address + phone, centered
+  const addrImg = await drawArabicImage(
+    "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر",
+    { size: 18, widthPx: 900, heightPx: 32, align: "right", color: "#595959" }
+  );
+  const addrDrawH = 9;
+  const addrDrawW = (addrImg.img.width / addrImg.img.height) * addrDrawH;
+  page.drawImage(addrImg.img, { x: (width - addrDrawW) / 2, y, width: addrDrawW, height: addrDrawH });
   y -= 14;
-  drawMixedCentered("ت : 15184 - 0128887187", width / 2, y, 8, GRAY);
+
+  const phoneImg = await drawArabicImage("ت : 15184 - 0128887187", { size: 18, widthPx: 400, heightPx: 32, align: "right", color: "#595959" });
+  const phoneDrawH = 9;
+  const phoneDrawW = (phoneImg.img.width / phoneImg.img.height) * phoneDrawH;
+  page.drawImage(phoneImg.img, { x: (width - phoneDrawW) / 2, y, width: phoneDrawW, height: phoneDrawH });
 
   // Stamp
   const stampX = width - 78;
@@ -167,9 +182,10 @@ async function generateInvoicePdf(req, params) {
   const s1 = "AL SHROOOUK", s2 = "SCAN & LAB";
   page.drawText(s1, { x: stampX - bold.widthOfTextAtSize(s1, 5.5) / 2, y: stampY + 8, size: 5.5, font: bold, color: GOLD });
   page.drawText(s2, { x: stampX - bold.widthOfTextAtSize(s2, 5.5) / 2, y: stampY - 1, size: 5.5, font: bold, color: GOLD });
-  const s3Visual = toArabicVisual("إيصال رسمي");
-  const s3w = arabicFont.widthOfTextAtSize(s3Visual, 5.5);
-  page.drawText(s3Visual, { x: stampX - s3w / 2, y: stampY - 12, size: 5.5, font: arabicFont, color: GOLD });
+  const stampArabicImg = await drawArabicImage("إيصال رسمي", { size: 20, widthPx: 200, heightPx: 32, align: "center", color: "#A98B4D" });
+  const saDrawH = 8;
+  const saDrawW = (stampArabicImg.img.width / stampArabicImg.img.height) * saDrawH;
+  page.drawImage(stampArabicImg.img, { x: stampX - saDrawW / 2, y: stampY - 15, width: saDrawW, height: saDrawH });
 
   const bytes = await pdf.save();
   return new NextResponse(bytes, {
