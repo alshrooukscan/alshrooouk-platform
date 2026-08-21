@@ -56,21 +56,6 @@ export default function HRPage() {
           >
             Export CSV
           </button>
-          <a
-            href="/dashboard?tab=hr"
-            style={{
-              padding: "10px 20px",
-              borderRadius: 8,
-              border: `1px solid ${theme.navy}`,
-              color: theme.navy,
-              fontWeight: 700,
-              textDecoration: "none",
-              fontSize: 14,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Attendance Analytics
-          </a>
           <Link
             href="/dashboard/hr/new"
             style={{
