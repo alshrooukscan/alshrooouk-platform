@@ -75,6 +75,7 @@ function DashboardTabs() {
 
 function Overview() {
   const [allLedger, setAllLedger] = useState([]);
+  const [paymentMethodTotals, setPaymentMethodTotals] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
   const [el3awamaUnits, setEl3awamaUnits] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -98,6 +99,25 @@ function Overview() {
       if (data.length < pageSize) break;
       from += pageSize;
     }
+
+    // Real revenue by payment method, sourced from actual visits, not the ledger
+    // (the ledger tracks stream/direction, not how the customer actually paid).
+    let paymentRows = [];
+    let pfrom = 0;
+    while (true) {
+      const { data } = await supabase.from("visits").select("payment_method, amount_paid").gt("amount_paid", 0).range(pfrom, pfrom + pageSize - 1);
+      if (!data || data.length === 0) break;
+      paymentRows = paymentRows.concat(data);
+      if (data.length < pageSize) break;
+      pfrom += pageSize;
+    }
+    const byMethod = {};
+    for (const row of paymentRows) {
+      const method = row.payment_method || "Unspecified";
+      byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
+    }
+    const sortedMethods = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
+    setPaymentMethodTotals(sortedMethods);
     // Real supplier payments (actual cash out), pulled in as a synthetic 'suppliers' stream.
     const { data: poPayments } = await supabase.from("purchase_orders").select("amount, entry_date").eq("entry_type", "payment");
     const supplierRows = (poPayments || []).map((p) => ({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(p.amount)), entry_date: p.entry_date }));
@@ -225,6 +245,20 @@ function Overview() {
             <div key={e.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
               <span style={{ color: theme.navy }}>{e.label}</span>
               <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{formatMoney(e.value)} EGP</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits.</p>
+        {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded yet.</p>}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(paymentMethodTotals.length, 4) || 1}, 1fr)`, gap: 14 }}>
+          {paymentMethodTotals.map(([method, total]) => (
+            <div key={method} style={{ background: "#faf9fb", borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>{method.toUpperCase()}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy, marginTop: 4 }}>{formatMoney(total)} <span style={{ fontSize: 12, fontWeight: 500 }}>EGP</span></div>
             </div>
           ))}
         </div>
