@@ -38,6 +38,20 @@ export default function NewPatientPage() {
     payment_status: "pending",
     notes: "",
   });
+  const [existingPatients, setExistingPatients] = useState([]);
+
+  useEffect(() => {
+    const mobile = form.mobile.trim();
+    if (mobile.length < 6) {
+      setExistingPatients([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from("patients").select("id, name, mobile").eq("mobile", mobile).limit(5);
+      setExistingPatients(data || []);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [form.mobile]);
 
   useEffect(() => {
     supabase.from("branches").select("id, name").eq("is_active", true).then(({ data }) => setBranches(data || []));
@@ -180,6 +194,19 @@ export default function NewPatientPage() {
             </Field>
             <Field label="Mobile Number">
               <input style={inp} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} placeholder="+20 10 123 4567" />
+              {existingPatients.length > 0 && (
+                <div style={{ background: "#fff8e1", border: "1px solid #ffe0b2", borderRadius: 8, padding: 10, marginTop: -8, marginBottom: 16, fontSize: 12 }}>
+                  <span style={{ color: "#a97c00", fontWeight: 600 }}>
+                    Already registered with this number: {existingPatients.map((p) => p.name).join(", ")}.
+                  </span>{" "}
+                  {existingPatients.map((p) => (
+                    <a key={p.id} href={`/dashboard/patients/${p.id}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, fontWeight: 700, textDecoration: "none", marginRight: 10 }}>
+                      Open {p.name}'s profile →
+                    </a>
+                  ))}
+                  <div style={{ color: theme.gray, marginTop: 4 }}>If this is a different person sharing the same number (e.g. family), it's fine to continue registering below.</div>
+                </div>
+              )}
             </Field>
           </Row>
           <Row>
