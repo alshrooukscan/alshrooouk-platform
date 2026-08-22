@@ -10,7 +10,9 @@ import HRAnalytics from "../../components/analytics/HRAnalytics";
 import StockAnalytics from "../../components/analytics/StockAnalytics";
 import DrillDownModal from "../../components/analytics/DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "../../components/analytics/PeriodFilterBar";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Cell as PieCell, Legend } from "recharts";
+
+const PAYMENT_COLORS = ["#27214D", "#A98B4D", "#6D5A3A", "#8a7ba0", "#c9a86a", "#48464E", "#3d3564"];
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -75,7 +77,7 @@ function DashboardTabs() {
 
 function Overview() {
   const [allLedger, setAllLedger] = useState([]);
-  const [paymentMethodTotals, setPaymentMethodTotals] = useState([]);
+  const [allPaymentRows, setAllPaymentRows] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
   const [el3awamaUnits, setEl3awamaUnits] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,29 +104,18 @@ function Overview() {
 
     // Real revenue by payment method, sourced from actual visits, not the ledger
     // (the ledger tracks stream/direction, not how the customer actually paid).
+    // Kept with exam_date so it can be re-filtered by the period selector below.
     let paymentRows = [];
     let pfrom = 0;
     while (true) {
-      const { data } = await supabase.from("visits").select("payment_method, amount_paid").gt("amount_paid", 0).range(pfrom, pfrom + pageSize - 1);
+      const { data } = await supabase.from("visits").select("payment_method, amount_paid, exam_date").gt("amount_paid", 0).range(pfrom, pfrom + pageSize - 1);
       if (!data || data.length === 0) break;
       paymentRows = paymentRows.concat(data);
       if (data.length < pageSize) break;
       pfrom += pageSize;
     }
-    const byMethod = {};
-    const KNOWN_METHODS = ["cash", "instapay", "vodafone cash", "visa", "wallet"];
-    for (const row of paymentRows) {
-      const raw = (row.payment_method || "").trim();
-      const normalized = raw.toLowerCase();
-      const method = KNOWN_METHODS.includes(normalized)
-        ? raw.replace(/\b\w/g, (c) => c.toUpperCase())
-        : raw
-        ? "Other / Unrecognized"
-        : "Unspecified";
-      byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
-    }
-    const sortedMethods = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
-    setPaymentMethodTotals(sortedMethods);
+    setAllPaymentRows(paymentRows);
+
     // Real supplier payments (actual cash out), pulled in as a synthetic 'suppliers' stream.
     const { data: poPayments } = await supabase.from("purchase_orders").select("amount, entry_date").eq("entry_type", "payment");
     const supplierRows = (poPayments || []).map((p) => ({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(p.amount)), entry_date: p.entry_date }));
@@ -139,6 +130,24 @@ function Overview() {
   const years = [...new Set(allLedger.filter((l) => l.entry_date).map((l) => l.entry_date.slice(0, 4)))].sort().reverse();
   const { start, end } = getDateRange(filter);
   const ledger = start ? allLedger.filter((l) => l.entry_date && l.entry_date >= start && l.entry_date <= end) : allLedger;
+
+  const filteredPaymentRows = start
+    ? allPaymentRows.filter((r) => r.exam_date && r.exam_date >= start && r.exam_date <= end)
+    : allPaymentRows;
+  const byMethod = {};
+  const KNOWN_METHODS = ["cash", "instapay", "vodafone cash", "visa", "wallet"];
+  for (const row of filteredPaymentRows) {
+    const raw = (row.payment_method || "").trim();
+    const normalized = raw.toLowerCase();
+    const method = KNOWN_METHODS.includes(normalized)
+      ? raw.replace(/\b\w/g, (c) => c.toUpperCase())
+      : raw
+      ? "Other / Unrecognized"
+      : "Unspecified";
+    byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
+  }
+  const paymentMethodTotals = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
+  const paymentMethodTotalSum = paymentMethodTotals.reduce((s, [, v]) => s + v, 0);
 
   function sum(stream, direction) {
     return ledger.filter((l) => l.source_stream === stream && l.direction === direction).reduce((s, l) => s + Number(l.amount || 0), 0);
@@ -259,21 +268,49 @@ function Overview() {
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
-        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits.</p>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits{start ? ", within the selected period" : ""}.</p>
         {paymentMethodTotals.some(([m]) => m === "Other / Unrecognized") && (
           <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
             "Other / Unrecognized" mostly comes from older migrated visits where the original payment method wasn't cleanly recorded, it holds real notes text rather than a clean Cash/InstaPay/Visa/Wallet value.
           </p>
         )}
-        {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded yet.</p>}
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(paymentMethodTotals.length, 4) || 1}, 1fr)`, gap: 14 }}>
-          {paymentMethodTotals.map(([method, total]) => (
-            <div key={method} style={{ background: "#faf9fb", borderRadius: 12, padding: 16 }}>
-              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>{method.toUpperCase()}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy, marginTop: 4 }}>{formatMoney(total)} <span style={{ fontSize: 12, fontWeight: 500 }}>EGP</span></div>
+        {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded for this period.</p>}
+        {paymentMethodTotals.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(paymentMethodTotals.length, 3)}, 1fr)`, gap: 14, alignContent: "start" }}>
+              {paymentMethodTotals.map(([method, total], i) => (
+                <div key={method} style={{ background: "#faf9fb", borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: theme.gray, fontWeight: 600 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: PAYMENT_COLORS[i % PAYMENT_COLORS.length], display: "inline-block" }} />
+                    {method.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy, marginTop: 4 }}>{formatMoney(total)} <span style={{ fontSize: 12, fontWeight: 500 }}>EGP</span></div>
+                  <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>{paymentMethodTotalSum > 0 ? ((total / paymentMethodTotalSum) * 100).toFixed(1) : 0}%</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={paymentMethodTotals.map(([method, total]) => ({ name: method, value: total }))}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {paymentMethodTotals.map((_, i) => (
+                    <PieCell key={i} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v, n) => [`${formatMoney(v)} EGP`, n]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       <p style={{ fontSize: 11, color: "#bbb", marginTop: 20 }}>
