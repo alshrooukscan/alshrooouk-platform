@@ -112,8 +112,15 @@ function Overview() {
       pfrom += pageSize;
     }
     const byMethod = {};
+    const KNOWN_METHODS = ["cash", "instapay", "vodafone cash", "visa", "wallet"];
     for (const row of paymentRows) {
-      const method = row.payment_method || "Unspecified";
+      const raw = (row.payment_method || "").trim();
+      const normalized = raw.toLowerCase();
+      const method = KNOWN_METHODS.includes(normalized)
+        ? raw.replace(/\b\w/g, (c) => c.toUpperCase())
+        : raw
+        ? "Other / Unrecognized"
+        : "Unspecified";
       byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
     }
     const sortedMethods = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
@@ -253,6 +260,11 @@ function Overview() {
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
         <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits.</p>
+        {paymentMethodTotals.some(([m]) => m === "Other / Unrecognized") && (
+          <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
+            "Other / Unrecognized" mostly comes from older migrated visits where the original payment method wasn't cleanly recorded, it holds real notes text rather than a clean Cash/InstaPay/Visa/Wallet value.
+          </p>
+        )}
         {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded yet.</p>}
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(paymentMethodTotals.length, 4) || 1}, 1fr)`, gap: 14 }}>
           {paymentMethodTotals.map(([method, total]) => (
