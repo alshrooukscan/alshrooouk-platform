@@ -51,6 +51,7 @@ export default function PatientProfilePage() {
         alert(data.error);
       } else {
         await loadFiles();
+        await load();
       }
       setUploading(false);
     };
