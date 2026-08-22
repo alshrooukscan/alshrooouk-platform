@@ -18,6 +18,20 @@ export default function NewDoctorPage() {
     branch_id: "",
     discount_pct: 0,
   });
+  const [existingDoctors, setExistingDoctors] = useState([]);
+
+  useEffect(() => {
+    const code = form.clinic_code.trim();
+    if (code.length < 2) {
+      setExistingDoctors([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from("doctors").select("id, name, clinic_code, clinic_name").ilike("clinic_code", code).limit(5);
+      setExistingDoctors(data || []);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [form.clinic_code]);
 
   useEffect(() => {
     supabase.from("branches").select("id, name").eq("is_active", true).then(({ data }) => setBranches(data || []));
@@ -94,6 +108,19 @@ export default function NewDoctorPage() {
           <Row>
             <Field label="Unique Clinic Code">
               <input style={inp} value={form.clinic_code} onChange={(e) => setForm({ ...form, clinic_code: e.target.value })} placeholder="e.g., 1021" />
+              {existingDoctors.length > 0 && (
+                <div style={{ background: "#fff8e1", border: "1px solid #ffe0b2", borderRadius: 8, padding: 10, marginTop: -8, marginBottom: 16, fontSize: 12 }}>
+                  <span style={{ color: "#a97c00", fontWeight: 600 }}>
+                    Already registered with this clinic code: {existingDoctors.map((d) => `${d.name} (${d.clinic_name || "—"})`).join(", ")}.
+                  </span>{" "}
+                  {existingDoctors.map((d) => (
+                    <a key={d.id} href={`/dashboard/doctors/${d.id}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, fontWeight: 700, textDecoration: "none", marginRight: 10 }}>
+                      Open {d.name}'s profile →
+                    </a>
+                  ))}
+                  <div style={{ color: theme.gray, marginTop: 4 }}>If this is a genuinely different doctor, that's fine, just make sure the name is different too.</div>
+                </div>
+              )}
             </Field>
             <Field label="Primary Associated Branch">
               <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
