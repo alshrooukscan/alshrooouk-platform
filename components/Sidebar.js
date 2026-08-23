@@ -12,6 +12,8 @@ const NAV = [
   { href: "/dashboard/doctors", label: "Doctors", icon: "\u2695", key: "doctors" },
   { href: "/dashboard/stock", label: "Stock", icon: "\u25A4", key: "stock" },
   { href: "/dashboard/hr", label: "HR", icon: "\u25A3", key: "hr" },
+  { href: "/dashboard/cash-expenses", label: "Cash Expenses", icon: "\u26AA", key: "cash_expenses" },
+  { href: "/dashboard/vendors", label: "External Reports", icon: "\u2709", key: "vendors" },
   { href: "/dashboard/settings", label: "Settings", icon: "\u2699", key: "settings" },
 ];
 

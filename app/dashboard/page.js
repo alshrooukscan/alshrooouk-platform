@@ -190,9 +190,10 @@ function Overview() {
   const cashOutScans = sum("scans", "out");
   const cashOutPayroll = sum("payroll", "out");
   const cashOutSuppliers = sum("suppliers", "out");
+  const cashOutExpenses = sum("expenses", "out");
 
   const totalCashIn = cashInScans + cashInEl3awama + cashInStock;
-  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutPayroll + cashOutSuppliers;
+  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutPayroll + cashOutSuppliers + cashOutExpenses;
   const netPL = totalCashIn - totalCashOut;
 
   const revenueStreams = [
@@ -208,6 +209,7 @@ function Overview() {
     { label: "Scans-related costs", value: cashOutScans },
     { label: "Payroll", value: cashOutPayroll },
     { label: "Supplier payments (Purchase Orders)", value: cashOutSuppliers },
+    { label: "Cash Expenses (Utilities, Maintenance, Advances, etc.)", value: cashOutExpenses },
   ].filter((e) => e.value > 0);
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;

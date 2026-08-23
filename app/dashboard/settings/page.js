@@ -11,6 +11,8 @@ const MODULES = [
   { key: "doctors", label: "Doctors" },
   { key: "stock", label: "Stock" },
   { key: "hr", label: "HR & Payroll" },
+  { key: "cash_expenses", label: "Cash Expenses" },
+  { key: "vendors", label: "External Reports" },
   { key: "settings", label: "Settings" },
 ];
 
