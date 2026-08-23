@@ -17,7 +17,21 @@ export default function DriveReviewPage() {
   async function load() {
     setLoading(true);
     const { data } = await supabase.from("drive_match_candidates").select("*").eq("status", "pending").order("similarity", { ascending: false });
-    setCandidates(data || []);
+    const list = data || [];
+
+    // Enrich with each patient's referring doctor + clinic code, so staff can
+    // cross-check that the Drive match makes sense for who actually referred them.
+    const patientIds = [...new Set(list.map((c) => c.patient_id))];
+    const { data: visitRows } = patientIds.length
+      ? await supabase.from("visits").select("patient_id, doctors(name, clinic_code)").in("patient_id", patientIds).not("doctor_id", "is", null).order("exam_date", { ascending: false })
+      : { data: [] };
+    const doctorByPatient = {};
+    for (const v of visitRows || []) {
+      if (!doctorByPatient[v.patient_id] && v.doctors) doctorByPatient[v.patient_id] = v.doctors;
+    }
+    const enriched = list.map((c) => ({ ...c, referringDoctor: doctorByPatient[c.patient_id] || null }));
+
+    setCandidates(enriched);
     setLoading(false);
   }
 
@@ -104,6 +118,11 @@ export default function DriveReviewPage() {
                 {c.patient_name}
               </Link>
               <span style={{ color: theme.gray, fontSize: 13 }}> — patient in system</span>
+              <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
+                {c.referringDoctor
+                  ? `Referred by Dr. ${c.referringDoctor.name} (clinic ${c.referringDoctor.clinic_code})`
+                  : "No referring doctor on file"}
+              </div>
             </div>
             <div style={{ flex: 1 }}>
               <a href={`https://drive.google.com/drive/folders/${c.drive_folder_id}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: theme.gold, textDecoration: "none" }}>
