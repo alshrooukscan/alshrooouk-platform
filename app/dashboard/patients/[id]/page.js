@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { formatPhone } from "../../../../lib/formatPhone";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage } from "../../../../lib/whatsapp";
@@ -34,17 +35,41 @@ export default function PatientProfilePage() {
     setFiles(data.files || []);
   }
 
-  async function handleFileUpload(e) {
+  const [pendingFile, setPendingFile] = useState(null);
+
+  function handleFilePicked(e) {
     const file = e.target.files[0];
     if (!file) return;
+    setPendingFile(file);
+    e.target.value = ""; // allow picking the same file again later
+  }
+
+  async function handleFileUpload(fileType) {
+    const file = pendingFile;
+    if (!file) return;
+    setPendingFile(null);
     setUploading(true);
+    const { data: session } = await supabase.auth.getSession();
+    const uploaderEmail = session.session?.user?.email || null;
+    const { data: profile } = uploaderEmail
+      ? await supabase.from("staff_profiles").select("name").eq("email", uploaderEmail).maybeSingle()
+      : { data: null };
+
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = reader.result.split(",")[1];
       const res = await fetch("/api/drive/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId: id, filename: file.name, mimeType: file.type, base64 }),
+        body: JSON.stringify({
+          patientId: id,
+          filename: file.name,
+          mimeType: file.type,
+          base64,
+          fileType,
+          uploaderEmail,
+          uploaderName: profile?.name || uploaderEmail,
+        }),
       });
       const data = await res.json();
       if (data.error) {
@@ -63,7 +88,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, doctors(name, phone, email, clinic_code), branches(name), invoices(id)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, doctors(name, phone, email, clinic_code), branches(name), invoices(id)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -148,8 +173,10 @@ export default function PatientProfilePage() {
 
   async function toggleStage(visit, field) {
     const newValue = !visit[field];
-    await supabase.from("visits").update({ [field]: newValue }).eq("id", visit.id);
-    setVisits((prev) => prev.map((v) => (v.id === visit.id ? { ...v, [field]: newValue } : v)));
+    const tsField = `${field}_at`;
+    const update = { [field]: newValue, [tsField]: newValue ? new Date().toISOString() : null };
+    await supabase.from("visits").update(update).eq("id", visit.id);
+    setVisits((prev) => prev.map((v) => (v.id === visit.id ? { ...v, ...update } : v)));
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
@@ -162,7 +189,7 @@ export default function PatientProfilePage() {
           <div>
             <h1 style={{ color: theme.navy, margin: 0 }}>{patient.name}</h1>
             <p style={{ color: theme.gray, margin: "4px 0" }}>
-              {patient.mobile} {patient.email ? `· ${patient.email}` : ""}
+              {formatPhone(patient.mobile)} {patient.email ? `· ${patient.email}` : ""}
             </p>
             {credentials && <p style={{ fontSize: 12, color: theme.gray }}>Portal username: {credentials.username}</p>}
           </div>
@@ -186,20 +213,23 @@ export default function PatientProfilePage() {
                 {v.exam_date} · {v.branches?.name || "—"} · {v.payment_status}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                <StageChip label="Paid" active={v.payment_status === "paid"} />
+                <StageChip label="Paid" active={v.payment_status === "paid"} timestamp={v.paid_at} />
                 <StageChip
                   label="Scanned"
                   active={v.scanned}
+                  timestamp={v.scanned_at}
                   onClick={() => toggleStage(v, "scanned")}
                 />
                 <StageChip
                   label="Raw Data Uploaded"
                   active={v.raw_data_uploaded}
+                  timestamp={v.raw_data_uploaded_at}
                   onClick={() => toggleStage(v, "raw_data_uploaded")}
                 />
                 <StageChip
                   label="Report Done"
                   active={v.report_done}
+                  timestamp={v.report_done_at}
                   onClick={() => toggleStage(v, "report_done")}
                 />
                 <StageChip label="Invoice Generated" active={(v.invoices || []).length > 0} />
@@ -222,7 +252,7 @@ export default function PatientProfilePage() {
           )}
           <label style={{ ...actionBtn, display: "block", textAlign: "center", opacity: uploading ? 0.6 : 1, background: theme.gold, color: theme.navy }}>
             {uploading ? "Uploading..." : "Upload Scan Files"}
-            <input type="file" onChange={handleFileUpload} disabled={uploading} style={{ display: "none" }} />
+            <input type="file" onChange={handleFilePicked} disabled={uploading} style={{ display: "none" }} />
           </label>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: 12 }}>
             Files upload directly into this patient's Drive folder, nested under their referring doctor automatically if one is assigned.
@@ -252,6 +282,14 @@ export default function PatientProfilePage() {
         />
       )}
 
+      {pendingFile && (
+        <FileTypeModal
+          fileName={pendingFile.name}
+          onClose={() => setPendingFile(null)}
+          onPick={(type) => handleFileUpload(type)}
+        />
+      )}
+
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Patient Files</h3>
         {files.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No files uploaded yet.</p>}
@@ -269,6 +307,29 @@ export default function PatientProfilePage() {
             </a>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FileTypeModal({ fileName, onClose, onPick }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 26, width: 340 }}>
+        <h3 style={{ margin: "0 0 4px", color: theme.navy, fontSize: 16 }}>What is this file?</h3>
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: 0, marginBottom: 16, wordBreak: "break-all" }}>{fileName}</p>
+        <div style={{ display: "grid", gap: 8 }}>
+          <button onClick={() => onPick("raw_data")} style={{ ...actionBtn, background: theme.gold, color: theme.navy, textAlign: "left" }}>
+            Raw Scan Data <span style={{ fontWeight: 400, fontSize: 11 }}>— marks "Raw Data Uploaded"</span>
+          </button>
+          <button onClick={() => onPick("report")} style={{ ...actionBtn, background: theme.navy, color: "#fff", textAlign: "left" }}>
+            Report <span style={{ fontWeight: 400, fontSize: 11 }}>— marks "Report Done"</span>
+          </button>
+          <button onClick={() => onPick("other")} style={{ ...actionBtn, background: "#fff", color: theme.navy, border: "1px solid #ddd", textAlign: "left" }}>
+            Other <span style={{ fontWeight: 400, fontSize: 11 }}>— no status change</span>
+          </button>
+        </div>
+        <button onClick={onClose} style={{ marginTop: 12, background: "none", border: "none", color: theme.gray, fontSize: 12, cursor: "pointer" }}>Cancel</button>
       </div>
     </div>
   );
@@ -404,6 +465,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
       discount_reason: form.discount_on ? finalReason : null,
       amount_paid: form.amount_paid || 0,
       payment_status: form.payment_status,
+        paid_at: form.payment_status === "paid" ? new Date().toISOString() : null,
       payment_method: form.payment_method,
       notes: form.notes || null,
     });
@@ -565,13 +627,18 @@ function TotalRow({ label, value, bold, negative }) {
   );
 }
 
-function StageChip({ label, active, onClick }) {
+function StageChip({ label, active, onClick, timestamp }) {
+  const tooltip = active && timestamp
+    ? `${label} on ${new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+    : onClick
+    ? "Click to toggle"
+    : undefined;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      title={onClick ? "Click to toggle" : undefined}
+      title={tooltip}
       style={{
         fontSize: 11,
         padding: "4px 10px",
