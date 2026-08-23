@@ -159,6 +159,7 @@ export default function NewPatientPage() {
         discount_reason: form.discount_on ? finalReason : null,
         amount_paid: form.amount_paid || 0,
         payment_status: form.payment_status,
+        paid_at: form.payment_status === "paid" ? new Date().toISOString() : null,
         payment_method: form.payment_method,
         notes: form.notes || null,
       })
