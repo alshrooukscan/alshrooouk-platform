@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatPhone } from "../../../../lib/formatPhone";
 
 export default function DoctorProfilePage() {
   const { id } = useParams();
@@ -42,7 +43,7 @@ export default function DoctorProfilePage() {
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
         <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
-        <p style={{ color: theme.gray, margin: 0 }}>{doctor.phone} {doctor.email ? `· ${doctor.email}` : ""}</p>
+        <p style={{ color: theme.gray, margin: 0 }}>{formatPhone(doctor.phone)} {doctor.email ? `· ${doctor.email}` : ""}</p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
