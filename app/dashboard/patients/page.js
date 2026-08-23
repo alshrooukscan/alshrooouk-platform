@@ -5,6 +5,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
+import { formatPhone } from "../../../lib/formatPhone";
 
 const PAGE_SIZE = 50;
 const STAGE_LABELS = [
@@ -294,7 +295,7 @@ export default function PatientsPage() {
             >
               <Link href={`/dashboard/patients/${p.id}`} target="_blank" style={{ textDecoration: "none", color: theme.navy, flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status ? 6 : 0 }}>{p.mobile || "no mobile on file"}</div>
+                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status ? 6 : 0 }}>{p.mobile ? formatPhone(p.mobile) : "no mobile on file"}</div>
                 {status && (
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                     {STAGE_LABELS.map((s) => (
