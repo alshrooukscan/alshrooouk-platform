@@ -5,6 +5,7 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import MonthlySchedule from "../../../../components/MonthlySchedule";
 import { formatMoney } from "../../../../lib/format";
+import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODULES = [
@@ -29,6 +30,12 @@ export default function EmployeeProfilePage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [savingShifts, setSavingShifts] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoBase64, setPhotoBase64] = useState(null);
+  const [photoFilename, setPhotoFilename] = useState(null);
+  const [descriptor, setDescriptor] = useState(null);
+  const [faceStatus, setFaceStatus] = useState("");
+  const [savingFace, setSavingFace] = useState(false);
 
   useEffect(() => {
     load();
@@ -121,6 +128,55 @@ export default function EmployeeProfilePage() {
     load();
   }
 
+  async function handlePhotoPicked(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setDescriptor(null);
+    setFaceStatus("Loading face detection...");
+    setPhotoFilename(file.name);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result;
+      setPhotoPreview(dataUrl);
+      setPhotoBase64(dataUrl.split(",")[1]);
+
+      const img = new window.Image();
+      img.onload = async () => {
+        try {
+          await loadFaceModels();
+          setFaceStatus("Detecting face...");
+          const result = await extractDescriptor(img);
+          if (!result) {
+            setFaceStatus("No face detected in this photo - try a clearer, front-facing photo.");
+            return;
+          }
+          setDescriptor(result);
+          setFaceStatus("Face detected. Click Save to enroll this photo for clock in/out verification.");
+        } catch (err) {
+          setFaceStatus("Could not process this photo: " + err.message);
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveFace() {
+    if (!descriptor) return;
+    setSavingFace(true);
+    const { data: session } = await supabase.auth.getSession();
+    await fetch("/api/hr/enroll-face", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ employeeId: id, descriptor, filename: photoFilename, mimeType: "image/jpeg", base64: photoBase64 }),
+    });
+    setSavingFace(false);
+    setDescriptor(null);
+    setFaceStatus("Saved.");
+    load();
+  }
+
   async function handleGeneratePayslip() {
     setGenerating(true);
     const period = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -179,7 +235,12 @@ export default function EmployeeProfilePage() {
           {events.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No login/logout events yet.</p>}
           {events.map((e) => (
             <div key={e.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "8px 0", fontSize: 13 }}>
-              <div style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{e.event_type}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{e.event_type}</span>
+                {e.face_match_status === "verified" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#e8f5e9", color: "#2e7d32" }}>Face verified</span>}
+                {e.face_match_status === "failed" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a" }}>Face not matched</span>}
+                {e.face_match_status === "not_enrolled" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#f0f0f0", color: "#888" }}>Not enrolled</span>}
+              </div>
               <div style={{ color: theme.gray, fontSize: 12 }}>{new Date(e.event_time).toLocaleString()}</div>
               {e.lat && (
                 <div style={{ color: theme.gray, fontSize: 11 }}>
@@ -232,6 +293,34 @@ export default function EmployeeProfilePage() {
         >
           {savingShifts ? "Saving..." : "Save Shift Schedule"}
         </button>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Face Enrollment (for clock in/out verification)</h3>
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+          Processed entirely in your browser, nothing is sent to any outside face-recognition service.
+        </p>
+        {employee.face_enrolled_at && !photoPreview && (
+          <p style={{ fontSize: 13, color: "#2e7d32", fontWeight: 600, marginBottom: 12 }}>
+            ✓ Enrolled on {new Date(employee.face_enrolled_at).toLocaleDateString()}. Upload a new photo below to replace it.
+          </p>
+        )}
+        <input type="file" accept="image/*" onChange={handlePhotoPicked} style={{ marginBottom: 10 }} />
+        {photoPreview && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, marginBottom: 12 }}>
+            <img src={photoPreview} alt="Preview" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #ddd" }} />
+            <p style={{ fontSize: 12, color: descriptor ? "#2e7d32" : theme.gray, fontWeight: descriptor ? 700 : 400, maxWidth: 320 }}>{faceStatus}</p>
+          </div>
+        )}
+        {descriptor && (
+          <button
+            onClick={handleSaveFace}
+            disabled={savingFace}
+            style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+          >
+            {savingFace ? "Saving..." : "Save Enrollment"}
+          </button>
+        )}
       </div>
 
       <MonthlySchedule employeeId={id} />

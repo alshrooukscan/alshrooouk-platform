@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 
 export default function NewEmployeePage() {
   const router = useRouter();
@@ -12,6 +13,11 @@ export default function NewEmployeePage() {
   const [selectedExcuses, setSelectedExcuses] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoBase64, setPhotoBase64] = useState(null);
+  const [photoFilename, setPhotoFilename] = useState(null);
+  const [descriptor, setDescriptor] = useState(null);
+  const [faceStatus, setFaceStatus] = useState("");
   const [form, setForm] = useState({
     name: "",
     national_id: "",
@@ -29,6 +35,40 @@ export default function NewEmployeePage() {
 
   function toggle(list, setList, id) {
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  }
+
+  async function handlePhotoPicked(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setDescriptor(null);
+    setFaceStatus("Loading face detection...");
+    setPhotoFilename(file.name);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result;
+      setPhotoPreview(dataUrl);
+      setPhotoBase64(dataUrl.split(",")[1]);
+
+      const img = new window.Image();
+      img.onload = async () => {
+        try {
+          await loadFaceModels();
+          setFaceStatus("Detecting face...");
+          const result = await extractDescriptor(img);
+          if (!result) {
+            setFaceStatus("No face detected in this photo - try a clearer, front-facing photo.");
+            return;
+          }
+          setDescriptor(result);
+          setFaceStatus("Face detected. This photo will be used to verify this employee at clock in/out.");
+        } catch (err) {
+          setFaceStatus("Could not process this photo: " + err.message);
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
   }
 
   async function handleSubmit(e) {
@@ -74,6 +114,15 @@ export default function NewEmployeePage() {
       await supabase.from("employee_rule_assignments").insert(assignments);
     }
 
+    if (descriptor) {
+      const { data: session } = await supabase.auth.getSession();
+      await fetch("/api/hr/enroll-face", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+        body: JSON.stringify({ employeeId: emp.id, descriptor, filename: photoFilename, mimeType: "image/jpeg", base64: photoBase64 }),
+      });
+    }
+
     setSaving(false);
     router.push(`/dashboard/hr/${emp.id}`);
   }
@@ -112,6 +161,20 @@ export default function NewEmployeePage() {
           <Field label="Hourly Rate (EGP, optional, leave blank for salaried employees)">
             <input style={inp} value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} placeholder="e.g., 50" />
           </Field>
+        </Section>
+
+        <Section title="Face Enrollment (for clock in/out verification)">
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
+            Optional but recommended. A clear, front-facing photo lets the system verify this employee's identity
+            when they sign in or out. Processed entirely in your browser, nothing is sent to any outside face-recognition service.
+          </p>
+          <input type="file" accept="image/*" onChange={handlePhotoPicked} style={{ marginBottom: 10 }} />
+          {photoPreview && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+              <img src={photoPreview} alt="Preview" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #ddd" }} />
+              <p style={{ fontSize: 12, color: descriptor ? "#2e7d32" : theme.gray, fontWeight: descriptor ? 700 : 400, maxWidth: 320 }}>{faceStatus}</p>
+            </div>
+          )}
         </Section>
 
         <Section title="Deduction Rules">

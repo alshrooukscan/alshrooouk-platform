@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { signSession } from "../../../../lib/session";
 
@@ -34,6 +35,16 @@ export async function POST(req) {
 
     if (!match) {
       return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
+    }
+
+    // Employees get a fresh sessionId on every login. Storing it as the only
+    // "current" one means a login from a second device automatically signs the
+    // first one out - the previous token still verifies its signature fine, but
+    // its embedded sessionId no longer matches what's on file.
+    if (match.role === "employee") {
+      const sessionId = randomUUID();
+      await supabaseAdmin.from("employees").update({ current_session_id: sessionId }).eq("id", match.id);
+      match.sessionId = sessionId;
     }
 
     const token = signSession(match);

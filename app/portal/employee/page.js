@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
 import { formatMoney } from "../../../lib/format";
 import Loading from "../../../lib/Loading";
+import { loadFaceModels, extractDescriptor } from "../../../lib/faceMatch";
 
 export default function EmployeePortalPage() {
   const [data, setData] = useState(null);
@@ -42,32 +43,27 @@ export default function EmployeePortalPage() {
     }
   }
 
+  const [captureEventType, setCaptureEventType] = useState(null);
+
   function handlePunch(eventType) {
     setGeoError("");
-    if (!navigator.geolocation) {
-      setGeoError("Geolocation isn't available on this device.");
-      return;
-    }
+    setCaptureEventType(eventType);
+  }
+
+  async function submitClock({ eventType, lat, lng, faceDescriptor, faceCaptureBase64 }) {
     setPunching(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const res = await fetch("/api/portal/employee/clock", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventType, lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        });
-        const result = await res.json();
-        if (!res.ok) {
-          setGeoError(result.error || "Could not sign in/out.");
-        }
-        setPunching(false);
-        load();
-      },
-      () => {
-        setGeoError("Location permission is required to sign in or out.");
-        setPunching(false);
-      }
-    );
+    const res = await fetch("/api/portal/employee/clock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType, lat, lng, faceDescriptor, faceCaptureBase64 }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      setGeoError(result.error || "Could not sign in/out.");
+    }
+    setPunching(false);
+    setCaptureEventType(null);
+    load();
   }
 
   if (loading) return <Loading />;
@@ -224,6 +220,151 @@ export default function EmployeePortalPage() {
         {tab === "schedule" && <ScheduleTab schedule={data.schedule} />}
 
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
+      </div>
+
+      {captureEventType && (
+        <FaceLocationCapture
+          eventType={captureEventType}
+          onCancel={() => setCaptureEventType(null)}
+          onReady={submitClock}
+        />
+      )}
+    </div>
+  );
+}
+
+function FaceLocationCapture({ eventType, onCancel, onReady }) {
+  const [status, setStatus] = useState("Getting your location...");
+  const [attempt, setAttempt] = useState(0);
+  const videoElRef = useRef(null);
+  const canvasElRef = useRef(null);
+  const streamRef = useRef(null);
+  const locationRef = useRef(null);
+  const MAX_ATTEMPTS = 2;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function stopStream() {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    }
+
+    function finish(descriptor, captureBase64) {
+      stopStream();
+      if (!locationRef.current) return;
+      onReady({
+        eventType,
+        lat: locationRef.current.lat,
+        lng: locationRef.current.lng,
+        faceDescriptor: descriptor,
+        faceCaptureBase64: captureBase64 || null,
+      });
+    }
+
+    async function captureAndVerify(attemptNumber) {
+      if (cancelled || !videoElRef.current) return;
+      setStatus("Verifying...");
+      const canvas = canvasElRef.current;
+      canvas.width = videoElRef.current.videoWidth || 320;
+      canvas.height = videoElRef.current.videoHeight || 240;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(videoElRef.current, 0, 0, canvas.width, canvas.height);
+
+      let descriptor = null;
+      try {
+        descriptor = await extractDescriptor(canvas);
+      } catch {
+        descriptor = null;
+      }
+
+      if (cancelled) return;
+
+      if (descriptor) {
+        finish(descriptor);
+        return;
+      }
+
+      const nextAttempt = attemptNumber + 1;
+      setAttempt(nextAttempt);
+      if (nextAttempt < MAX_ATTEMPTS) {
+        setStatus(`No face detected, trying again... (${nextAttempt}/${MAX_ATTEMPTS})`);
+        setTimeout(() => !cancelled && captureAndVerify(nextAttempt), 1200);
+      } else {
+        setStatus("Could not verify face - recording sign in/out anyway with a flag for review.");
+        const captureBase64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+        setTimeout(() => !cancelled && finish(null, captureBase64), 1000);
+      }
+    }
+
+    async function init() {
+      if (!navigator.geolocation) {
+        setStatus("Geolocation isn't available on this device.");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          if (cancelled) return;
+          locationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setStatus("Loading face verification...");
+          try {
+            await loadFaceModels();
+          } catch {
+            // Models failing to load shouldn't block attendance - proceed to camera anyway,
+            // a failed descriptor extraction downstream will just mark this as unverified.
+          }
+          if (cancelled) return;
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+            if (cancelled) {
+              stream.getTracks().forEach((t) => t.stop());
+              return;
+            }
+            streamRef.current = stream;
+            if (videoElRef.current) {
+              videoElRef.current.srcObject = stream;
+              await videoElRef.current.play();
+            }
+            setStatus("Look at the camera...");
+            setTimeout(() => !cancelled && captureAndVerify(0), 1200);
+          } catch {
+            setStatus("Camera permission denied - continuing with location only.");
+            setTimeout(() => !cancelled && finish(null), 1500);
+          }
+        },
+        () => {
+          if (!cancelled) setStatus("Location permission is required to sign in or out.");
+        }
+      );
+    }
+
+    init();
+    return () => {
+      cancelled = true;
+      stopStream();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleCancel() {
+    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    onCancel();
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 320, maxWidth: "90vw", textAlign: "center" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0, textTransform: "capitalize" }}>{eventType === "login" ? "Sign In" : "Sign Out"}</h3>
+        <div style={{ width: 240, height: 180, margin: "0 auto 12px", borderRadius: 12, overflow: "hidden", background: "#111", position: "relative" }}>
+          <video ref={videoElRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+        </div>
+        <canvas ref={canvasElRef} style={{ display: "none" }} />
+        <p style={{ fontSize: 13, color: theme.gray }}>{status}</p>
+        <button onClick={handleCancel} style={{ marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
+          Cancel
+        </button>
       </div>
     </div>
   );
