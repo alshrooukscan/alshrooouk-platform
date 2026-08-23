@@ -46,12 +46,16 @@ export default function DoctorsPage() {
     setLoading(false);
   }
 
-  const filtered = doctors.filter(
-    (d) =>
-      d.name?.toLowerCase().includes(query.toLowerCase()) ||
-      d.clinic_code?.toLowerCase().includes(query.toLowerCase()) ||
-      d.clinic_name?.toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = doctors.filter((d) => {
+    const q = query.toLowerCase();
+    const qDigits = query.replace(/\D/g, "");
+    return (
+      d.name?.toLowerCase().includes(q) ||
+      d.clinic_code?.toLowerCase().includes(q) ||
+      d.clinic_name?.toLowerCase().includes(q) ||
+      (qDigits && d.phone?.replace(/\D/g, "").includes(qDigits))
+    );
+  });
 
   async function handleLoginAs(e, doctor) {
     e.preventDefault();
@@ -105,7 +109,7 @@ export default function DoctorsPage() {
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search by name or clinic code..."
+        placeholder="Search by name, clinic code, or phone..."
         style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, marginBottom: 20, boxSizing: "border-box" }}
       />
 

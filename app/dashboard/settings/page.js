@@ -21,6 +21,8 @@ export default function SettingsPage() {
   const [excuseRules, setExcuseRules] = useState([]);
   const [staffUsers, setStaffUsers] = useState([]);
   const [newBranch, setNewBranch] = useState("");
+  const [expandedBranch, setExpandedBranch] = useState(null);
+  const [branchDraft, setBranchDraft] = useState({});
   const [newDeduction, setNewDeduction] = useState({ name: "", value: "" });
   const [newExcuse, setNewExcuse] = useState({ name: "", value: "" });
   const [showAddUser, setShowAddUser] = useState(false);
@@ -42,6 +44,30 @@ export default function SettingsPage() {
 
   async function toggleBranch(branch) {
     await supabase.from("branches").update({ is_active: !branch.is_active }).eq("id", branch.id);
+    loadAll();
+  }
+
+  function openBranchEditor(branch) {
+    setExpandedBranch(branch.id === expandedBranch ? null : branch.id);
+    setBranchDraft({
+      drive_folder_id: branch.drive_folder_id || "",
+      latitude: branch.latitude ?? "",
+      longitude: branch.longitude ?? "",
+      geofence_radius_m: branch.geofence_radius_m ?? 150,
+    });
+  }
+
+  async function saveBranchDetails(branch) {
+    await supabase
+      .from("branches")
+      .update({
+        drive_folder_id: branchDraft.drive_folder_id || null,
+        latitude: branchDraft.latitude === "" ? null : Number(branchDraft.latitude),
+        longitude: branchDraft.longitude === "" ? null : Number(branchDraft.longitude),
+        geofence_radius_m: branchDraft.geofence_radius_m === "" ? 150 : Number(branchDraft.geofence_radius_m),
+      })
+      .eq("id", branch.id);
+    setExpandedBranch(null);
     loadAll();
   }
 
@@ -172,12 +198,50 @@ export default function SettingsPage() {
 
       <Section title="Branches">
         {branches.map((b) => (
-          <div key={b.id} style={row}>
-            <span style={{ color: theme.navy, fontWeight: 600 }}>{b.name}</span>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-              {b.is_active ? "Active" : "Inactive"}
-              <input type="checkbox" checked={b.is_active} onChange={() => toggleBranch(b)} />
-            </label>
+          <div key={b.id} style={{ borderBottom: "1px solid #f0f0f0", paddingBottom: 10, marginBottom: 10 }}>
+            <div style={{ ...row, border: "none", padding: 0 }}>
+              <span style={{ color: theme.navy, fontWeight: 600 }}>{b.name}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <button onClick={() => openBranchEditor(b)} style={{ fontSize: 12, color: theme.gold, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
+                  {expandedBranch === b.id ? "Close" : "Drive & Location"}
+                </button>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  {b.is_active ? "Active" : "Inactive"}
+                  <input type="checkbox" checked={b.is_active} onChange={() => toggleBranch(b)} />
+                </label>
+              </div>
+            </div>
+            {expandedBranch === b.id && (
+              <div style={{ marginTop: 10, padding: 12, background: "#faf9fb", borderRadius: 8, display: "grid", gap: 8 }}>
+                <div>
+                  <span style={{ fontSize: 11, color: theme.gray }}>Drive folder ID for this branch (root for anything filed under it)</span>
+                  <input
+                    style={inp}
+                    value={branchDraft.drive_folder_id}
+                    onChange={(e) => setBranchDraft({ ...branchDraft, drive_folder_id: e.target.value })}
+                    placeholder="Drive folder ID"
+                  />
+                  <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+                    Share this folder with elsherouk-drive-uploader@elsherouk-drive-integration.iam.gserviceaccount.com
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 11, color: theme.gray }}>Latitude</span>
+                    <input style={inp} value={branchDraft.latitude} onChange={(e) => setBranchDraft({ ...branchDraft, latitude: e.target.value })} placeholder="30.0444" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 11, color: theme.gray }}>Longitude</span>
+                    <input style={inp} value={branchDraft.longitude} onChange={(e) => setBranchDraft({ ...branchDraft, longitude: e.target.value })} placeholder="31.2357" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 11, color: theme.gray }}>Radius (m)</span>
+                    <input style={inp} value={branchDraft.geofence_radius_m} onChange={(e) => setBranchDraft({ ...branchDraft, geofence_radius_m: e.target.value })} placeholder="150" />
+                  </div>
+                </div>
+                <button onClick={() => saveBranchDetails(b)} style={{ ...smallPrimary, alignSelf: "flex-start" }}>Save</button>
+              </div>
+            )}
           </div>
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>

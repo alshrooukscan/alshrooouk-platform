@@ -6,6 +6,8 @@ import { formatPhone } from "../../../../lib/formatPhone";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage } from "../../../../lib/whatsapp";
+import { usePermissions } from "../../../../lib/usePermissions";
+import { logActivity } from "../../../../lib/activityLog";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -23,11 +25,19 @@ export default function PatientProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [showAddScan, setShowAddScan] = useState(false);
   const [whatsAppPicker, setWhatsAppPicker] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const { profile, isAdmin } = usePermissions();
 
   useEffect(() => {
     load();
     loadFiles();
+    loadEmployees();
   }, [id]);
+
+  async function loadEmployees() {
+    const { data } = await supabase.from("employees").select("id, name").eq("is_active", true).order("name");
+    setEmployees(data || []);
+  }
 
   async function loadFiles() {
     const res = await fetch(`/api/drive/list?patientId=${id}`);
@@ -75,6 +85,15 @@ export default function PatientProfilePage() {
       if (data.error) {
         alert(data.error);
       } else {
+        logActivity({
+          actorId: profile?.id,
+          actorName: profile?.name,
+          actorType: profile?.role === "admin" ? "admin" : "employee",
+          action: `uploaded_${fileType}`,
+          entityType: "patient_file",
+          entityId: data.id || null,
+          details: { patientId: id, patientName: patient?.name, fileName: file.name },
+        });
         await loadFiles();
         await load();
       }
@@ -88,7 +107,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, doctors(name, phone, email, clinic_code), branches(name), invoices(id)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, assigned_employee_id, assigned_at, doctors(name, phone, email, clinic_code), branches(name), invoices(id), employees(name)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -168,6 +187,15 @@ export default function PatientProfilePage() {
       alert(error.message);
       return;
     }
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: profile?.role === "admin" ? "admin" : "employee",
+      action: "generated_invoice",
+      entityType: "invoice",
+      entityId: inv.id,
+      details: { patientId: id, patientName: patient?.name, visitId: visit.id, amount: visit.amount_due },
+    });
     router.push(`/dashboard/invoices/${inv.id}`);
   }
 
@@ -177,6 +205,31 @@ export default function PatientProfilePage() {
     const update = { [field]: newValue, [tsField]: newValue ? new Date().toISOString() : null };
     await supabase.from("visits").update(update).eq("id", visit.id);
     setVisits((prev) => prev.map((v) => (v.id === visit.id ? { ...v, ...update } : v)));
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: profile?.role === "admin" ? "admin" : "employee",
+      action: newValue ? `marked_${field}` : `unmarked_${field}`,
+      entityType: "visit",
+      entityId: visit.id,
+      details: { patientId: id, patientName: patient?.name },
+    });
+  }
+
+  async function reassignEmployee(visit, employeeId) {
+    const update = { assigned_employee_id: employeeId || null, assigned_at: employeeId ? new Date().toISOString() : null };
+    await supabase.from("visits").update(update).eq("id", visit.id);
+    const emp = employees.find((e) => e.id === employeeId);
+    setVisits((prev) => prev.map((v) => (v.id === visit.id ? { ...v, ...update, employees: emp ? { name: emp.name } : null } : v)));
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: profile?.role === "admin" ? "admin" : "employee",
+      action: "reassigned_scan",
+      entityType: "visit",
+      entityId: visit.id,
+      details: { patientId: id, patientName: patient?.name, assignedTo: emp?.name || null },
+    });
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
@@ -233,6 +286,23 @@ export default function PatientProfilePage() {
                   onClick={() => toggleStage(v, "report_done")}
                 />
                 <StageChip label="Invoice Generated" active={(v.invoices || []).length > 0} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                <span style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>Assigned to:</span>
+                {isAdmin ? (
+                  <select
+                    value={v.assigned_employee_id || ""}
+                    onChange={(e) => reassignEmployee(v, e.target.value)}
+                    style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #ddd", color: theme.navy }}
+                  >
+                    <option value="">Unassigned</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span style={{ fontSize: 12, color: theme.navy, fontWeight: 600 }}>{v.employees?.name || "Unassigned"}</span>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>

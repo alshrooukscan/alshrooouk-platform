@@ -16,22 +16,12 @@ export default function DriveReviewPage() {
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase.from("drive_match_candidates").select("*").eq("status", "pending").order("similarity", { ascending: false });
-    const list = data || [];
-
-    // Enrich with each patient's referring doctor + clinic code, so staff can
-    // cross-check that the Drive match makes sense for who actually referred them.
-    const patientIds = [...new Set(list.map((c) => c.patient_id))];
-    const { data: visitRows } = patientIds.length
-      ? await supabase.from("visits").select("patient_id, doctors(name, clinic_code)").in("patient_id", patientIds).not("doctor_id", "is", null).order("exam_date", { ascending: false })
-      : { data: [] };
-    const doctorByPatient = {};
-    for (const v of visitRows || []) {
-      if (!doctorByPatient[v.patient_id] && v.doctors) doctorByPatient[v.patient_id] = v.doctors;
-    }
-    const enriched = list.map((c) => ({ ...c, referringDoctor: doctorByPatient[c.patient_id] || null }));
-
-    setCandidates(enriched);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/drive/candidates", {
+      headers: { Authorization: `Bearer ${session.session?.access_token}` },
+    });
+    const result = await res.json();
+    setCandidates(result.candidates || []);
     setLoading(false);
   }
 
@@ -54,7 +44,9 @@ export default function DriveReviewPage() {
     setBusyId(null);
   }
 
-  const visible = candidates.filter((c) => c.similarity >= minConfidence);
+  const visible = candidates
+    .filter((c) => c.similarity >= minConfidence)
+    .sort((a, b) => (b.driveConfirmed === a.driveConfirmed ? 0 : b.driveConfirmed ? 1 : -1));
 
   return (
     <div>
@@ -98,7 +90,19 @@ export default function DriveReviewPage() {
 
       <div style={{ display: "grid", gap: 8 }}>
         {visible.map((c) => (
-          <div key={c.id} style={{ background: "#fff", borderRadius: 12, padding: 16, display: "flex", alignItems: "center", gap: 16, boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
+          <div
+            key={c.id}
+            style={{
+              background: c.driveConfirmed ? "#f4faf5" : "#fff",
+              border: c.driveConfirmed ? "1px solid #bfe3c6" : "1px solid transparent",
+              borderRadius: 12,
+              padding: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              boxShadow: "0 2px 10px rgba(39,33,77,0.05)",
+            }}
+          >
             <div
               style={{
                 fontSize: 12,
@@ -123,6 +127,16 @@ export default function DriveReviewPage() {
                   ? `Referred by Dr. ${c.referringDoctor.name} (clinic ${c.referringDoctor.clinic_code})`
                   : "No referring doctor on file"}
               </div>
+              {c.driveConfirmed && (
+                <div style={{ fontSize: 11, color: "#1e7a3c", fontWeight: 700, marginTop: 4 }}>
+                  ✓ Confirmed - this folder sits inside {c.referringDoctor?.name}'s own Drive folder
+                </div>
+              )}
+              {c.parentLookupFailed && (
+                <div style={{ fontSize: 11, color: "#a97c00", marginTop: 4 }}>
+                  Could not check Drive folder location - review manually
+                </div>
+              )}
             </div>
             <div style={{ flex: 1 }}>
               <a href={`https://drive.google.com/drive/folders/${c.drive_folder_id}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: theme.gold, textDecoration: "none" }}>
