@@ -5,6 +5,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
+import { formatPhone } from "../../../lib/formatPhone";
 
 export default function DoctorsPage() {
   const { isAdmin } = usePermissions();
@@ -135,7 +136,7 @@ export default function DoctorsPage() {
             </div>
             <div style={{ fontSize: 12, color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{d.clinic_code}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.clinic_name}</div>
-            <div style={{ fontSize: 13, color: theme.gray }}>{d.phone}</div>
+            <div style={{ fontSize: 13, color: theme.gray }}>{formatPhone(d.phone)}</div>
             {isAdmin && (
               <button
                 onClick={(e) => handleLoginAs(e, d)}
