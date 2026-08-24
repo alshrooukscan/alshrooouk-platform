@@ -5,34 +5,53 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { usePermissions } from "../lib/usePermissions";
+import {
+  LayoutDashboard,
+  ScanLine,
+  User,
+  Stethoscope,
+  Wallet,
+  Handshake,
+  Boxes,
+  Smile,
+  Package,
+  Users,
+  Settings as SettingsIcon,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+} from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
 // (Scan, Stock) with its own sub-items indented beneath it - not clickable
 // itself, no single page represents "all of Scan" or "all of Stock".
+// Icons are real components chosen to match each label's actual meaning
+// (a person for Patient, a stethoscope for Doctor, a wallet for Cash Expenses)
+// rather than generic shapes.
 const NAV = [
-  { type: "link", href: "/dashboard", label: "Dashboard", icon: "\u25A6", key: "dashboard" },
+  { type: "link", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, key: "dashboard" },
   {
     type: "group",
     label: "Scan",
-    icon: "\u25C9",
+    icon: ScanLine,
     items: [
-      { href: "/dashboard/patients", label: "Patient", icon: "\u25CB", key: "patients" },
-      { href: "/dashboard/doctors", label: "Doctor", icon: "\u2695", key: "doctors" },
-      { href: "/dashboard/cash-expenses", label: "Cash Expenses", icon: "\u26AA", key: "cash_expenses" },
-      { href: "/dashboard/vendors", label: "External Vendors", icon: "\u2709", key: "vendors" },
+      { href: "/dashboard/patients", label: "Patient", icon: User, key: "patients" },
+      { href: "/dashboard/doctors", label: "Doctor", icon: Stethoscope, key: "doctors" },
+      { href: "/dashboard/cash-expenses", label: "Cash Expenses", icon: Wallet, key: "cash_expenses" },
+      { href: "/dashboard/vendors", label: "External Vendors", icon: Handshake, key: "vendors" },
     ],
   },
   {
     type: "group",
     label: "Stock",
-    icon: "\u25A4",
+    icon: Boxes,
     items: [
-      { href: "/dashboard/stock?category=dental", label: "Dental Stock", icon: "\u25A4", key: "stock" },
-      { href: "/dashboard/stock?category=el3awama", label: "El3awama Stock", icon: "\u25A4", key: "stock" },
+      { href: "/dashboard/stock?category=dental", label: "Dental Stock", icon: Smile, key: "stock" },
+      { href: "/dashboard/stock?category=el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
     ],
   },
-  { type: "link", href: "/dashboard/hr", label: "HR", icon: "\u25A3", key: "hr" },
-  { type: "link", href: "/dashboard/settings", label: "Settings", icon: "\u2699", key: "settings" },
+  { type: "link", href: "/dashboard/hr", label: "HR", icon: Users, key: "hr" },
+  { type: "link", href: "/dashboard/settings", label: "Settings", icon: SettingsIcon, key: "settings" },
 ];
 
 export default function Sidebar() {
@@ -131,7 +150,7 @@ export default function Sidebar() {
             zIndex: 2,
           }}
         >
-          {collapsed ? "\u203A" : "\u2039"}
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       )}
 
@@ -168,7 +187,7 @@ export default function Sidebar() {
                     textTransform: "uppercase",
                   }}
                 >
-                  <span>{item.icon}</span>
+                  <item.icon size={13} strokeWidth={2.5} />
                   {item.label}
                 </div>
               )}
@@ -199,7 +218,11 @@ export default function Sidebar() {
           width: collapsed ? 40 : "100%",
         }}
       >
-        {collapsed ? "\u23FB" : "Log Out"}
+        {collapsed ? <LogOut size={16} /> : (
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <LogOut size={14} /> Log Out
+          </span>
+        )}
       </button>
     </aside>
   );
@@ -226,7 +249,7 @@ function NavLink({ item, active, collapsed, indent }) {
         fontSize: collapsed ? 18 : 13,
       }}
     >
-      <span>{item.icon}</span>
+      <item.icon size={collapsed ? 20 : 16} strokeWidth={2} />
       {!collapsed && item.label}
     </Link>
   );
