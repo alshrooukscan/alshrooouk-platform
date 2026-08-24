@@ -47,7 +47,7 @@ export default function PurchaseOrdersPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <p style={{ fontSize: 12, color: theme.gray }}>
-            <Link href="/dashboard/stock" style={{ color: theme.gray }}>Stock</Link> &gt; Purchase Orders
+            <Link href="/dashboard/stock/dental" style={{ color: theme.gray }}>Inventory Management</Link> &gt; Purchase Orders
           </p>
           <h1 style={{ color: theme.navy, margin: "4px 0" }}>Purchase Orders</h1>
           <p style={{ color: theme.gray, margin: 0 }}>

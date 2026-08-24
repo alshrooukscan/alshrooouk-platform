@@ -46,8 +46,8 @@ const NAV = [
     label: "Inventory Management",
     icon: Boxes,
     items: [
-      { href: "/dashboard/stock?category=dental", label: "Dental Stock", icon: Smile, key: "stock" },
-      { href: "/dashboard/stock?category=el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
+      { href: "/dashboard/stock/dental", label: "Dental Stock", icon: Smile, key: "stock" },
+      { href: "/dashboard/stock/el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
     ],
   },
   { type: "link", href: "/dashboard/hr", label: "Human Resources Management", icon: Users, key: "hr" },
