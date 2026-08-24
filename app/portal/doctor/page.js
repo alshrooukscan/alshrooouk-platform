@@ -23,12 +23,12 @@ export default function DoctorPortalPage() {
         setData(d);
         setLoading(false);
       })
-      .catch(() => router.replace("/portal/login"));
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   async function handleLogout() {
     await fetch("/api/portal/logout", { method: "POST" });
-    router.push("/portal/login");
+    router.push("/login");
   }
 
   async function toggleFiles(patientId) {

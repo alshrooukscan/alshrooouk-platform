@@ -4,6 +4,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 
+// The one and only login page. Staff (Supabase Auth), and patients/doctors/
+// employees (the custom portal username/password system) are two genuinely
+// different backends, but everyone should only ever see ONE login link and
+// ONE form - this tries staff auth first, and falls back to the portal
+// system if that doesn't match, routing to the right place either way.
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,13 +21,26 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
+
+    const { error: staffError } = await supabase.auth.signInWithPassword({ email, password });
+    if (!staffError) {
+      setLoading(false);
+      router.push("/dashboard");
       return;
     }
-    router.push("/dashboard");
+
+    const res = await fetch("/api/portal/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: email, password }),
+    });
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) {
+      setError("Invalid username or password");
+      return;
+    }
+    router.push(`/portal/${data.role}`);
   }
 
   return (
@@ -33,6 +51,7 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         background: theme.navyDark,
+        padding: 16,
       }}
     >
       <form
@@ -47,7 +66,8 @@ export default function LoginPage() {
       >
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <img src="/logo-full.png" alt="Al Shrooouk Scan & Lab" style={{ height: 90, width: "auto", margin: "0 auto 8px" }} />
-          <h1 style={{ fontSize: 20, color: theme.navy, margin: 0 }}>Staff Portal</h1>
+          <h1 style={{ fontSize: 20, color: theme.navy, margin: "8px 0 4px" }}>Log In</h1>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>Staff, patients, doctors, and employees all log in here.</p>
         </div>
 
         <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>Email or Username</label>
@@ -56,6 +76,7 @@ export default function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          autoFocus
           style={inputStyle}
         />
 

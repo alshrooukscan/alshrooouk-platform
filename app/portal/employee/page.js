@@ -21,7 +21,7 @@ export default function EmployeePortalPage() {
   async function load() {
     const r = await fetch("/api/portal/employee/data");
     if (!r.ok) {
-      router.replace("/portal/login");
+      router.replace("/login");
       return;
     }
     setData(await r.json());
@@ -30,7 +30,7 @@ export default function EmployeePortalPage() {
 
   async function handleLogout() {
     await fetch("/api/portal/logout", { method: "POST" });
-    router.push("/portal/login");
+    router.push("/login");
   }
 
   async function handleOpenDashboard() {

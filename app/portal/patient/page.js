@@ -19,12 +19,12 @@ export default function PatientPortalPage() {
         setData(d);
         setLoading(false);
       })
-      .catch(() => router.replace("/portal/login"));
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   async function handleLogout() {
     await fetch("/api/portal/logout", { method: "POST" });
-    router.push("/portal/login");
+    router.push("/login");
   }
 
   if (loading) return <Loading />;
@@ -41,6 +41,7 @@ export default function PatientPortalPage() {
           <div key={v.id} style={cardStyle}>
             <div style={{ fontWeight: 700, color: theme.navy }}>{(v.scan_types || []).join(", ")}</div>
             <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{v.exam_date} &middot; {v.branches?.name}</div>
+            <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>Referred by: {v.doctors?.name || "Walk-in, no referring doctor"}</div>
             <span
               style={{
                 display: "inline-block",

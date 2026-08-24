@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  ExternalLink,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -72,9 +73,10 @@ export default function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { can, profile, loading } = usePermissions();
+  const { can, profile, loading, linkedEmployeeId } = usePermissions();
   const [isNarrowScreen, setIsNarrowScreen] = useState(false);
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
+  const [switchingPortal, setSwitchingPortal] = useState(false);
 
   useEffect(() => {
     function check() {
@@ -98,6 +100,21 @@ export default function Sidebar() {
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/login");
+  }
+
+  async function handleOpenEmployeeDashboard() {
+    setSwitchingPortal(true);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/staff/employee-portal-link", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.session?.access_token}` },
+    });
+    setSwitchingPortal(false);
+    if (!res.ok) {
+      alert("Could not open your employee dashboard.");
+      return;
+    }
+    window.open("/portal/employee", "_blank");
   }
 
   const collapsed = isNarrowScreen || manuallyCollapsed;
@@ -214,9 +231,51 @@ export default function Sidebar() {
       </nav>
 
       {profile && !collapsed && (
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 8, paddingLeft: 4 }}>
-          {profile.name} &middot; {profile.role}
+        <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{profile.name}</div>
+          <div
+            style={{
+              display: "inline-block",
+              marginTop: 4,
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: profile.role === "admin" ? theme.gold : "rgba(255,255,255,0.15)",
+              color: profile.role === "admin" ? theme.navy : "#fff",
+            }}
+          >
+            {profile.role}
+          </div>
         </div>
+      )}
+      {linkedEmployeeId && !collapsed && (
+        <button
+          onClick={handleOpenEmployeeDashboard}
+          disabled={switchingPortal}
+          title="Open your own employee portal in a new tab"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.2)",
+            color: "#fff",
+            borderRadius: 8,
+            padding: "9px 12px",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+            width: "100%",
+            marginBottom: 8,
+          }}
+        >
+          <ExternalLink size={13} />
+          {switchingPortal ? "Opening..." : "Employee Dashboard"}
+        </button>
       )}
       <button
         onClick={handleLogout}

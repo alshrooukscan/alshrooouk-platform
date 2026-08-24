@@ -13,6 +13,7 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   async function handleGenerate() {
     if (!usernameDraft) {
@@ -25,6 +26,7 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
       const pwd = await onGenerate(usernameDraft);
       if (!pwd) throw new Error("Could not generate credentials.");
       setResult({ username: usernameDraft, password: pwd });
+      setConfirmingReset(false);
     } catch (e) {
       setError(e.message || "Failed to generate credentials.");
     }
@@ -75,14 +77,34 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
             </button>
           </div>
         </div>
+      ) : hasAccount && confirmingReset ? (
+        <div style={{ background: "#fff8e1", borderRadius: 8, padding: 16 }}>
+          <p style={{ fontSize: 13, color: "#a97c00", fontWeight: 700, margin: "0 0 4px" }}>
+            Reset this password now?
+          </p>
+          <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 14px" }}>
+            Any password shared with {username} earlier - including one from an old screenshot or message - will stop working immediately.
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setConfirmingReset(false)}
+              style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 }}
+            >
+              Cancel
+            </button>
+            <button onClick={handleGenerate} disabled={busy} style={btnStyle}>
+              {busy ? "Resetting..." : "Yes, Reset Now"}
+            </button>
+          </div>
+        </div>
       ) : hasAccount ? (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12, color: theme.gray }}>Username</div>
             <div style={{ fontSize: 15, color: theme.navy, fontWeight: 700 }}>{username}</div>
           </div>
-          <button onClick={handleGenerate} disabled={busy} style={btnStyle}>
-            {busy ? "Resetting..." : "Reset Password"}
+          <button onClick={() => setConfirmingReset(true)} disabled={busy} style={btnStyle}>
+            Reset Password
           </button>
         </div>
       ) : (

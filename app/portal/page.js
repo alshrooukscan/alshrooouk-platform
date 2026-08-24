@@ -11,7 +11,7 @@ export default function PortalRoot() {
         if (data?.authenticated) {
           router.replace(`/portal/${data.role}`);
         } else {
-          router.replace("/portal/login");
+          router.replace("/login");
         }
       });
   }, [router]);
