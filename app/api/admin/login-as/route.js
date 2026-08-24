@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { signSession } from "../../../../lib/session";
 
@@ -32,7 +33,20 @@ export async function POST(req) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
 
-      const token = signSession({ role: type, id: record.id, name: record.name, impersonatedBy: admin.adminName });
+      const payload = { role: type, id: record.id, name: record.name, impersonatedBy: admin.adminName };
+
+      // Employee portal sessions are single-active-session enforced (see lib/session.js
+      // verifyEmployeeSession) - every real login writes a fresh sessionId to
+      // employees.current_session_id and every request checks it still matches.
+      // Login-as has to do the same thing, or the impersonated session gets rejected
+      // on its very first API call and bounces straight back to the login page.
+      if (type === "employee") {
+        const sessionId = randomUUID();
+        await supabaseAdmin.from("employees").update({ current_session_id: sessionId }).eq("id", record.id);
+        payload.sessionId = sessionId;
+      }
+
+      const token = signSession(payload);
       const res = NextResponse.json({ ok: true, role: type, name: record.name, redirect: `/portal/${type}` });
       res.cookies.set("portal_session", token, {
         httpOnly: true,

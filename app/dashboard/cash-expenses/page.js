@@ -228,7 +228,7 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
 
         <FieldLabel>Branch (optional)</FieldLabel>
         <select value={branchId} onChange={(e) => setBranchId(e.target.value)} style={inp}>
-          <option value="">\u2014</option>
+          <option value="">Select branch...</option>
           {branches.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
@@ -236,7 +236,7 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
 
         <FieldLabel>{isAdvance ? "Employee (required)" : "Employee (optional)"}</FieldLabel>
         <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={inp}>
-          <option value="">\u2014</option>
+          <option value="">Select employee...</option>
           {employees.map((emp) => (
             <option key={emp.id} value={emp.id}>{emp.name}</option>
           ))}

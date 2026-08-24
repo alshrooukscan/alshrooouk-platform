@@ -7,6 +7,7 @@ import MonthlySchedule from "../../../../components/MonthlySchedule";
 import { formatMoney } from "../../../../lib/format";
 import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 import { formatPhone } from "../../../../lib/formatPhone";
+import { usePermissions } from "../../../../lib/usePermissions";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODULES = [
@@ -20,7 +21,12 @@ const MODULES = [
 
 export default function EmployeeProfilePage() {
   const { id } = useParams();
+  const { isAdmin } = usePermissions();
   const [employee, setEmployee] = useState(null);
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoDraft, setInfoDraft] = useState(null);
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [infoError, setInfoError] = useState("");
   const [payslip, setPayslip] = useState(null);
   const [events, setEvents] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -129,6 +135,47 @@ export default function EmployeeProfilePage() {
     load();
   }
 
+  function startEditInfo() {
+    setInfoDraft({
+      name: employee.name || "",
+      phone: employee.phone || "",
+      national_id: employee.national_id || "",
+      role: employee.role || "",
+      fixed_salary: employee.fixed_salary ?? "",
+      variable_salary: employee.variable_salary ?? "",
+      hourly_rate: employee.hourly_rate ?? "",
+    });
+    setInfoError("");
+    setEditingInfo(true);
+  }
+
+  async function handleSaveInfo() {
+    if (!infoDraft.name) {
+      setInfoError("Name is required.");
+      return;
+    }
+    setSavingInfo(true);
+    const { error } = await supabase
+      .from("employees")
+      .update({
+        name: infoDraft.name,
+        phone: formatPhone(infoDraft.phone),
+        national_id: infoDraft.national_id || null,
+        role: infoDraft.role || null,
+        fixed_salary: infoDraft.fixed_salary === "" ? null : Number(infoDraft.fixed_salary),
+        variable_salary: infoDraft.variable_salary === "" ? null : Number(infoDraft.variable_salary),
+        hourly_rate: infoDraft.hourly_rate === "" ? null : Number(infoDraft.hourly_rate),
+      })
+      .eq("id", id);
+    setSavingInfo(false);
+    if (error) {
+      setInfoError(error.message);
+      return;
+    }
+    setEditingInfo(false);
+    load();
+  }
+
   async function handlePhotoPicked(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -196,19 +243,75 @@ export default function EmployeeProfilePage() {
   return (
     <div>
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h1 style={{ color: theme.navy, margin: 0 }}>{employee.name}</h1>
-            <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
-            <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
-              {formatPhone(employee.phone)} {employee.national_id ? `· ID ${employee.national_id}` : ""}
-              {employee.hourly_rate ? ` · ${formatMoney(employee.hourly_rate, { decimals: 2 })} EGP/hr` : ""}
-            </p>
+        {!editingInfo ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h1 style={{ color: theme.navy, margin: 0 }}>{employee.name}</h1>
+              <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
+              <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
+                {formatPhone(employee.phone)} {employee.national_id ? `· ID ${employee.national_id}` : ""}
+                {employee.hourly_rate ? ` · ${formatMoney(employee.hourly_rate, { decimals: 2 })} EGP/hr` : ""}
+              </p>
+              <p style={{ color: theme.gray, margin: "4px 0 0", fontSize: 13 }}>
+                Fixed: {formatMoney(employee.fixed_salary)} EGP &middot; Variable: {formatMoney(employee.variable_salary)} EGP
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {isAdmin && (
+                <button onClick={startEditInfo} style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                  Edit
+                </button>
+              )}
+              <button onClick={handleGeneratePayslip} disabled={generating} style={primaryBtn}>
+                {generating ? "Generating..." : "Generate Payslip"}
+              </button>
+            </div>
           </div>
-          <button onClick={handleGeneratePayslip} disabled={generating} style={primaryBtn}>
-            {generating ? "Generating..." : "Generate Payslip"}
-          </button>
-        </div>
+        ) : (
+          <div>
+            <h3 style={{ color: theme.navy, marginTop: 0 }}>Edit Employee Info</h3>
+            <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Admin only.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={editLabel}>Name</label>
+                <input style={editInp} value={infoDraft.name} onChange={(e) => setInfoDraft({ ...infoDraft, name: e.target.value })} />
+              </div>
+              <div>
+                <label style={editLabel}>Role</label>
+                <input style={editInp} value={infoDraft.role} onChange={(e) => setInfoDraft({ ...infoDraft, role: e.target.value })} />
+              </div>
+              <div>
+                <label style={editLabel}>Phone</label>
+                <input style={editInp} value={infoDraft.phone} onChange={(e) => setInfoDraft({ ...infoDraft, phone: e.target.value })} placeholder="+20 1X XXX XXXX" />
+              </div>
+              <div>
+                <label style={editLabel}>National ID</label>
+                <input style={editInp} value={infoDraft.national_id} onChange={(e) => setInfoDraft({ ...infoDraft, national_id: e.target.value })} />
+              </div>
+              <div>
+                <label style={editLabel}>Fixed Salary (EGP)</label>
+                <input style={editInp} type="number" value={infoDraft.fixed_salary} onChange={(e) => setInfoDraft({ ...infoDraft, fixed_salary: e.target.value })} />
+              </div>
+              <div>
+                <label style={editLabel}>Variable Salary (EGP)</label>
+                <input style={editInp} type="number" value={infoDraft.variable_salary} onChange={(e) => setInfoDraft({ ...infoDraft, variable_salary: e.target.value })} />
+              </div>
+              <div>
+                <label style={editLabel}>Hourly Rate (EGP)</label>
+                <input style={editInp} type="number" value={infoDraft.hourly_rate} onChange={(e) => setInfoDraft({ ...infoDraft, hourly_rate: e.target.value })} />
+              </div>
+            </div>
+            {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setEditingInfo(false)} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button onClick={handleSaveInfo} disabled={savingInfo} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                {savingInfo ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>
@@ -398,3 +501,5 @@ function Row({ label, value, negative }) {
   );
 }
 const primaryBtn = { padding: "12px 24px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" };
+const editLabel = { display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 };
+const editInp = { width: "100%", padding: "9px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" };
