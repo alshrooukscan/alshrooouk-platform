@@ -1,24 +1,43 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { usePermissions } from "../lib/usePermissions";
 
+// A "link" item is a single nav entry. A "group" item is a section header
+// (Scan, Stock) with its own sub-items indented beneath it - not clickable
+// itself, no single page represents "all of Scan" or "all of Stock".
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: "\u25A6", key: "dashboard" },
-  { href: "/dashboard/patients", label: "Patients", icon: "\u25CB", key: "patients" },
-  { href: "/dashboard/doctors", label: "Doctors", icon: "\u2695", key: "doctors" },
-  { href: "/dashboard/stock", label: "Stock", icon: "\u25A4", key: "stock" },
-  { href: "/dashboard/hr", label: "HR", icon: "\u25A3", key: "hr" },
-  { href: "/dashboard/cash-expenses", label: "Cash Expenses", icon: "\u26AA", key: "cash_expenses" },
-  { href: "/dashboard/vendors", label: "External Reports", icon: "\u2709", key: "vendors" },
-  { href: "/dashboard/settings", label: "Settings", icon: "\u2699", key: "settings" },
+  { type: "link", href: "/dashboard", label: "Dashboard", icon: "\u25A6", key: "dashboard" },
+  {
+    type: "group",
+    label: "Scan",
+    icon: "\u25C9",
+    items: [
+      { href: "/dashboard/patients", label: "Patient", icon: "\u25CB", key: "patients" },
+      { href: "/dashboard/doctors", label: "Doctor", icon: "\u2695", key: "doctors" },
+      { href: "/dashboard/cash-expenses", label: "Cash Expenses", icon: "\u26AA", key: "cash_expenses" },
+      { href: "/dashboard/vendors", label: "External Vendors", icon: "\u2709", key: "vendors" },
+    ],
+  },
+  {
+    type: "group",
+    label: "Stock",
+    icon: "\u25A4",
+    items: [
+      { href: "/dashboard/stock?category=dental", label: "Dental Stock", icon: "\u25A4", key: "stock" },
+      { href: "/dashboard/stock?category=el3awama", label: "El3awama Stock", icon: "\u25A4", key: "stock" },
+    ],
+  },
+  { type: "link", href: "/dashboard/hr", label: "HR", icon: "\u25A3", key: "hr" },
+  { type: "link", href: "/dashboard/settings", label: "Settings", icon: "\u2699", key: "settings" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { can, profile, loading } = usePermissions();
   const [isNarrowScreen, setIsNarrowScreen] = useState(false);
@@ -49,7 +68,28 @@ export default function Sidebar() {
   }
 
   const collapsed = isNarrowScreen || manuallyCollapsed;
-  const visibleNav = NAV.filter((item) => loading || can(item.key));
+
+  // For a link: visible if permitted. For a group: visible if at least one
+  // child is permitted, and only the permitted children are shown.
+  const visibleNav = NAV.map((item) => {
+    if (item.type === "link") {
+      return loading || can(item.key) ? item : null;
+    }
+    const visibleItems = item.items.filter((child) => loading || can(child.key));
+    return visibleItems.length > 0 ? { ...item, items: visibleItems } : null;
+  }).filter(Boolean);
+
+  function isChildActive(child) {
+    // /dashboard/stock?category=dental should be "active" when pathname matches
+    // and, if the link itself carries a category, the current querystring agrees.
+    // Reads via useSearchParams() so this actually updates on client navigation
+    // between two links that share the same path but differ only in query string.
+    const [childPath, childQuery] = child.href.split("?");
+    if (pathname !== childPath) return false;
+    if (!childQuery) return true;
+    const [qKey, qVal] = childQuery.split("=");
+    return searchParams.get(qKey) === qVal;
+  }
 
   return (
     <aside
@@ -107,32 +147,35 @@ export default function Sidebar() {
 
       <nav style={{ flex: 1, width: "100%" }}>
         {visibleNav.map((item) => {
-          const active = pathname === item.href;
+          if (item.type === "link") {
+            const active = pathname === item.href;
+            return <NavLink key={item.href} item={item} active={active} collapsed={collapsed} />;
+          }
+          // Group: a non-clickable section label, followed by its indented children.
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={item.label}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: collapsed ? "center" : "flex-start",
-                gap: 10,
-                padding: collapsed ? "12px 0" : "10px 12px",
-                marginBottom: 4,
-                borderRadius: 8,
-                textDecoration: "none",
-                color: active ? theme.navy : "#e8e6f0",
-                background: active
-                  ? `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`
-                  : "transparent",
-                fontWeight: active ? 700 : 500,
-                fontSize: collapsed ? 18 : 14,
-              }}
-            >
-              <span>{item.icon}</span>
-              {!collapsed && item.label}
-            </Link>
+            <div key={item.label} style={{ marginBottom: 4 }}>
+              {!collapsed && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 12px 4px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: 1,
+                    color: "rgba(255,255,255,0.45)",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <span>{item.icon}</span>
+                  {item.label}
+                </div>
+              )}
+              {item.items.map((child) => (
+                <NavLink key={child.href} item={child} active={isChildActive(child)} collapsed={collapsed} indent={!collapsed} />
+              ))}
+            </div>
           );
         })}
       </nav>
@@ -159,5 +202,32 @@ export default function Sidebar() {
         {collapsed ? "\u23FB" : "Log Out"}
       </button>
     </aside>
+  );
+}
+
+function NavLink({ item, active, collapsed, indent }) {
+  return (
+    <Link
+      href={item.href}
+      title={item.label}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: collapsed ? "center" : "flex-start",
+        gap: 10,
+        padding: collapsed ? "12px 0" : "9px 12px",
+        marginBottom: 3,
+        marginLeft: indent ? 10 : 0,
+        borderRadius: 8,
+        textDecoration: "none",
+        color: active ? theme.navy : "#e8e6f0",
+        background: active ? `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})` : "transparent",
+        fontWeight: active ? 700 : 500,
+        fontSize: collapsed ? 18 : 13,
+      }}
+    >
+      <span>{item.icon}</span>
+      {!collapsed && item.label}
+    </Link>
   );
 }

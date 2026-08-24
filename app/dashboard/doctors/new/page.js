@@ -13,6 +13,7 @@ export default function NewDoctorPage() {
   const [form, setForm] = useState({
     name: "",
     phone: "",
+    phone_2: "",
     email: "",
     clinic_name: "",
     clinic_code: "",
@@ -52,6 +53,7 @@ export default function NewDoctorPage() {
       .insert({
         name: form.name,
         phone: formatPhone(form.phone),
+        phone_2: form.phone_2 ? formatPhone(form.phone_2) : null,
         email: form.email || null,
         clinic_name: form.clinic_name,
         clinic_code: form.clinic_code,
@@ -96,10 +98,13 @@ export default function NewDoctorPage() {
             <Field label="Primary Contact Number">
               <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </Field>
-            <Field label="Email Address">
-              <input style={inp} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="doctor@clinic.com" />
+            <Field label="Second Contact Number (optional)">
+              <input style={inp} value={form.phone_2} onChange={(e) => setForm({ ...form, phone_2: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </Field>
           </Row>
+          <Field label="Email Address">
+            <input style={inp} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="doctor@clinic.com" />
+          </Field>
         </Section>
 
         <Section title="Practice Information">

@@ -23,7 +23,7 @@ export default function DoctorsPage() {
     setLoading(true);
     const { data } = await supabase
       .from("doctors")
-      .select("id, name, clinic_name, clinic_code, phone, drive_folder_id")
+      .select("id, name, clinic_name, clinic_code, phone, phone_2, drive_folder_id")
       .order("created_at", { ascending: false });
     setDoctors(data || []);
 
@@ -53,7 +53,8 @@ export default function DoctorsPage() {
       d.name?.toLowerCase().includes(q) ||
       d.clinic_code?.toLowerCase().includes(q) ||
       d.clinic_name?.toLowerCase().includes(q) ||
-      (qDigits && d.phone?.replace(/\D/g, "").includes(qDigits))
+      (qDigits && d.phone?.replace(/\D/g, "").includes(qDigits)) ||
+      (qDigits && d.phone_2?.replace(/\D/g, "").includes(qDigits))
     );
   });
 
@@ -140,7 +141,10 @@ export default function DoctorsPage() {
             </div>
             <div style={{ fontSize: 12, color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{d.clinic_code}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.clinic_name}</div>
-            <div style={{ fontSize: 13, color: theme.gray }}>{formatPhone(d.phone)}</div>
+            <div style={{ fontSize: 13, color: theme.gray }}>
+              {formatPhone(d.phone)}
+              {d.phone_2 && <span> · {formatPhone(d.phone_2)}</span>}
+            </div>
             {isAdmin && (
               <button
                 onClick={(e) => handleLoginAs(e, d)}

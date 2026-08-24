@@ -1,19 +1,28 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { formatMoney } from "../../../lib/format";
 import { exportToCsv } from "../../../lib/exportCsv";
 
 export default function StockPage() {
-  const [category, setCategory] = useState("dental");
+  const searchParams = useSearchParams();
+  const initialCategory = searchParams.get("category") === "el3awama" ? "el3awama" : "dental";
+  const [category, setCategory] = useState(initialCategory);
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAddItem, setShowAddItem] = useState(false);
   const [showTxn, setShowTxn] = useState(null); // item being transacted on
   const [showCount, setShowCount] = useState(null); // item being counted
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("category") === "el3awama" ? "el3awama" : "dental";
+    if (fromUrl !== category) setCategory(fromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     load();

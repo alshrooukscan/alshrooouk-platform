@@ -107,7 +107,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, assigned_employee_id, assigned_at, doctors(name, phone, email, clinic_code), branches(name), invoices(id), employees(name)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, assigned_employee_id, assigned_at, doctors(name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees(name)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -154,6 +154,7 @@ export default function PatientProfilePage() {
       scanTypes: (visit.scan_types || []).join(", "),
       doctorName: visit.doctors?.name,
       doctorPhone: visit.doctors?.phone,
+      doctorPhone2: visit.doctors?.phone_2,
       doctorEmail: visit.doctors?.email,
       clinicCode: visit.doctors?.clinic_code,
     };
