@@ -5,6 +5,7 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { logActivity } from "../../../lib/activityLog";
 import { vendorWhatsAppLink } from "../../../lib/whatsapp";
+import { formatPhone } from "../../../lib/formatPhone";
 
 const STATUS_LABEL = { assigned: "Assigned", in_progress: "In Progress", done: "Done" };
 const STATUS_COLOR = {
@@ -118,7 +119,10 @@ export default function VendorsPage() {
                 {STATUS_LABEL[r.status]}
               </span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{r.vendors?.name || "Unknown vendor"}</div>
+                <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
+                  {r.vendors?.name || "Unknown vendor"}
+                  {r.vendors?.mobile && <span style={{ fontWeight: 400, color: theme.gray, fontSize: 12 }}> · {formatPhone(r.vendors.mobile)}</span>}
+                </div>
                 <div style={{ fontSize: 13, color: theme.gray }}>{r.description}</div>
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
                   {r.requested_date} &middot; Assigned to {r.employees?.name || "Unassigned"}
@@ -190,7 +194,7 @@ function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
         setSaving(false);
         return;
       }
-      const { data: newVendor, error: vErr } = await supabase.from("vendors").insert({ name: newVendorName, mobile: newVendorMobile || null }).select("id").single();
+      const { data: newVendor, error: vErr } = await supabase.from("vendors").insert({ name: newVendorName, mobile: newVendorMobile ? formatPhone(newVendorMobile) : null }).select("id").single();
       if (vErr) {
         setError(vErr.message);
         setSaving(false);

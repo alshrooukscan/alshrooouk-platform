@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
+import { formatPhone } from "../../../../lib/formatPhone";
 
 export default function NewEmployeePage() {
   const router = useRouter();
@@ -88,7 +89,7 @@ export default function NewEmployeePage() {
         hr_id: hrId,
         name: form.name,
         national_id: form.national_id || null,
-        phone: form.phone,
+        phone: formatPhone(form.phone),
         role: form.role,
         fixed_salary: form.fixed_salary || 0,
         variable_salary: form.variable_salary || 0,

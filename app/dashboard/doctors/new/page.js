@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatPhone } from "../../../../lib/formatPhone";
 
 export default function NewDoctorPage() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function NewDoctorPage() {
       .from("doctors")
       .insert({
         name: form.name,
-        phone: form.phone,
+        phone: formatPhone(form.phone),
         email: form.email || null,
         clinic_name: form.clinic_name,
         clinic_code: form.clinic_code,

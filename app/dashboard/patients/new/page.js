@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
+import { formatPhone } from "../../../../lib/formatPhone";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -120,8 +121,9 @@ export default function NewPatientPage() {
       return;
     }
     setSaving(true);
+    const normalizedMobile = formatPhone(form.mobile);
 
-    const { data: existing } = await supabase.from("patients").select("id").eq("mobile", form.mobile).maybeSingle();
+    const { data: existing } = await supabase.from("patients").select("id").eq("mobile", normalizedMobile).maybeSingle();
 
     let patientId = existing?.id;
     if (!patientId) {
@@ -129,7 +131,7 @@ export default function NewPatientPage() {
         .from("patients")
         .insert({
           name: form.name,
-          mobile: form.mobile,
+          mobile: normalizedMobile,
           dob: form.dob || null,
           email: form.email || null,
           preferred_contact: form.preferred_contact,
@@ -173,7 +175,7 @@ export default function NewPatientPage() {
     }
 
     if (!existing) {
-      const username = form.mobile.replace(/\D/g, "");
+      const username = normalizedMobile.replace(/\D/g, "");
       await supabase.rpc("create_patient_credentials", { p_patient_id: patientId, p_username: username });
     }
 

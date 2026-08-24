@@ -6,6 +6,7 @@ import { theme } from "../../../../lib/theme";
 import MonthlySchedule from "../../../../components/MonthlySchedule";
 import { formatMoney } from "../../../../lib/format";
 import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
+import { formatPhone } from "../../../../lib/formatPhone";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODULES = [
@@ -200,7 +201,7 @@ export default function EmployeeProfilePage() {
             <h1 style={{ color: theme.navy, margin: 0 }}>{employee.name}</h1>
             <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
             <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
-              {employee.phone} {employee.national_id ? `· ID ${employee.national_id}` : ""}
+              {formatPhone(employee.phone)} {employee.national_id ? `· ID ${employee.national_id}` : ""}
               {employee.hourly_rate ? ` · ${formatMoney(employee.hourly_rate, { decimals: 2 })} EGP/hr` : ""}
             </p>
           </div>
