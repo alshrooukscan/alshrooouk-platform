@@ -4,17 +4,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
-
-const MODULES = [
-  { key: "dashboard", label: "Dashboard / P&L" },
-  { key: "patients", label: "Patients" },
-  { key: "doctors", label: "Doctors" },
-  { key: "stock", label: "Stock" },
-  { key: "hr", label: "HR & Payroll" },
-  { key: "cash_expenses", label: "Cash Expenses" },
-  { key: "vendors", label: "External Reports" },
-  { key: "settings", label: "Settings" },
-];
+import { MODULES } from "../../../lib/modules";
 
 export default function SettingsPage() {
   const { isAdmin, loading: permsLoading } = usePermissions();

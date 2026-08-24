@@ -8,20 +8,12 @@ import { formatMoney } from "../../../../lib/format";
 import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { usePermissions } from "../../../../lib/usePermissions";
+import { MODULES } from "../../../../lib/modules";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MODULES = [
-  { key: "dashboard", label: "Dashboard / P&L" },
-  { key: "patients", label: "Patients" },
-  { key: "doctors", label: "Doctors" },
-  { key: "stock", label: "Stock" },
-  { key: "hr", label: "HR & Payroll" },
-  { key: "settings", label: "Settings" },
-];
-
 export default function EmployeeProfilePage() {
   const { id } = useParams();
   const { isAdmin } = usePermissions();
