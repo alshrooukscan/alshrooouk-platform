@@ -7,8 +7,6 @@ import { formatMoney } from "../../../../lib/format";
 import { exportToCsv } from "../../../../lib/exportCsv";
 
 function monthInputToPeriod(monthValue) {
-  // <input type="month"> gives "YYYY-MM" - convert to the "Month YYYY" string
-  // format generate_payslip() actually stores in payroll_runs.period.
   if (!monthValue) return "";
   const [year, month] = monthValue.split("-").map(Number);
   const d = new Date(year, month - 1, 1);
@@ -36,7 +34,17 @@ export default function PayslipsPage() {
       .select("*, employees(name, hr_id, role)")
       .eq("period", period)
       .order("generated_at", { ascending: false });
-    setPayslips(data || []);
+    // Payroll can be regenerated for the same employee/month (corrections, reruns).
+    // Only the latest generation per employee should show - sorted newest first
+    // above, so the first row seen per employee_id is the one to keep.
+    const seen = new Set();
+    const latestPerEmployee = [];
+    for (const row of data || []) {
+      if (seen.has(row.employee_id)) continue;
+      seen.add(row.employee_id);
+      latestPerEmployee.push(row);
+    }
+    setPayslips(latestPerEmployee);
     setLoading(false);
   }
 
@@ -69,12 +77,13 @@ export default function PayslipsPage() {
                 exportToCsv(
                   `payslips-${period.replace(" ", "-")}.csv`,
                   payslips.map((p) => ({
-                    Employee: p.employees?.name,
                     "HR ID": p.employees?.hr_id,
-                    "Fixed Salary": p.fixed_salary,
-                    "Variable Salary": p.variable_salary,
+                    Name: p.employees?.name,
+                    Title: p.employees?.role || "",
+                    Salary: p.fixed_salary,
                     Deductions: (p.deductions || []).reduce((s, d) => s + Number(d.amount || 0), 0),
-                    "Net Total": p.net_total,
+                    Bonus: p.variable_salary,
+                    "Final Pay": p.net_total,
                   }))
                 )
               }
@@ -107,12 +116,13 @@ export default function PayslipsPage() {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#faf9fb", textAlign: "left" }}>
-              <Th>Employee</Th>
-              <Th>Role</Th>
-              <Th>Fixed</Th>
-              <Th>Variable</Th>
+              <Th>HR ID</Th>
+              <Th>Name</Th>
+              <Th>Title</Th>
+              <Th>Salary</Th>
               <Th>Deductions</Th>
-              <Th>Net Total</Th>
+              <Th>Bonus</Th>
+              <Th>Final Pay</Th>
               <Th></Th>
             </tr>
           </thead>
@@ -121,15 +131,14 @@ export default function PayslipsPage() {
               const deductionTotal = (p.deductions || []).reduce((s, d) => s + Number(d.amount || 0), 0);
               return (
                 <tr key={p.id} style={{ borderTop: "1px solid #f0f0f0" }}>
+                  <Td>{p.employees?.hr_id}</Td>
                   <Td>
                     <Link href={`/dashboard/hr/${p.employee_id}`} style={{ color: theme.navy, fontWeight: 600, textDecoration: "none" }}>
                       {p.employees?.name}
                     </Link>
-                    <div style={{ fontSize: 11, color: theme.gray }}>{p.employees?.hr_id}</div>
                   </Td>
                   <Td>{p.employees?.role || "\u2014"}</Td>
                   <Td>{formatMoney(p.fixed_salary)}</Td>
-                  <Td>{formatMoney(p.variable_salary)}</Td>
                   <Td>
                     {deductionTotal > 0 ? (
                       <span title={(p.deductions || []).map((d) => `${d.name}: ${d.amount}`).join(", ")}>
@@ -139,6 +148,7 @@ export default function PayslipsPage() {
                       "\u2014"
                     )}
                   </Td>
+                  <Td>{formatMoney(p.variable_salary)}</Td>
                   <Td>
                     <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(p.net_total)} EGP</span>
                   </Td>
