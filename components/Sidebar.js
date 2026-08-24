@@ -32,7 +32,7 @@ const NAV = [
   { type: "link", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, key: "dashboard" },
   {
     type: "group",
-    label: "Scan",
+    label: "Scan Center Management",
     icon: ScanLine,
     items: [
       { href: "/dashboard/patients", label: "Patient", icon: User, key: "patients" },
@@ -43,14 +43,14 @@ const NAV = [
   },
   {
     type: "group",
-    label: "Stock",
+    label: "Inventory Management",
     icon: Boxes,
     items: [
       { href: "/dashboard/stock?category=dental", label: "Dental Stock", icon: Smile, key: "stock" },
       { href: "/dashboard/stock?category=el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
     ],
   },
-  { type: "link", href: "/dashboard/hr", label: "HR", icon: Users, key: "hr" },
+  { type: "link", href: "/dashboard/hr", label: "Human Resources Management", icon: Users, key: "hr" },
   { type: "link", href: "/dashboard/settings", label: "Settings", icon: SettingsIcon, key: "settings" },
 ];
 
