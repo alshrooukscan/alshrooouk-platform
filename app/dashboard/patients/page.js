@@ -8,13 +8,18 @@ import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
 
 const PAGE_SIZE = 50;
+// Each stage filter is tri-state: null = All (no filter), true = On (must
+// have this), false = Off (must NOT have this). onLabel/offLabel are the
+// exact words shown on the two active states - offLabel uses natural
+// negation (Unpaid, not "Not Paid") to match how these are actually said.
 const STAGE_LABELS = [
-  { key: "paid", label: "Paid" },
-  { key: "scanned", label: "Scanned" },
-  { key: "raw_data_uploaded", label: "Raw Data Uploaded" },
-  { key: "report_done", label: "Report Done" },
-  { key: "invoice_generated", label: "Invoice Generated" },
+  { key: "paid", onLabel: "Paid", offLabel: "Unpaid" },
+  { key: "scanned", onLabel: "Scanned", offLabel: "Not Scanned" },
+  { key: "raw_data_uploaded", onLabel: "Raw Data Uploaded", offLabel: "Raw Data Not Uploaded" },
+  { key: "report_done", onLabel: "Report Done", offLabel: "Report Not Done" },
+  { key: "invoice_generated", onLabel: "Invoice Generated", offLabel: "Invoice Not Generated" },
 ];
+const EMPTY_STAGE_FILTERS = { paid: null, scanned: null, raw_data_uploaded: null, report_done: null, invoice_generated: null };
 
 export default function PatientsPage() {
   const { isAdmin } = usePermissions();
@@ -23,7 +28,7 @@ export default function PatientsPage() {
   const [dateTo, setDateTo] = useState("");
   const [doctorId, setDoctorId] = useState("");
   const [scanType, setScanType] = useState("");
-  const [stageFilters, setStageFilters] = useState({ paid: false, scanned: false, raw_data_uploaded: false, report_done: false, invoice_generated: false });
+  const [stageFilters, setStageFilters] = useState(EMPTY_STAGE_FILTERS);
   const [doctors, setDoctors] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
   const [results, setResults] = useState([]);
@@ -45,7 +50,7 @@ export default function PatientsPage() {
     search();
   }, [page, mobileQuery, dateFrom, dateTo, doctorId, scanType, stageFilters]);
 
-  const anyStageFilter = Object.values(stageFilters).some(Boolean);
+  const anyStageFilter = Object.values(stageFilters).some((v) => v !== null);
 
   async function search() {
     setLoading(true);
@@ -58,17 +63,38 @@ export default function PatientsPage() {
     let count = 0;
 
     if (hasVisitFilter) {
-      const invoiceJoin = stageFilters.invoice_generated ? "invoices!inner(id)" : "invoices(id)";
-      let vq = supabase.from("visits").select(`patient_id, patients!inner(id, name, mobile, dob, created_at, drive_folder_id), ${invoiceJoin}`, { count: "exact" });
+      // "Invoice Generated" isn't a plain column on visits - it's whether a
+      // matching row exists in invoices. On (true) can use an inner join to
+      // filter directly. Off (false) needs the opposite (visits with NO
+      // matching invoice), which PostgREST can't express as a single embedded
+      // filter, so the set of invoiced visit ids is fetched first and
+      // excluded explicitly.
+      const invoiceJoin = stageFilters.invoice_generated === true ? "invoices!inner(id)" : "invoices(id)";
+      let excludeVisitIds = null;
+      if (stageFilters.invoice_generated === false) {
+        const { data: invoicedRows } = await supabase.from("invoices").select("visit_id").not("visit_id", "is", null);
+        excludeVisitIds = [...new Set((invoicedRows || []).map((r) => r.visit_id))];
+      }
+
+      let vq = supabase.from("visits").select(`id, patient_id, patients!inner(id, name, mobile, dob, created_at, drive_folder_id), ${invoiceJoin}`, { count: "exact" });
       if (dateFrom) vq = vq.gte("exam_date", dateFrom);
       if (dateTo) vq = vq.lte("exam_date", dateTo);
       if (doctorId) vq = vq.eq("doctor_id", doctorId);
       if (scanType) vq = vq.contains("scan_types", [scanType]);
       if (mobileQuery) vq = vq.or(`mobile.ilike.%${mobileQuery}%,name.ilike.%${mobileQuery}%`, { foreignTable: "patients" });
-      if (stageFilters.paid) vq = vq.eq("payment_status", "paid");
-      if (stageFilters.scanned) vq = vq.eq("scanned", true);
-      if (stageFilters.raw_data_uploaded) vq = vq.eq("raw_data_uploaded", true);
-      if (stageFilters.report_done) vq = vq.eq("report_done", true);
+
+      if (stageFilters.paid === true) vq = vq.eq("payment_status", "paid");
+      if (stageFilters.paid === false) vq = vq.or("payment_status.neq.paid,payment_status.is.null");
+      if (stageFilters.scanned === true) vq = vq.eq("scanned", true);
+      if (stageFilters.scanned === false) vq = vq.eq("scanned", false);
+      if (stageFilters.raw_data_uploaded === true) vq = vq.eq("raw_data_uploaded", true);
+      if (stageFilters.raw_data_uploaded === false) vq = vq.eq("raw_data_uploaded", false);
+      if (stageFilters.report_done === true) vq = vq.eq("report_done", true);
+      if (stageFilters.report_done === false) vq = vq.eq("report_done", false);
+      if (excludeVisitIds !== null) {
+        vq = excludeVisitIds.length > 0 ? vq.not("id", "in", `(${excludeVisitIds.join(",")})`) : vq;
+      }
+
       vq = vq.order("exam_date", { ascending: false }).range(from, to);
 
       const { data, count: c } = await vq;
@@ -238,7 +264,7 @@ export default function PatientsPage() {
           <button
             onClick={() => {
               setMobileQuery(""); setDateFrom(""); setDateTo(""); setDoctorId(""); setScanType("");
-              setStageFilters({ paid: false, scanned: false, raw_data_uploaded: false, report_done: false, invoice_generated: false });
+              setStageFilters(EMPTY_STAGE_FILTERS);
               setPage(0);
             }}
             style={{ marginTop: 10, background: "none", border: "none", color: theme.gold, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
@@ -247,26 +273,45 @@ export default function PatientsPage() {
           </button>
         )}
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0f0f0" }}>
-          {STAGE_LABELS.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => resetToFirstPage(() => setStageFilters((prev) => ({ ...prev, [s.key]: !prev[s.key] })))()}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 999,
-                fontSize: 12,
-                border: `1px solid ${stageFilters[s.key] ? theme.gold : "#ddd"}`,
-                background: stageFilters[s.key] ? theme.goldLight : "#fff",
-                color: theme.navy,
-                cursor: "pointer",
-                fontWeight: stageFilters[s.key] ? 700 : 500,
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0f0f0" }}>
+          {STAGE_LABELS.map((s) => {
+            const value = stageFilters[s.key]; // null = All, true = On, false = Off
+            const setValue = (v) => resetToFirstPage(() => setStageFilters((prev) => ({ ...prev, [s.key]: v })))();
+            const segStyle = (active, extra = {}) => ({
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: active ? 700 : 500,
+              border: "none",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              ...extra,
+            });
+            return (
+              <div key={s.key} style={{ display: "inline-flex", borderRadius: 999, border: `1px solid ${value !== null ? theme.gold : "#ddd"}`, overflow: "hidden" }}>
+                <button
+                  type="button"
+                  onClick={() => setValue(false)}
+                  style={segStyle(value === false, { background: value === false ? "#fdecea" : "#fff", color: value === false ? "#ba1a1a" : theme.navy, borderRight: "1px solid #eee" })}
+                >
+                  {s.offLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValue(null)}
+                  style={segStyle(value === null, { background: value === null ? "#f0f0f0" : "#fff", color: theme.gray, borderRight: "1px solid #eee" })}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValue(true)}
+                  style={segStyle(value === true, { background: value === true ? theme.goldLight : "#fff", color: theme.navy })}
+                >
+                  {s.onLabel}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -310,7 +355,7 @@ export default function PatientsPage() {
                           color: status[s.key] ? "#2e7d32" : "#aaa",
                         }}
                       >
-                        {status[s.key] ? "✓" : "○"} {s.label}
+                        {status[s.key] ? "✓" : "○"} {s.onLabel}
                       </span>
                     ))}
                   </div>
