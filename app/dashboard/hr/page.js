@@ -52,8 +52,9 @@ export default function HRPage() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h1 style={{ color: theme.navy, margin: 0 }}>Human Resources</h1>
-          <p style={{ color: theme.gray, margin: "4px 0 0" }}>Manage clinic staff, salaries, and payslips.</p>
+          <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>HR Management</p>
+          <h1 style={{ color: theme.navy, margin: 0 }}>Employee Management</h1>
+          <p style={{ color: theme.gray, margin: "4px 0 0" }}>Add and manage employees. See Payslips and Deductions and Excuses in the sidebar.</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button

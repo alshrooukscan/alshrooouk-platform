@@ -16,6 +16,9 @@ import {
   Smile,
   Package,
   Users,
+  UserPlus,
+  Receipt,
+  ClipboardList,
   Settings as SettingsIcon,
   ChevronLeft,
   ChevronRight,
@@ -50,7 +53,16 @@ const NAV = [
       { href: "/dashboard/stock/el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
     ],
   },
-  { type: "link", href: "/dashboard/hr", label: "Human Resources Management", icon: Users, key: "hr" },
+  {
+    type: "group",
+    label: "HR Management",
+    icon: Users,
+    items: [
+      { href: "/dashboard/hr", label: "Employee Management", icon: UserPlus, key: "hr" },
+      { href: "/dashboard/hr/payslips", label: "Payslips", icon: Receipt, key: "hr" },
+      { href: "/dashboard/hr/deductions", label: "Deductions and Excuses", icon: ClipboardList, key: "hr" },
+    ],
+  },
   { type: "link", href: "/dashboard/settings", label: "Settings", icon: SettingsIcon, key: "settings" },
 ];
 

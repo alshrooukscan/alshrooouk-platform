@@ -28,6 +28,12 @@ export async function GET() {
     .select("*")
     .eq("employee_id", session.id)
     .order("created_at", { ascending: false });
+  const { data: excuseRules } = await supabaseAdmin.from("excuse_rules").select("id, name").order("name");
+  const { data: excuseSubmissions } = await supabaseAdmin
+    .from("excuse_submissions")
+    .select("*, excuse_rules(name)")
+    .eq("employee_id", session.id)
+    .order("created_at", { ascending: false });
 
   const today = new Date().toISOString().slice(0, 10);
   const { data: schedule } = await supabaseAdmin
@@ -38,5 +44,13 @@ export async function GET() {
     .order("work_date", { ascending: true })
     .limit(45);
 
-  return NextResponse.json({ employee, payslips: payslips || [], events: events || [], leaveRequests: leaveRequests || [], schedule: schedule || [] });
+  return NextResponse.json({
+    employee,
+    payslips: payslips || [],
+    events: events || [],
+    leaveRequests: leaveRequests || [],
+    schedule: schedule || [],
+    excuseRules: excuseRules || [],
+    excuseSubmissions: excuseSubmissions || [],
+  });
 }

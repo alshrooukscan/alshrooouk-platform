@@ -94,6 +94,7 @@ export default function EmployeePortalPage() {
             { key: "schedule", label: "Schedule" },
             { key: "payslips", label: "Payslips" },
             { key: "vacations", label: "Vacations" },
+            { key: "excuses", label: "Excuses" },
           ].map((t) => (
             <button
               key={t.key}
@@ -220,6 +221,7 @@ export default function EmployeePortalPage() {
         {tab === "schedule" && <ScheduleTab schedule={data.schedule} />}
 
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
+        {tab === "excuses" && <ExcusesTab excuseRules={data.excuseRules} excuseSubmissions={data.excuseSubmissions} onSubmitted={load} />}
       </div>
 
       {captureEventType && (
@@ -474,6 +476,82 @@ function VacationsTab({ leaveRequests, onSubmitted }) {
             <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[r.status], color: statusColor[r.status], fontWeight: 700, textTransform: "capitalize" }}>{r.status}</span>
           </div>
           {r.reason && <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>{r.reason}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
+  const [showForm, setShowForm] = useState(false);
+  const [excuseRuleId, setExcuseRuleId] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit() {
+    if (!excuseRuleId) {
+      setError("Pick an excuse type.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/portal/employee/excuse-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excuseRuleId, note }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      setError("Could not submit excuse.");
+      return;
+    }
+    setShowForm(false);
+    setExcuseRuleId("");
+    setNote("");
+    onSubmitted();
+  }
+
+  const statusColor = { pending: "#a97c00", approved: "#2e7d32", rejected: "#ba1a1a" };
+  const statusBg = { pending: "#fff8e1", approved: "#e8f5e9", rejected: "#fdecea" };
+
+  return (
+    <div>
+      {!showForm && (
+        <button onClick={() => setShowForm(true)} style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
+          + Submit Excuse
+        </button>
+      )}
+      {showForm && (
+        <div style={cardStyle}>
+          <label style={labelStyle}>Excuse Type</label>
+          <select value={excuseRuleId} onChange={(e) => setExcuseRuleId(e.target.value)} style={inp}>
+            <option value="">Select excuse type...</option>
+            {excuseRules.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+          <label style={labelStyle}>Note (optional)</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} placeholder="Add any detail for admin to review" />
+          {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer" }}>Cancel</button>
+            <button onClick={handleSubmit} disabled={saving} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+              {saving ? "Submitting..." : "Submit"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {excuseSubmissions.length === 0 && !showForm && <div style={cardStyle}>No excuses submitted yet.</div>}
+      {excuseSubmissions.map((s) => (
+        <div key={s.id} style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{s.excuse_rules?.name || "Excuse"}</span>
+            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[s.status], color: statusColor[s.status], fontWeight: 700, textTransform: "capitalize" }}>{s.status}</span>
+          </div>
+          {s.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>{s.note}</div>}
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(s.created_at).toLocaleDateString()}</div>
         </div>
       ))}
     </div>

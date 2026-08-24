@@ -19,14 +19,10 @@ const MODULES = [
 export default function SettingsPage() {
   const { isAdmin, loading: permsLoading } = usePermissions();
   const [branches, setBranches] = useState([]);
-  const [deductionRules, setDeductionRules] = useState([]);
-  const [excuseRules, setExcuseRules] = useState([]);
   const [staffUsers, setStaffUsers] = useState([]);
   const [newBranch, setNewBranch] = useState("");
   const [expandedBranch, setExpandedBranch] = useState(null);
   const [branchDraft, setBranchDraft] = useState({});
-  const [newDeduction, setNewDeduction] = useState({ name: "", value: "" });
-  const [newExcuse, setNewExcuse] = useState({ name: "", value: "" });
   const [showAddUser, setShowAddUser] = useState(false);
 
   useEffect(() => {
@@ -35,12 +31,8 @@ export default function SettingsPage() {
 
   async function loadAll() {
     const { data: b } = await supabase.from("branches").select("*").order("created_at");
-    const { data: d } = await supabase.from("deduction_rules").select("*").order("created_at");
-    const { data: e } = await supabase.from("excuse_rules").select("*").order("created_at");
     const { data: u } = await supabase.from("staff_profiles").select("*").order("created_at");
     setBranches(b || []);
-    setDeductionRules(d || []);
-    setExcuseRules(e || []);
     setStaffUsers(u || []);
   }
 
@@ -80,24 +72,6 @@ export default function SettingsPage() {
     loadAll();
   }
 
-  async function addDeduction() {
-    if (!newDeduction.name) return;
-    await supabase.from("deduction_rules").insert({ name: newDeduction.name, value: newDeduction.value || 0, rule_type: "fixed" });
-    setNewDeduction({ name: "", value: "" });
-    loadAll();
-  }
-
-  async function updateDeductionValue(rule, value) {
-    await supabase.from("deduction_rules").update({ value }).eq("id", rule.id);
-    loadAll();
-  }
-
-  async function addExcuse() {
-    if (!newExcuse.name) return;
-    await supabase.from("excuse_rules").insert({ name: newExcuse.name, value: newExcuse.value || 0, rule_type: "fixed" });
-    setNewExcuse({ name: "", value: "" });
-    loadAll();
-  }
 
   async function toggleUserActive(user) {
     await supabase.from("staff_profiles").update({ is_active: !user.is_active }).eq("id", user.id);
@@ -252,37 +226,12 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="Deduction Rules">
-        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>
-          Editing a rule's value here changes the next payslip generated for any employee assigned to it, no code change needed.
+      <Section title="Deduction and Excuse Rules">
+        <p style={{ fontSize: 13, color: theme.gray }}>
+          Deduction Rules and Excuse/Absence Rules now live under{" "}
+          <Link href="/dashboard/hr/deductions" style={{ color: theme.gold, fontWeight: 600 }}>HR Management &gt; Deductions and Excuses</Link>,
+          alongside excuse submissions to review.
         </p>
-        {deductionRules.map((r) => (
-          <div key={r.id} style={row}>
-            <span style={{ color: theme.navy, fontWeight: 600 }}>{r.name}</span>
-            <input
-              style={{ ...inp, width: 100, marginBottom: 0 }}
-              defaultValue={r.value}
-              onBlur={(e) => updateDeductionValue(r, e.target.value)}
-            />
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <input style={inp} value={newDeduction.name} onChange={(e) => setNewDeduction({ ...newDeduction, name: e.target.value })} placeholder="Rule name (e.g., Late Arrival)" />
-          <input style={{ ...inp, width: 100 }} value={newDeduction.value} onChange={(e) => setNewDeduction({ ...newDeduction, value: e.target.value })} placeholder="EGP" />
-          <button onClick={addDeduction} style={smallPrimary}>+ Add</button>
-        </div>
-      </Section>
-
-      <Section title="Excuse / Absence Rules">
-        {excuseRules.map((r) => (
-          <div key={r.id} style={row}>
-            <span style={{ color: theme.navy, fontWeight: 600 }}>{r.name}</span>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <input style={inp} value={newExcuse.name} onChange={(e) => setNewExcuse({ ...newExcuse, name: e.target.value })} placeholder="Rule name (e.g., Sick Leave)" />
-          <button onClick={addExcuse} style={smallPrimary}>+ Add</button>
-        </div>
       </Section>
 
       {showAddUser && <AddUserModal onClose={() => setShowAddUser(false)} onSaved={loadAll} />}
