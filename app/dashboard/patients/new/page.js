@@ -5,6 +5,9 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 import { formatPhone } from "../../../../lib/formatPhone";
+import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { customerWhatsAppLink } from "../../../../lib/whatsapp";
+import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -40,6 +43,8 @@ export default function NewPatientPage() {
     notes: "",
   });
   const [existingPatients, setExistingPatients] = useState([]);
+  const [createdAccount, setCreatedAccount] = useState(null);
+  const [newPatientId, setNewPatientId] = useState(null);
 
   useEffect(() => {
     const mobile = form.mobile.trim();
@@ -175,8 +180,13 @@ export default function NewPatientPage() {
     }
 
     if (!existing) {
-      const username = normalizedMobile.replace(/\D/g, "");
-      await supabase.rpc("create_patient_credentials", { p_patient_id: patientId, p_username: username });
+      const baseUsername = normalizedMobile.replace(/\D/g, "");
+      const username = await resolveUniqueUsername(supabase, "patient_auth", baseUsername);
+      const { data: pwd } = await supabase.rpc("create_patient_credentials", { p_patient_id: patientId, p_username: username });
+      setSaving(false);
+      setNewPatientId(patientId);
+      setCreatedAccount({ username, password: pwd });
+      return;
     }
 
     setSaving(false);
@@ -185,6 +195,25 @@ export default function NewPatientPage() {
 
   return (
     <div>
+      {createdAccount && (
+        <AccountCreatedModal
+          username={createdAccount.username}
+          password={createdAccount.password}
+          whatsappLink={
+            form.mobile
+              ? customerWhatsAppLink({
+                  mobile: form.mobile,
+                  patientName: form.name,
+                  portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+                  username: createdAccount.username,
+                  password: createdAccount.password,
+                })
+              : null
+          }
+          onContinue={() => router.push(`/dashboard/patients/${newPatientId}`)}
+          continueLabel="Continue to Profile"
+        />
+      )}
       <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>PATIENTS &gt; NEW REGISTRATION</p>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Register Patient</h1>
       <p style={{ color: theme.gray, marginBottom: 24 }}>Enter the patient's personal, visit, and payment details.</p>

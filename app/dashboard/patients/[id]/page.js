@@ -9,6 +9,7 @@ import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScan
 import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
+import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -255,10 +256,20 @@ export default function PatientProfilePage() {
         username={credentials?.username}
         defaultUsername={(patient.mobile || "").replace(/\D/g, "")}
         onGenerate={async (username) => {
-          const { data } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: username });
-          setCredentials({ username });
+          const unique = await resolveUniqueUsername(supabase, "patient_auth", username, { excludeId: id, idColumn: "patient_id" });
+          const { data } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: unique });
+          setCredentials({ username: unique });
           return data;
         }}
+        buildWhatsAppLink={(username, password) =>
+          customerWhatsAppLink({
+            mobile: patient.mobile,
+            patientName: patient.name,
+            portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+            username,
+            password,
+          })
+        }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24 }}>

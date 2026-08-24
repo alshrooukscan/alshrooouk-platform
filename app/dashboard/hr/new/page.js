@@ -5,6 +5,9 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 import { formatPhone } from "../../../../lib/formatPhone";
+import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
+import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 
 export default function NewEmployeePage() {
   const router = useRouter();
@@ -19,6 +22,8 @@ export default function NewEmployeePage() {
   const [photoFilename, setPhotoFilename] = useState(null);
   const [descriptor, setDescriptor] = useState(null);
   const [faceStatus, setFaceStatus] = useState("");
+  const [createdAccount, setCreatedAccount] = useState(null);
+  const [newEmployeeId, setNewEmployeeId] = useState(null);
   const [form, setForm] = useState({
     name: "",
     national_id: "",
@@ -104,8 +109,9 @@ export default function NewEmployeePage() {
       return;
     }
 
-    const username = hrId.toLowerCase().replace(/-/g, "");
-    await supabase.rpc("create_employee_credentials", { p_employee_id: emp.id, p_username: username });
+    const baseUsername = formatPhone(form.phone).replace(/\D/g, "") || hrId.toLowerCase().replace(/-/g, "");
+    const username = await resolveUniqueUsername(supabase, "employees", baseUsername);
+    const { data: pwd } = await supabase.rpc("create_employee_credentials", { p_employee_id: emp.id, p_username: username });
 
     const assignments = [
       ...selectedDeductions.map((rid) => ({ employee_id: emp.id, deduction_rule_id: rid })),
@@ -125,11 +131,31 @@ export default function NewEmployeePage() {
     }
 
     setSaving(false);
-    router.push(`/dashboard/hr/${emp.id}`);
+    setNewEmployeeId(emp.id);
+    setCreatedAccount({ username, password: pwd });
   }
 
   return (
     <div>
+      {createdAccount && (
+        <AccountCreatedModal
+          username={createdAccount.username}
+          password={createdAccount.password}
+          whatsappLink={
+            form.phone
+              ? employeePortalWhatsAppLink({
+                  mobile: form.phone,
+                  employeeName: form.name,
+                  portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+                  username: createdAccount.username,
+                  password: createdAccount.password,
+                })
+              : null
+          }
+          onContinue={() => router.push(`/dashboard/hr/${newEmployeeId}`)}
+          continueLabel="Continue to Profile"
+        />
+      )}
       <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>HUMAN RESOURCES</p>
       <h1 style={{ color: theme.navy, marginBottom: 24 }}>Add Employee</h1>
 

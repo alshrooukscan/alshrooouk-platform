@@ -9,6 +9,8 @@ import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { usePermissions } from "../../../../lib/usePermissions";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
+import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
+import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODULES = [
@@ -318,12 +320,22 @@ export default function EmployeeProfilePage() {
       <PortalAccessCard
         hasAccount={!!employee.username}
         username={employee.username}
-        defaultUsername={(employee.hr_id || "").toLowerCase().replace(/-/g, "")}
+        defaultUsername={(employee.phone || "").replace(/\D/g, "")}
         onGenerate={async (username) => {
-          const { data } = await supabase.rpc("create_employee_credentials", { p_employee_id: id, p_username: username });
-          setEmployee((e) => ({ ...e, username }));
+          const unique = await resolveUniqueUsername(supabase, "employees", username, { excludeId: id });
+          const { data } = await supabase.rpc("create_employee_credentials", { p_employee_id: id, p_username: unique });
+          setEmployee((e) => ({ ...e, username: unique }));
           return data;
         }}
+        buildWhatsAppLink={(username, password) =>
+          employeePortalWhatsAppLink({
+            mobile: employee.phone,
+            employeeName: employee.name,
+            portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+            username,
+            password,
+          })
+        }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>

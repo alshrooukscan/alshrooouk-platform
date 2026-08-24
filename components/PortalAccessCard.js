@@ -8,7 +8,7 @@ import { theme } from "../lib/theme";
 // and password resets (calling it again on an existing account just issues a
 // fresh temp password), so this component only needs one action, labeled
 // differently depending on whether an account already exists.
-export default function PortalAccessCard({ hasAccount, username, defaultUsername, onGenerate }) {
+export default function PortalAccessCard({ hasAccount, username, defaultUsername, onGenerate, buildWhatsAppLink }) {
   const [usernameDraft, setUsernameDraft] = useState(username || defaultUsername || "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -46,7 +46,7 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
           <div style={{ fontSize: 14, marginBottom: 6 }}>
             <strong>Username:</strong> {result.username}
           </div>
-          <div style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <strong>Password:</strong>
             <code style={{ background: "#fff", padding: "3px 10px", borderRadius: 4, fontSize: 14 }}>{result.password}</code>
             <button
@@ -56,12 +56,24 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
               Copy
             </button>
           </div>
-          <button
-            onClick={() => setResult(null)}
-            style={{ marginTop: 12, fontSize: 12, color: theme.gray, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-          >
-            Done
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {buildWhatsAppLink && (
+              <a
+                href={buildWhatsAppLink(result.username, result.password)}
+                target="_blank"
+                rel="noreferrer"
+                style={{ padding: "8px 16px", borderRadius: 8, background: "#25D366", color: "#fff", fontWeight: 700, textDecoration: "none", fontSize: 13 }}
+              >
+                Send via WhatsApp
+              </a>
+            )}
+            <button
+              onClick={() => setResult(null)}
+              style={{ fontSize: 12, color: theme.gray, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+            >
+              Done
+            </button>
+          </div>
         </div>
       ) : hasAccount ? (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

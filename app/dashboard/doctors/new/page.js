@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatPhone } from "../../../../lib/formatPhone";
+import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { doctorPortalWhatsAppLink } from "../../../../lib/whatsapp";
+import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 
 export default function NewDoctorPage() {
   const router = useRouter();
@@ -21,6 +24,8 @@ export default function NewDoctorPage() {
     discount_pct: 0,
   });
   const [existingDoctors, setExistingDoctors] = useState([]);
+  const [createdAccount, setCreatedAccount] = useState(null);
+  const [newDoctorId, setNewDoctorId] = useState(null);
 
   useEffect(() => {
     const code = form.clinic_code.trim();
@@ -74,15 +79,36 @@ export default function NewDoctorPage() {
       return;
     }
 
-    const username = form.clinic_code.toLowerCase().replace(/\s+/g, "");
-    await supabase.rpc("create_doctor_credentials", { p_doctor_id: data.id, p_username: username });
+    const baseUsername = formatPhone(form.phone).replace(/\D/g, "") || form.clinic_code.toLowerCase().replace(/\s+/g, "");
+    const username = await resolveUniqueUsername(supabase, "doctors", baseUsername);
+    const { data: pwd } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: data.id, p_username: username });
 
     setSaving(false);
-    router.push(`/dashboard/doctors/${data.id}`);
+    setNewDoctorId(data.id);
+    setCreatedAccount({ username, password: pwd });
   }
 
   return (
     <div>
+      {createdAccount && (
+        <AccountCreatedModal
+          username={createdAccount.username}
+          password={createdAccount.password}
+          whatsappLink={
+            form.phone
+              ? doctorPortalWhatsAppLink({
+                  mobile: form.phone,
+                  doctorName: form.name,
+                  portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+                  username: createdAccount.username,
+                  password: createdAccount.password,
+                })
+              : null
+          }
+          onContinue={() => router.push(`/dashboard/doctors/${newDoctorId}`)}
+          continueLabel="Continue to Profile"
+        />
+      )}
       <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>DOCTORS DIRECTORY</p>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Register New Physician</h1>
       <p style={{ color: theme.gray, marginBottom: 24 }}>

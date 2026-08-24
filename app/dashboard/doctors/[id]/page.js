@@ -5,6 +5,8 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatPhone } from "../../../../lib/formatPhone";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
+import { doctorPortalWhatsAppLink } from "../../../../lib/whatsapp";
+import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 
 export default function DoctorProfilePage() {
   const { id } = useParams();
@@ -54,12 +56,22 @@ export default function DoctorProfilePage() {
       <PortalAccessCard
         hasAccount={!!doctor.username}
         username={doctor.username}
-        defaultUsername={(doctor.clinic_code || "").toLowerCase().replace(/\s+/g, "")}
+        defaultUsername={(doctor.phone || "").replace(/\D/g, "")}
         onGenerate={async (username) => {
-          const { data } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: id, p_username: username });
-          setDoctor((d) => ({ ...d, username }));
+          const unique = await resolveUniqueUsername(supabase, "doctors", username, { excludeId: id });
+          const { data } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: id, p_username: unique });
+          setDoctor((d) => ({ ...d, username: unique }));
           return data;
         }}
+        buildWhatsAppLink={(username, password) =>
+          doctorPortalWhatsAppLink({
+            mobile: doctor.phone,
+            doctorName: doctor.name,
+            portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+            username,
+            password,
+          })
+        }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
