@@ -34,7 +34,9 @@ export default function PortalLoginPage() {
       <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 16, padding: 36, width: 360, boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <img src="/logo-full.png" alt="Al Shrooouk Scan & Lab" style={{ height: 80, width: "auto", margin: "0 auto 6px" }} />
+          <h1 style={{ fontSize: 20, color: theme.navy, margin: "8px 0 4px" }}>Patient / Doctor / Employee Portal</h1>
           <p style={{ fontSize: 13, color: theme.gray, marginTop: 4 }}>Log in to view what's yours</p>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>Staff dashboard login is at a different address.</p>
         </div>
 
         <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>Username</label>
