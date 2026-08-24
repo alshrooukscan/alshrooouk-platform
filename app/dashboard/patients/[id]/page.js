@@ -8,6 +8,7 @@ import { formatMoney } from "../../../../lib/format";
 import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage } from "../../../../lib/whatsapp";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
+import PortalAccessCard from "../../../../components/PortalAccessCard";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -245,10 +246,20 @@ export default function PatientProfilePage() {
             <p style={{ color: theme.gray, margin: "4px 0" }}>
               {formatPhone(patient.mobile)} {patient.email ? `· ${patient.email}` : ""}
             </p>
-            {credentials && <p style={{ fontSize: 12, color: theme.gray }}>Portal username: {credentials.username}</p>}
           </div>
         </div>
       </div>
+
+      <PortalAccessCard
+        hasAccount={!!credentials}
+        username={credentials?.username}
+        defaultUsername={(patient.mobile || "").replace(/\D/g, "")}
+        onGenerate={async (username) => {
+          const { data } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: username });
+          setCredentials({ username });
+          return data;
+        }}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>

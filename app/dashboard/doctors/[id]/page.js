@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatPhone } from "../../../../lib/formatPhone";
+import PortalAccessCard from "../../../../components/PortalAccessCard";
 
 export default function DoctorProfilePage() {
   const { id } = useParams();
@@ -49,6 +50,17 @@ export default function DoctorProfilePage() {
           {doctor.email ? ` · ${doctor.email}` : ""}
         </p>
       </div>
+
+      <PortalAccessCard
+        hasAccount={!!doctor.username}
+        username={doctor.username}
+        defaultUsername={(doctor.clinic_code || "").toLowerCase().replace(/\s+/g, "")}
+        onGenerate={async (username) => {
+          const { data } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: id, p_username: username });
+          setDoctor((d) => ({ ...d, username }));
+          return data;
+        }}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
         <StatCard label="Total Referred" value={visits.length} />

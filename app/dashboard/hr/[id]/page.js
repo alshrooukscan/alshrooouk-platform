@@ -8,6 +8,7 @@ import { formatMoney } from "../../../../lib/format";
 import { loadFaceModels, extractDescriptor } from "../../../../lib/faceMatch";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { usePermissions } from "../../../../lib/usePermissions";
+import PortalAccessCard from "../../../../components/PortalAccessCard";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODULES = [
@@ -313,6 +314,17 @@ export default function EmployeeProfilePage() {
           </div>
         )}
       </div>
+
+      <PortalAccessCard
+        hasAccount={!!employee.username}
+        username={employee.username}
+        defaultUsername={(employee.hr_id || "").toLowerCase().replace(/-/g, "")}
+        onGenerate={async (username) => {
+          const { data } = await supabase.rpc("create_employee_credentials", { p_employee_id: id, p_username: username });
+          setEmployee((e) => ({ ...e, username }));
+          return data;
+        }}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
