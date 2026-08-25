@@ -12,6 +12,19 @@ const PAYMENT_METHODS = [
   { key: "instapay", label: "InstaPay" },
   { key: "vodafone_cash", label: "Vodafone Cash" },
 ];
+// Employee Advance is deliberately NOT offered here - that category only
+// triggers payroll deduction when logged through the existing Center
+// Expenses page (generate_payslip() reads cash_expenses specifically, not
+// expense_transactions). Offering it here would silently create an advance
+// that's never actually deducted from pay - a real money-loss risk, not a
+// cosmetic gap.
+const CASH_OUT_CATEGORIES = [
+  { key: "utilities", label: "Utilities" },
+  { key: "maintenance", label: "Maintenance" },
+  { key: "supplies", label: "Supplies / Misc Purchase" },
+  { key: "courier", label: "Courier / Rep Cash" },
+  { key: "other", label: "Other" },
+];
 
 // Shared page for all three brands (Scan, Dental Stock, El3awama Stock) -
 // each one's own page is a thin wrapper passing in brand/brandLabel/
@@ -25,7 +38,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
   const [recent, setRecent] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // "transfer" | "collection" | null
+  const [modal, setModal] = useState(null); // "transfer" | "collection" | "cash_out" | null
 
   const hasAccess = permsLoading || can(permissionKey);
 
@@ -43,7 +56,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         .from("expense_transactions")
         .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
         .eq("brand", brand)
-        .in("type", ["cash_transfer", "cash_collection"])
+        .in("type", ["cash_transfer", "cash_collection", "cash_out"])
         .order("created_at", { ascending: false })
         .limit(20),
     ]);
@@ -63,7 +76,8 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       <p style={{ color: theme.gray, margin: "0 0 20px" }}>Who's holding cash for {brandLabel} right now, and logging transfers or settlements.</p>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <button onClick={() => setModal("transfer")} style={primaryBtn}>+ Log Cash Transfer</button>
+        <button onClick={() => setModal("cash_out")} style={primaryBtn}>+ Log Cash Out</button>
+        <button onClick={() => setModal("transfer")} style={secondaryBtn}>+ Log Cash Transfer</button>
         <button onClick={() => setModal("collection")} style={secondaryBtn}>+ Log Cash Collection</button>
       </div>
 
@@ -90,8 +104,11 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
                 {tx.status}
               </span>
               <div style={{ flex: 1, fontSize: 13 }}>
-                <strong style={{ color: theme.navy }}>{tx.type === "cash_transfer" ? "Transfer" : "Collection"}</strong>{" "}
+                <strong style={{ color: theme.navy }}>
+                  {tx.type === "cash_transfer" ? "Transfer" : tx.type === "cash_collection" ? "Collection" : "Cash Out"}
+                </strong>{" "}
                 {formatMoney(tx.amount)} EGP
+                {tx.category && ` \u00b7 ${tx.category}`}
                 {tx.from_employee?.name && ` from ${tx.from_employee.name}`}
                 {tx.to_employee?.name && ` to ${tx.to_employee.name}`}
                 {tx.type === "cash_collection" && !tx.to_employee?.name && " to Owner"}
@@ -102,6 +119,9 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         </div>
       </div>
 
+      {modal === "cash_out" && (
+        <CashOutModal brand={brand} profile={profile} onClose={() => setModal(null)} onSaved={load} />
+      )}
       {modal === "transfer" && (
         <TransferModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
       )}
@@ -109,6 +129,89 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         <CollectionModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
       )}
     </div>
+  );
+}
+
+function CashOutModal({ brand, profile, onClose, onSaved }) {
+  const [category, setCategory] = useState("utilities");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!amount || Number(amount) <= 0) {
+      setError("Enter a valid amount.");
+      return;
+    }
+    setSaving(true);
+    // Cash is physically reconciled and confirmed immediately; anything else
+    // waits in the Confirmation Queue.
+    const status = paymentMethod === "cash" ? "confirmed" : "pending";
+    const { data, error: err } = await supabase
+      .from("expense_transactions")
+      .insert({
+        type: "cash_out",
+        brand,
+        amount: Number(amount),
+        payment_method: paymentMethod,
+        category,
+        note: note || null,
+        status,
+        confirmed_by_id: status === "confirmed" ? profile?.id || null : null,
+        confirmed_by_name: status === "confirmed" ? profile?.name || null : null,
+        confirmed_at: status === "confirmed" ? new Date().toISOString() : null,
+        created_by_id: profile?.id || null,
+        created_by_name: profile?.name || null,
+      })
+      .select("id")
+      .single();
+    setSaving(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: "admin",
+      action: "logged_cash_out",
+      entityType: "expense_transaction",
+      entityId: data.id,
+      details: { brand, category, paymentMethod, amount: Number(amount) },
+    });
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Modal title="Log Cash Out" onClose={onClose}>
+      <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>
+        For an employee advance, use Center Expenses instead - only that page's advances get deducted from payroll.
+      </p>
+      <FieldLabel>Category</FieldLabel>
+      <select value={category} onChange={(e) => setCategory(e.target.value)} style={inp}>
+        {CASH_OUT_CATEGORIES.map((c) => (
+          <option key={c.key} value={c.key}>{c.label}</option>
+        ))}
+      </select>
+      <FieldLabel>Paid Via</FieldLabel>
+      <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
+        {PAYMENT_METHODS.map((p) => (
+          <option key={p.key} value={p.key}>{p.label}</option>
+        ))}
+      </select>
+      <FieldLabel>Amount (EGP)</FieldLabel>
+      <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
+      <FieldLabel>Note (optional)</FieldLabel>
+      <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={onClose} style={cancelBtn}>Cancel</button>
+        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Log Cash Out"}</button>
+      </div>
+    </Modal>
   );
 }
 
