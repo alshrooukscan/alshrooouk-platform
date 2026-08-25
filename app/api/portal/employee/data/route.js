@@ -34,6 +34,12 @@ export async function GET() {
     .select("*, excuse_rules(name)")
     .eq("employee_id", session.id)
     .order("created_at", { ascending: false });
+  const { data: incomingTransfers } = await supabaseAdmin
+    .from("expense_transactions")
+    .select("*, from_employee:from_employee_id(name)")
+    .eq("to_employee_id", session.id)
+    .eq("type", "cash_transfer")
+    .order("created_at", { ascending: false });
 
   const today = new Date().toISOString().slice(0, 10);
   const { data: schedule } = await supabaseAdmin
@@ -52,5 +58,6 @@ export async function GET() {
     schedule: schedule || [],
     excuseRules: excuseRules || [],
     excuseSubmissions: excuseSubmissions || [],
+    incomingTransfers: incomingTransfers || [],
   });
 }

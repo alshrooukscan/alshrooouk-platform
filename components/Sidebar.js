@@ -25,6 +25,9 @@ import {
   ChevronRight,
   LogOut,
   ExternalLink,
+  Banknote,
+  ArrowLeftRight,
+  ShieldCheck,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -66,6 +69,22 @@ const NAV = [
       { href: "/dashboard/hr/deductions", label: "Deductions and Excuses", icon: ClipboardList, key: "hr" },
     ],
   },
+  {
+    type: "group",
+    label: "Expenses Management",
+    icon: Banknote,
+    items: [
+      { href: "/dashboard/expenses/scan", label: "Scan Cash", icon: Banknote, key: "expenses_scan" },
+      { href: "/dashboard/expenses/dental-stock", label: "Dental Stock Cash", icon: Banknote, key: "expenses_dental_stock" },
+      { href: "/dashboard/expenses/el3awama-stock", label: "El3awama Stock Cash", icon: Banknote, key: "expenses_el3awama_stock" },
+      // Cross-brand by nature (moves money between two brands) and always
+      // admin-confirmed, so it sits outside the per-brand permission model -
+      // adminOnly, not grantable via a permission key, same pattern as the
+      // Confirmation Queue right below it.
+      { href: "/dashboard/expenses/brand-transfer", label: "Brand Transfer", icon: ArrowLeftRight, adminOnly: true },
+      { href: "/dashboard/expenses/confirmations", label: "Confirmation Queue", icon: ShieldCheck, adminOnly: true },
+    ],
+  },
   { type: "link", href: "/dashboard/settings", label: "Settings", icon: SettingsIcon, key: "settings" },
 ];
 
@@ -73,7 +92,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { can, profile, loading, linkedEmployeeId } = usePermissions();
+  const { can, profile, loading, linkedEmployeeId, isAdmin } = usePermissions();
   const [isNarrowScreen, setIsNarrowScreen] = useState(false);
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [switchingPortal, setSwitchingPortal] = useState(false);
@@ -119,13 +138,20 @@ export default function Sidebar() {
 
   const collapsed = isNarrowScreen || manuallyCollapsed;
 
-  // For a link: visible if permitted. For a group: visible if at least one
-  // child is permitted, and only the permitted children are shown.
+  // An item is visible if: it's still loading (avoid a flash of nothing
+  // while permissions load), OR it's adminOnly and this user is admin, OR
+  // its permission key is granted. For a group, only children that pass this
+  // check are shown, and the whole group hides if none do.
+  function isVisible(navItem) {
+    if (loading) return true;
+    if (navItem.adminOnly) return isAdmin;
+    return can(navItem.key);
+  }
   const visibleNav = NAV.map((item) => {
     if (item.type === "link") {
-      return loading || can(item.key) ? item : null;
+      return isVisible(item) ? item : null;
     }
-    const visibleItems = item.items.filter((child) => loading || can(child.key));
+    const visibleItems = item.items.filter(isVisible);
     return visibleItems.length > 0 ? { ...item, items: visibleItems } : null;
   }).filter(Boolean);
 

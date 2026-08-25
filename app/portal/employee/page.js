@@ -95,6 +95,7 @@ export default function EmployeePortalPage() {
             { key: "payslips", label: "Payslips" },
             { key: "vacations", label: "Vacations" },
             { key: "excuses", label: "Excuses" },
+            { key: "transfers", label: "Cash Transfers" },
           ].map((t) => (
             <button
               key={t.key}
@@ -222,6 +223,7 @@ export default function EmployeePortalPage() {
 
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
         {tab === "excuses" && <ExcusesTab excuseRules={data.excuseRules} excuseSubmissions={data.excuseSubmissions} onSubmitted={load} />}
+        {tab === "transfers" && <TransfersTab incomingTransfers={data.incomingTransfers} onReviewed={load} />}
       </div>
 
       {captureEventType && (
@@ -559,6 +561,67 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
           </div>
           {s.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>{s.note}</div>}
           <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(s.created_at).toLocaleDateString()}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TransfersTab({ incomingTransfers, onReviewed }) {
+  const [busyId, setBusyId] = useState(null);
+  const statusColor = { pending: "#a97c00", confirmed: "#2e7d32", rejected: "#ba1a1a" };
+  const statusBg = { pending: "#fff8e1", confirmed: "#e8f5e9", rejected: "#fdecea" };
+
+  async function review(transferId, action) {
+    setBusyId(transferId);
+    await fetch("/api/portal/employee/confirm-transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transferId, action }),
+    });
+    setBusyId(null);
+    onReviewed();
+  }
+
+  const pending = incomingTransfers.filter((t) => t.status === "pending");
+  const reviewed = incomingTransfers.filter((t) => t.status !== "pending");
+
+  return (
+    <div>
+      {pending.length === 0 && reviewed.length === 0 && <div style={cardStyle}>No cash transfers to you yet.</div>}
+      {pending.map((t) => (
+        <div key={t.id} style={{ ...cardStyle, border: `1px solid ${theme.gold}` }}>
+          <div style={{ fontSize: 13, color: theme.navy, marginBottom: 8 }}>
+            <strong>{t.from_employee?.name}</strong> wants to hand you <strong>{Number(t.amount).toLocaleString()} EGP</strong> in cash
+            {t.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{t.note}</div>}
+          </div>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -4, marginBottom: 10 }}>
+            Only confirm once you've actually received this cash in hand.
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => review(t.id, "reject")}
+              disabled={busyId === t.id}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer", fontSize: 13 }}
+            >
+              I did not receive this
+            </button>
+            <button
+              onClick={() => review(t.id, "confirm")}
+              disabled={busyId === t.id}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+            >
+              {busyId === t.id ? "Confirming..." : "Yes, I received it"}
+            </button>
+          </div>
+        </div>
+      ))}
+      {reviewed.map((t) => (
+        <div key={t.id} style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{t.from_employee?.name} → {Number(t.amount).toLocaleString()} EGP</span>
+            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[t.status], color: statusColor[t.status], fontWeight: 700, textTransform: "capitalize" }}>{t.status}</span>
+          </div>
         </div>
       ))}
     </div>
