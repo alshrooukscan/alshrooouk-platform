@@ -15,6 +15,13 @@ const CATEGORIES = [
   { key: "other", label: "Other" },
 ];
 const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
+const PAYMENT_METHODS = [
+  { key: "cash", label: "Cash" },
+  { key: "visa", label: "Visa" },
+  { key: "instapay", label: "InstaPay" },
+  { key: "vodafone_cash", label: "Vodafone Cash" },
+];
+const PAYMENT_METHOD_LABEL = Object.fromEntries(PAYMENT_METHODS.map((p) => [p.key, p.label]));
 
 export default function CashExpensesPage() {
   const { profile, isAdmin } = usePermissions();
@@ -54,8 +61,8 @@ export default function CashExpensesPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>FINANCIAL</p>
-          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Cash Expenses</h1>
-          <p style={{ color: theme.gray, margin: 0 }}>Real categorized cash out, so Cash In can be measured against what's actually spent.</p>
+          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Center Expenses</h1>
+          <p style={{ color: theme.gray, margin: 0 }}>Real categorized spending, however it was paid, so Cash In can be measured against what actually left the register.</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
@@ -107,6 +114,9 @@ export default function CashExpensesPage() {
             <div style={{ minWidth: 140 }}>
               <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>{CATEGORY_LABEL[e.category] || e.category}</div>
               <div style={{ fontSize: 11, color: theme.gray }}>{e.entry_date}</div>
+              <span style={{ display: "inline-block", marginTop: 3, fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 999, background: e.payment_method === "cash" ? "#e8f5e9" : "#eef2ff", color: e.payment_method === "cash" ? "#2e7d32" : "#3949ab" }}>
+                {PAYMENT_METHOD_LABEL[e.payment_method] || "Cash"}
+              </span>
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, color: theme.navy }}>{e.note || "\u2014"}</div>
@@ -142,6 +152,7 @@ export default function CashExpensesPage() {
 
 function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
   const [category, setCategory] = useState("utilities");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [amount, setAmount] = useState("");
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -173,6 +184,7 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
     setSaving(true);
     const payload = {
       category,
+      payment_method: paymentMethod,
       amount: Number(amount),
       entry_date: entryDate,
       note: note || null,
@@ -200,7 +212,7 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
       action: "logged_cash_expense",
       entityType: "cash_expense",
       entityId: data.id,
-      details: { category, amount: Number(amount), employeeId: employeeId || null },
+      details: { category, paymentMethod, amount: Number(amount), employeeId: employeeId || null },
     });
     onSaved();
   }
@@ -214,6 +226,13 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
         <select value={category} onChange={(e) => setCategory(e.target.value)} style={inp}>
           {CATEGORIES.map((c) => (
             <option key={c.key} value={c.key}>{c.label}</option>
+          ))}
+        </select>
+
+        <FieldLabel>Paid Via</FieldLabel>
+        <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
+          {PAYMENT_METHODS.map((p) => (
+            <option key={p.key} value={p.key}>{p.label}</option>
           ))}
         </select>
 

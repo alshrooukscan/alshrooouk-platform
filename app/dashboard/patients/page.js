@@ -313,6 +313,12 @@ export default function PatientsPage() {
             );
           })}
         </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0f0f0" }}>
+          <span style={{ fontSize: 13, color: theme.gray }}>
+            Matching current filters: <strong style={{ color: theme.navy, fontSize: 16 }}>{totalCount.toLocaleString()}</strong> patient{totalCount === 1 ? "" : "s"}
+          </span>
+        </div>
       </div>
 
       {loading && <p style={{ color: theme.gray }}>Loading...</p>}

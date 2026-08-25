@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
+import { usePermissions } from "../../lib/usePermissions";
 import ScanInsights from "../../components/analytics/ScanInsights";
 import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
 import HRAnalytics from "../../components/analytics/HRAnalytics";
@@ -76,6 +77,7 @@ function DashboardTabs() {
 }
 
 function Overview() {
+  const { isAdmin, profile } = usePermissions();
   const [allLedger, setAllLedger] = useState([]);
   const [allPaymentRows, setAllPaymentRows] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
@@ -84,10 +86,71 @@ function Overview() {
   const [drill, setDrill] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
   const [filter, setFilter] = useState({ year: "", quarter: "", month: "" });
+  const [reconciliation, setReconciliation] = useState(null);
+  const [reconLoading, setReconLoading] = useState(true);
+  const [confirmingRecon, setConfirmingRecon] = useState(false);
 
   useEffect(() => {
     load();
+    loadReconciliation();
   }, []);
+
+  async function loadReconciliation() {
+    setReconLoading(true);
+    const today = new Date().toISOString().slice(0, 10);
+
+    // payment_method has inconsistent casing in the underlying data (mostly
+    // "Cash" from migrated records) - matched case-insensitively, and only
+    // exactly "cash" (not stray notes-as-payment-method values) so this
+    // doesn't silently pull in unrelated text.
+    const { data: cashVisits } = await supabase
+      .from("visits")
+      .select("amount_paid")
+      .eq("exam_date", today)
+      .ilike("payment_method", "cash")
+      .gt("amount_paid", 0);
+    const cashIn = (cashVisits || []).reduce((s, v) => s + Number(v.amount_paid || 0), 0);
+
+    const { data: cashExpensesToday } = await supabase
+      .from("cash_expenses")
+      .select("amount")
+      .eq("entry_date", today)
+      .eq("payment_method", "cash");
+    const cashOut = (cashExpensesToday || []).reduce((s, e) => s + Number(e.amount || 0), 0);
+
+    const { data: existing } = await supabase.from("cash_reconciliation").select("*").eq("entry_date", today).maybeSingle();
+
+    setReconciliation({
+      date: today,
+      cashIn,
+      cashOut,
+      remaining: cashIn - cashOut,
+      confirmed: existing?.confirmed || false,
+      confirmedByName: existing?.confirmed_by_name || null,
+      confirmedAt: existing?.confirmed_at || null,
+    });
+    setReconLoading(false);
+  }
+
+  async function handleConfirmCollected() {
+    if (!reconciliation) return;
+    setConfirmingRecon(true);
+    const { error } = await supabase.from("cash_reconciliation").upsert(
+      {
+        entry_date: reconciliation.date,
+        expected_cash_in: reconciliation.cashIn,
+        expected_cash_out: reconciliation.cashOut,
+        expected_remaining: reconciliation.remaining,
+        confirmed: true,
+        confirmed_by_id: profile?.id || null,
+        confirmed_by_name: profile?.name || null,
+        confirmed_at: new Date().toISOString(),
+      },
+      { onConflict: "entry_date" }
+    );
+    setConfirmingRecon(false);
+    if (!error) loadReconciliation();
+  }
 
   async function load() {
     setLoading(true);
@@ -216,7 +279,45 @@ function Overview() {
 
   return (
     <div>
-      <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} onChange={setFilter} />
+      {!reconLoading && reconciliation && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", border: reconciliation.confirmed ? "1px solid #cde5cf" : `1px solid ${theme.gold}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+            <div>
+              <h3 style={{ color: theme.navy, margin: "0 0 2px" }}>Today's Cash Reconciliation</h3>
+              <p style={{ fontSize: 11, color: theme.gray, margin: 0 }}>
+                Based on today's cash-paid patient visits and cash-paid Center Expenses only - non-cash payments don't move physical cash, so they're not counted here.
+              </p>
+            </div>
+            {reconciliation.confirmed ? (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#2e7d32", background: "#e8f5e9", padding: "6px 14px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                ✓ Confirmed by {reconciliation.confirmedByName || "admin"}
+              </span>
+            ) : (
+              isAdmin && (
+                <button onClick={handleConfirmCollected} disabled={confirmingRecon} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>
+                  {confirmingRecon ? "Confirming..." : "Confirm Cash Collected"}
+                </button>
+              )
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginTop: 16 }}>
+            <div>
+              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>EXPECTED CASH IN</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy }}>{formatMoney(reconciliation.cashIn)} EGP</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>EXPECTED CASH OUT</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#ba1a1a" }}>{formatMoney(reconciliation.cashOut)} EGP</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>SHOULD BE IN HAND</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: theme.gold }}>{formatMoney(reconciliation.remaining)} EGP</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} day={filter.day} onChange={setFilter} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
         <KpiCard label="Cash In: Scans" value={cashInScans} />

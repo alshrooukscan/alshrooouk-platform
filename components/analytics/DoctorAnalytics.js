@@ -146,7 +146,7 @@ export default function DoctorAnalytics() {
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Doctor Tracking</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>Referral patterns to decide who to visit and who needs re-engaging.</p>
 
-      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} onChange={setDateFilter} />
+      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         {Object.entries(PERIODS).map(([key, p]) => (

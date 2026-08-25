@@ -153,7 +153,7 @@ export default function HRAnalytics() {
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Attendance Tracking</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>Daily flags and trends, measured against each employee's own weekly shift schedule.</p>
 
-      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} onChange={setDateFilter} />
+      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
 
       {noShiftCount > 0 && (
         <div style={{ background: "#fff3e0", border: "1px solid #ffe0b2", borderRadius: 12, padding: 14, marginBottom: 20, fontSize: 13, color: "#a97c00" }}>

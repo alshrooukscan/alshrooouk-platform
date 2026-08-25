@@ -132,7 +132,7 @@ export default function ScanInsights() {
 
   return (
     <div>
-      <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} onChange={setFilter} />
+      <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} day={filter.day} onChange={setFilter} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
         <StatCard label="Total Scans" value={totalScans.toLocaleString()} />

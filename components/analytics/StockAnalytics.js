@@ -106,7 +106,7 @@ export default function StockAnalytics() {
         ))}
       </div>
 
-      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} onChange={setDateFilter} />
+      <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
 
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -10, marginBottom: 16 }}>
         Inventory value below always reflects current stock on hand (real quantities × real prices), the period filter above applies only to Recorded Purchases/Sales, which are transaction history, not a point-in-time snapshot.
