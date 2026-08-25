@@ -285,7 +285,14 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
       if (cancelled) return;
 
       if (descriptor) {
-        finish(descriptor);
+        // A descriptor was extracted, but whether it actually MATCHES the
+        // enrolled face is decided server-side (that's the only place the
+        // reference descriptor lives). If it turns out to be a mismatch, the
+        // server needs this frame to store as review evidence of who actually
+        // attempted the clock-in - so it's always sent along, not only when
+        // no face was found at all.
+        const captureBase64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+        finish(descriptor, captureBase64);
         return;
       }
 

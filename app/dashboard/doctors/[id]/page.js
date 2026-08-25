@@ -1,15 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatPhone } from "../../../../lib/formatPhone";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import { doctorPortalWhatsAppLink } from "../../../../lib/whatsapp";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { usePermissions } from "../../../../lib/usePermissions";
+import { logActivity } from "../../../../lib/activityLog";
+import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 
 export default function DoctorProfilePage() {
   const { id } = useParams();
+  const router = useRouter();
+  const { isAdmin, profile } = usePermissions();
   const [doctor, setDoctor] = useState(null);
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,14 +48,36 @@ export default function DoctorProfilePage() {
 
   return (
     <div>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
-        <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
-        <p style={{ color: theme.gray, margin: 0 }}>
-          {formatPhone(doctor.phone)}
-          {doctor.phone_2 && ` · ${formatPhone(doctor.phone_2)}`}
-          {doctor.email ? ` · ${doctor.email}` : ""}
-        </p>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
+          <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
+          <p style={{ color: theme.gray, margin: 0 }}>
+            {formatPhone(doctor.phone)}
+            {doctor.phone_2 && ` · ${formatPhone(doctor.phone_2)}`}
+            {doctor.email ? ` · ${doctor.email}` : ""}
+          </p>
+        </div>
+        {isAdmin && (
+          <DeleteEntityButton
+            entityLabel="doctor"
+            entityName={doctor.name}
+            onDelete={async () => {
+              const { error } = await supabase.from("doctors").delete().eq("id", id);
+              if (error) throw error;
+              logActivity({
+                actorId: profile?.id,
+                actorName: profile?.name,
+                actorType: "admin",
+                action: "deleted_doctor",
+                entityType: "doctor",
+                entityId: id,
+                details: { name: doctor.name, clinicCode: doctor.clinic_code },
+              });
+            }}
+            onDeleted={() => router.push("/dashboard/doctors")}
+          />
+        )}
       </div>
 
       <PortalAccessCard

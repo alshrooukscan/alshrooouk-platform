@@ -9,6 +9,7 @@ import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScan
 import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
+import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
@@ -248,6 +249,26 @@ export default function PatientProfilePage() {
               {formatPhone(patient.mobile)} {patient.email ? `· ${patient.email}` : ""}
             </p>
           </div>
+          {isAdmin && (
+            <DeleteEntityButton
+              entityLabel="patient"
+              entityName={patient.name}
+              onDelete={async () => {
+                const { error } = await supabase.from("patients").delete().eq("id", id);
+                if (error) throw error;
+                logActivity({
+                  actorId: profile?.id,
+                  actorName: profile?.name,
+                  actorType: "admin",
+                  action: "deleted_patient",
+                  entityType: "patient",
+                  entityId: id,
+                  details: { name: patient.name, mobile: patient.mobile },
+                });
+              }}
+              onDeleted={() => router.push("/dashboard/patients")}
+            />
+          )}
         </div>
       </div>
 

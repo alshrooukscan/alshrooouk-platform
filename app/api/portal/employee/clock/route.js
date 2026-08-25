@@ -95,8 +95,11 @@ export async function POST(req) {
         const buffer = Buffer.from(faceCaptureBase64, "base64");
         const file = await uploadFile(folderId, `unmatched_${session.id}_${Date.now()}.jpg`, "image/jpeg", buffer);
         faceCaptureDriveId = file.id;
-      } catch {
-        // A failed upload of the review photo should never block attendance itself.
+      } catch (uploadErr) {
+        // A failed upload of the review photo should never block attendance itself,
+        // but it should be visible in the logs rather than silently disappearing -
+        // this exact gap made a real mismatch undiagnosable once already.
+        console.error("Failed to upload unmatched face capture for employee", session.id, uploadErr);
       }
     }
   }

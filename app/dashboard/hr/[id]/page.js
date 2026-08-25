@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import MonthlySchedule from "../../../../components/MonthlySchedule";
@@ -12,11 +12,14 @@ import { MODULES } from "../../../../lib/modules";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { logActivity } from "../../../../lib/activityLog";
+import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 export default function EmployeeProfilePage() {
   const { id } = useParams();
-  const { isAdmin } = usePermissions();
+  const router = useRouter();
+  const { isAdmin, profile } = usePermissions();
   const [employee, setEmployee] = useState(null);
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoDraft, setInfoDraft] = useState(null);
@@ -260,6 +263,26 @@ export default function EmployeeProfilePage() {
               <button onClick={handleGeneratePayslip} disabled={generating} style={primaryBtn}>
                 {generating ? "Generating..." : "Generate Payslip"}
               </button>
+              {isAdmin && (
+                <DeleteEntityButton
+                  entityLabel="employee"
+                  entityName={employee.name}
+                  onDelete={async () => {
+                    const { error } = await supabase.from("employees").delete().eq("id", id);
+                    if (error) throw error;
+                    logActivity({
+                      actorId: profile?.id,
+                      actorName: profile?.name,
+                      actorType: "admin",
+                      action: "deleted_employee",
+                      entityType: "employee",
+                      entityId: id,
+                      details: { name: employee.name, hrId: employee.hr_id },
+                    });
+                  }}
+                  onDeleted={() => router.push("/dashboard/hr")}
+                />
+              )}
             </div>
           </div>
         ) : (
