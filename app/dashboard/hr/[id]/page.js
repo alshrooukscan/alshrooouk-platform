@@ -14,6 +14,7 @@ import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { logActivity } from "../../../../lib/activityLog";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
+import DocumentsUploader from "../../../../components/DocumentsUploader";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 export default function EmployeeProfilePage() {
@@ -526,6 +527,10 @@ export default function EmployeeProfilePage() {
             )}
           </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <DocumentsUploader entityType="employee" entityId={id} profile={profile} />
       </div>
     </div>
   );

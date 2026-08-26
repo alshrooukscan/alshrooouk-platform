@@ -2,8 +2,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
+import { usePermissions } from "../../../lib/usePermissions";
+import DocumentsUploader from "../../../components/DocumentsUploader";
 
 export default function BranchesPage() {
+  const { profile } = usePermissions();
   const [branches, setBranches] = useState([]);
   const [newBranch, setNewBranch] = useState("");
   const [expandedBranch, setExpandedBranch] = useState(null);
@@ -108,6 +111,14 @@ export default function BranchesPage() {
                   </div>
                 </div>
                 <button onClick={() => saveBranchDetails(b)} style={{ ...smallPrimary, alignSelf: "flex-start" }}>Save</button>
+                <div style={{ marginTop: 6 }}>
+                  <DocumentsUploader
+                    entityType="branch"
+                    entityId={b.id}
+                    profile={profile}
+                    disabledReason={!b.drive_folder_id ? "Set this branch's Drive folder above first, then documents can be uploaded here." : null}
+                  />
+                </div>
               </div>
             )}
           </div>
