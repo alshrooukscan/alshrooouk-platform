@@ -45,7 +45,6 @@ const NAV = [
     items: [
       { href: "/dashboard/patients", label: "Patient", icon: User, key: "patients" },
       { href: "/dashboard/doctors", label: "Doctor", icon: Stethoscope, key: "doctors" },
-      { href: "/dashboard/cash-expenses", label: "Center Expenses", icon: Wallet, key: "cash_expenses" },
       { href: "/dashboard/vendors", label: "External Vendors", icon: Handshake, key: "vendors" },
       { href: "/dashboard/branches", label: "Branch Management", icon: Building2, key: "settings" },
     ],
@@ -67,6 +66,7 @@ const NAV = [
       { href: "/dashboard/hr", label: "Employee Management", icon: UserPlus, key: "hr" },
       { href: "/dashboard/hr/payslips", label: "Payslips", icon: Receipt, key: "hr" },
       { href: "/dashboard/hr/deductions", label: "Deductions and Excuses", icon: ClipboardList, key: "hr" },
+      { href: "/dashboard/cash-expenses", label: "Employee Advances", icon: Wallet, key: "cash_expenses" },
     ],
   },
   {

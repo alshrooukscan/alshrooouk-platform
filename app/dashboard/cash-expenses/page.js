@@ -61,14 +61,16 @@ export default function CashExpensesPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>FINANCIAL</p>
-          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Center Expenses</h1>
-          <p style={{ color: theme.gray, margin: 0 }}>Real categorized spending, however it was paid, so Cash In can be measured against what actually left the register.</p>
+          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Employee Advances</h1>
+          <p style={{ color: theme.gray, margin: 0 }}>
+            General spending now lives in Expenses Management. This page is for employee advances specifically, and for browsing older expense history recorded here before that.
+          </p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           style={{ padding: "10px 20px", borderRadius: 8, background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`, color: theme.navy, fontWeight: 700, border: "none", cursor: "pointer", fontSize: 14 }}
         >
-          + Log Expense
+          + Log Advance
         </button>
       </div>
 
@@ -151,7 +153,12 @@ export default function CashExpensesPage() {
 }
 
 function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
-  const [category, setCategory] = useState("utilities");
+  // Locked to employee_advance now - general spending moved to the new
+  // Expenses Management module (Cash Out on each brand's page). This page's
+  // remaining job is narrow: advances, because generate_payslip() only
+  // reads its stateful deduction tracking (open/paid_off, partial
+  // installments across multiple payroll runs) from THIS table specifically.
+  const category = "employee_advance";
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [amount, setAmount] = useState("");
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
@@ -163,7 +170,7 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const isAdvance = category === "employee_advance";
+  const isAdvance = true;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -220,14 +227,10 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
       <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 16, padding: 28, width: 420, maxWidth: "90vw", maxHeight: "88vh", overflowY: "auto" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Log Cash Expense</h3>
-
-        <FieldLabel>Category</FieldLabel>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} style={inp}>
-          {CATEGORIES.map((c) => (
-            <option key={c.key} value={c.key}>{c.label}</option>
-          ))}
-        </select>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>Log Employee Advance</h3>
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>
+          For general spending, use Cash Out on the relevant brand's page in Expenses Management instead.
+        </p>
 
         <FieldLabel>Paid Via</FieldLabel>
         <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
