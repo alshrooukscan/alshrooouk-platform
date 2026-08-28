@@ -18,9 +18,15 @@ export default function DoctorProfilePage() {
   const [doctor, setDoctor] = useState(null);
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [branches, setBranches] = useState([]);
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoDraft, setInfoDraft] = useState({});
+  const [infoError, setInfoError] = useState("");
+  const [savingInfo, setSavingInfo] = useState(false);
 
   useEffect(() => {
     load();
+    supabase.from("branches").select("id, name").eq("is_active", true).then(({ data }) => setBranches(data || []));
   }, [id]);
 
   async function load() {
@@ -36,6 +42,60 @@ export default function DoctorProfilePage() {
     setLoading(false);
   }
 
+  function startEditInfo() {
+    setInfoDraft({
+      name: doctor.name || "",
+      clinic_code: doctor.clinic_code || "",
+      clinic_name: doctor.clinic_name || "",
+      phone: doctor.phone || "",
+      phone_2: doctor.phone_2 || "",
+      email: doctor.email || "",
+      branch_id: doctor.branch_id || "",
+      discount_pct: doctor.discount_pct ?? "",
+      special_note: doctor.special_note || "",
+    });
+    setInfoError("");
+    setEditingInfo(true);
+  }
+
+  async function handleSaveInfo() {
+    if (!infoDraft.name || !infoDraft.clinic_code) {
+      setInfoError("Name and clinic code are required.");
+      return;
+    }
+    setSavingInfo(true);
+    const { error } = await supabase
+      .from("doctors")
+      .update({
+        name: infoDraft.name,
+        clinic_code: infoDraft.clinic_code,
+        clinic_name: infoDraft.clinic_name || null,
+        phone: formatPhone(infoDraft.phone),
+        phone_2: infoDraft.phone_2 ? formatPhone(infoDraft.phone_2) : null,
+        email: infoDraft.email || null,
+        branch_id: infoDraft.branch_id || null,
+        discount_pct: infoDraft.discount_pct === "" ? 0 : Number(infoDraft.discount_pct),
+        special_note: infoDraft.special_note || null,
+      })
+      .eq("id", id);
+    setSavingInfo(false);
+    if (error) {
+      setInfoError(error.message);
+      return;
+    }
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: "admin",
+      action: "edited_doctor",
+      entityType: "doctor",
+      entityId: id,
+      details: { name: infoDraft.name, clinicCode: infoDraft.clinic_code },
+    });
+    setEditingInfo(false);
+    load();
+  }
+
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
   if (!doctor) return <p style={{ color: theme.gray }}>Doctor not found.</p>;
 
@@ -48,35 +108,103 @@ export default function DoctorProfilePage() {
 
   return (
     <div>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
-          <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
-          <p style={{ color: theme.gray, margin: 0 }}>
-            {formatPhone(doctor.phone)}
-            {doctor.phone_2 && ` · ${formatPhone(doctor.phone_2)}`}
-            {doctor.email ? ` · ${doctor.email}` : ""}
-          </p>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        {!editingInfo ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
+            <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
+            <p style={{ color: theme.gray, margin: 0 }}>
+              {formatPhone(doctor.phone)}
+              {doctor.phone_2 && ` · ${formatPhone(doctor.phone_2)}`}
+              {doctor.email ? ` · ${doctor.email}` : ""}
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+          {isAdmin && (
+            <button onClick={startEditInfo} style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+              Edit
+            </button>
+          )}
+          {isAdmin && (
+            <DeleteEntityButton
+              entityLabel="doctor"
+              entityName={doctor.name}
+              onDelete={async () => {
+                const { error } = await supabase.from("doctors").delete().eq("id", id);
+                if (error) throw error;
+                logActivity({
+                  actorId: profile?.id,
+                  actorName: profile?.name,
+                  actorType: "admin",
+                  action: "deleted_doctor",
+                  entityType: "doctor",
+                  entityId: id,
+                  details: { name: doctor.name, clinicCode: doctor.clinic_code },
+                });
+              }}
+              onDeleted={() => router.push("/dashboard/doctors")}
+            />
+          )}
+          </div>
         </div>
-        {isAdmin && (
-          <DeleteEntityButton
-            entityLabel="doctor"
-            entityName={doctor.name}
-            onDelete={async () => {
-              const { error } = await supabase.from("doctors").delete().eq("id", id);
-              if (error) throw error;
-              logActivity({
-                actorId: profile?.id,
-                actorName: profile?.name,
-                actorType: "admin",
-                action: "deleted_doctor",
-                entityType: "doctor",
-                entityId: id,
-                details: { name: doctor.name, clinicCode: doctor.clinic_code },
-              });
-            }}
-            onDeleted={() => router.push("/dashboard/doctors")}
-          />
+        ) : (
+        <div>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Edit Doctor Info</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Admin only.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={editLabel}>Name</label>
+              <input style={editInp} value={infoDraft.name} onChange={(e) => setInfoDraft({ ...infoDraft, name: e.target.value })} />
+            </div>
+            <div>
+              <label style={editLabel}>Clinic Code</label>
+              <input style={editInp} value={infoDraft.clinic_code} onChange={(e) => setInfoDraft({ ...infoDraft, clinic_code: e.target.value })} />
+            </div>
+            <div>
+              <label style={editLabel}>Clinic Name</label>
+              <input style={editInp} value={infoDraft.clinic_name} onChange={(e) => setInfoDraft({ ...infoDraft, clinic_name: e.target.value })} />
+            </div>
+            <div>
+              <label style={editLabel}>Branch</label>
+              <select style={editInp} value={infoDraft.branch_id} onChange={(e) => setInfoDraft({ ...infoDraft, branch_id: e.target.value })}>
+                <option value="">None</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={editLabel}>Phone</label>
+              <input style={editInp} value={infoDraft.phone} onChange={(e) => setInfoDraft({ ...infoDraft, phone: e.target.value })} placeholder="+20 1X XXX XXXX" />
+            </div>
+            <div>
+              <label style={editLabel}>Phone 2</label>
+              <input style={editInp} value={infoDraft.phone_2} onChange={(e) => setInfoDraft({ ...infoDraft, phone_2: e.target.value })} placeholder="+20 1X XXX XXXX" />
+            </div>
+            <div>
+              <label style={editLabel}>Email</label>
+              <input style={editInp} value={infoDraft.email} onChange={(e) => setInfoDraft({ ...infoDraft, email: e.target.value })} />
+            </div>
+            <div>
+              <label style={editLabel}>Discount %</label>
+              <input style={editInp} type="number" value={infoDraft.discount_pct} onChange={(e) => setInfoDraft({ ...infoDraft, discount_pct: e.target.value })} />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={editLabel}>Special Note (auto-added to new visit notes for this doctor)</label>
+              <input style={editInp} value={infoDraft.special_note} onChange={(e) => setInfoDraft({ ...infoDraft, special_note: e.target.value })} />
+            </div>
+          </div>
+          {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button onClick={() => setEditingInfo(false)} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
+              Cancel
+            </button>
+            <button onClick={handleSaveInfo} disabled={savingInfo} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+              {savingInfo ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
         )}
       </div>
 
@@ -135,3 +263,5 @@ function StatCard({ label, value }) {
     </div>
   );
 }
+const editLabel = { display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 };
+const editInp = { width: "100%", padding: "9px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" };

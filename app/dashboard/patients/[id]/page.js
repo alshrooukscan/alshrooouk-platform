@@ -30,12 +30,58 @@ export default function PatientProfilePage() {
   const [whatsAppPicker, setWhatsAppPicker] = useState(false);
   const [employees, setEmployees] = useState([]);
   const { profile, isAdmin } = usePermissions();
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoDraft, setInfoDraft] = useState({ name: "", mobile: "", email: "" });
+  const [infoError, setInfoError] = useState("");
+  const [savingInfo, setSavingInfo] = useState(false);
 
   useEffect(() => {
     load();
     loadFiles();
     loadEmployees();
   }, [id]);
+
+  function startEditInfo() {
+    setInfoDraft({
+      name: patient.name || "",
+      mobile: patient.mobile || "",
+      email: patient.email || "",
+    });
+    setInfoError("");
+    setEditingInfo(true);
+  }
+
+  async function handleSaveInfo() {
+    if (!infoDraft.name || !infoDraft.mobile) {
+      setInfoError("Name and mobile number are required.");
+      return;
+    }
+    setSavingInfo(true);
+    const { error } = await supabase
+      .from("patients")
+      .update({
+        name: infoDraft.name,
+        mobile: formatPhone(infoDraft.mobile),
+        email: infoDraft.email || null,
+      })
+      .eq("id", id);
+    setSavingInfo(false);
+    if (error) {
+      setInfoError(error.message);
+      return;
+    }
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: "admin",
+      action: "edited_patient",
+      entityType: "patient",
+      entityId: id,
+      details: { name: infoDraft.name },
+    });
+    setEditingInfo(false);
+    load();
+  }
 
   async function loadEmployees() {
     const { data } = await supabase.from("employees").select("id, name").eq("is_active", true).order("name");
@@ -242,6 +288,7 @@ export default function PatientProfilePage() {
   return (
     <div>
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        {!editingInfo ? (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <h1 style={{ color: theme.navy, margin: 0 }}>{patient.name}</h1>
@@ -249,6 +296,12 @@ export default function PatientProfilePage() {
               {formatPhone(patient.mobile)} {patient.email ? `· ${patient.email}` : ""}
             </p>
           </div>
+          <div style={{ display: "flex", gap: 8 }}>
+          {isAdmin && (
+            <button onClick={startEditInfo} style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+              Edit
+            </button>
+          )}
           {isAdmin && (
             <DeleteEntityButton
               entityLabel="patient"
@@ -269,7 +322,37 @@ export default function PatientProfilePage() {
               onDeleted={() => router.push("/dashboard/patients")}
             />
           )}
+          </div>
         </div>
+        ) : (
+        <div>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Edit Patient Info</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Admin only.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={editLabel}>Name</label>
+              <input style={editInp} value={infoDraft.name} onChange={(e) => setInfoDraft({ ...infoDraft, name: e.target.value })} />
+            </div>
+            <div>
+              <label style={editLabel}>Mobile</label>
+              <input style={editInp} value={infoDraft.mobile} onChange={(e) => setInfoDraft({ ...infoDraft, mobile: e.target.value })} placeholder="+20 1X XXX XXXX" />
+            </div>
+            <div>
+              <label style={editLabel}>Email</label>
+              <input style={editInp} value={infoDraft.email} onChange={(e) => setInfoDraft({ ...infoDraft, email: e.target.value })} />
+            </div>
+          </div>
+          {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button onClick={() => setEditingInfo(false)} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
+              Cancel
+            </button>
+            <button onClick={handleSaveInfo} disabled={savingInfo} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+              {savingInfo ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+        )}
       </div>
 
       <PortalAccessCard
@@ -792,3 +875,5 @@ const smallBtn = {
   cursor: "pointer",
 };
 const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box", marginBottom: 10, fontFamily: "inherit" };
+const editLabel = { display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 };
+const editInp = { width: "100%", padding: "9px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" };
