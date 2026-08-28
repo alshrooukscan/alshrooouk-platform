@@ -48,6 +48,17 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
+// Wording matters here - the point is to make it unmistakable, before the
+// entry is recorded, that an out-of-range or unverified sign-in is being
+// captured as such, so it can't later be mistaken for an ordinary one if
+// there's ever a payroll question about it.
+function locationWarningMessage(distanceMeters) {
+  return `You appear to be about ${Math.round(distanceMeters)}m away from the clinic, not at it. If you continue, this will be recorded as an outside-location sign-in and may be reviewed for attendance purposes. Only confirm if you are certain you are at the correct location.`;
+}
+function faceWarningMessage() {
+  return "We couldn't confirm this is your face. If you continue, this will be recorded as an unverified sign-in and may be reviewed for attendance purposes. Only confirm if you are certain this is really you.";
+}
+
 export async function POST(req) {
   const token = cookies().get("portal_session")?.value;
   const session = await verifyEmployeeSession(token);
@@ -55,7 +66,7 @@ export async function POST(req) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { eventType, lat, lng, faceDescriptor, faceCaptureBase64 } = await req.json();
+  const { eventType, lat, lng, faceDescriptor, faceCaptureBase64, overrideConfirmed } = await req.json();
   if (!["login", "logout"].includes(eventType)) {
     return NextResponse.json({ error: "eventType must be login or logout" }, { status: 400 });
   }
@@ -64,22 +75,12 @@ export async function POST(req) {
     return NextResponse.json({ error: "Location is required to sign in or out." }, { status: 400 });
   }
 
-  // Location is the one hard gate - proven, reliable, never a false-lockout risk.
   const distance = haversineMeters(CLINIC_LAT, CLINIC_LNG, lat, lng);
-  if (distance > ALLOWED_RADIUS_METERS) {
-    return NextResponse.json(
-      { error: `You must be at the clinic to sign in or out. You appear to be about ${Math.round(distance)}m away.` },
-      { status: 403 }
-    );
-  }
+  const locationOutOfRange = distance > ALLOWED_RADIUS_METERS;
 
-  // Face is a soft signal - recorded and flagged on mismatch, but it never blocks
-  // a real clock-in. A self-hosted model will sometimes miss on lighting/angle,
-  // and that shouldn't be able to cost someone their attendance record.
   const { data: emp } = await supabaseAdmin.from("employees").select("face_descriptor").eq("id", session.id).single();
   let faceMatchStatus = "not_enrolled";
   let faceMatchDistance = null;
-  let faceCaptureDriveId = null;
 
   if (emp?.face_descriptor) {
     if (Array.isArray(faceDescriptor) && faceDescriptor.length === 128) {
@@ -88,19 +89,41 @@ export async function POST(req) {
     } else {
       faceMatchStatus = "failed";
     }
+  }
+  const faceFailed = faceMatchStatus === "failed";
 
-    if (faceMatchStatus === "failed" && faceCaptureBase64) {
-      try {
-        const folderId = await ensureEmployeePhotosFolder();
-        const buffer = Buffer.from(faceCaptureBase64, "base64");
-        const file = await uploadFile(folderId, `unmatched_${session.id}_${Date.now()}.jpg`, "image/jpeg", buffer);
-        faceCaptureDriveId = file.id;
-      } catch (uploadErr) {
-        // A failed upload of the review photo should never block attendance itself,
-        // but it should be visible in the logs rather than silently disappearing -
-        // this exact gap made a real mismatch undiagnosable once already.
-        console.error("Failed to upload unmatched face capture for employee", session.id, uploadErr);
-      }
+  // Either issue pauses the write and asks the employee to explicitly
+  // acknowledge it first - unless they already have (overrideConfirmed),
+  // in which case this is the confirmed attempt and it gets recorded below,
+  // status and all, exactly as it happened.
+  if ((locationOutOfRange || faceFailed) && !overrideConfirmed) {
+    const reasons = [];
+    if (locationOutOfRange) reasons.push("location");
+    if (faceFailed) reasons.push("face");
+    return NextResponse.json({
+      needsConfirmation: true,
+      reasons,
+      locationMessage: locationOutOfRange ? locationWarningMessage(distance) : null,
+      faceMessage: faceFailed ? faceWarningMessage() : null,
+      distance: Math.round(distance),
+      faceMatchStatus,
+    });
+  }
+
+  // From here on, this attempt is being recorded - either everything checked
+  // out, or the employee explicitly confirmed despite a warning.
+  let faceCaptureDriveId = null;
+  if (faceFailed && faceCaptureBase64) {
+    try {
+      const folderId = await ensureEmployeePhotosFolder();
+      const buffer = Buffer.from(faceCaptureBase64, "base64");
+      const file = await uploadFile(folderId, `unmatched_${session.id}_${Date.now()}.jpg`, "image/jpeg", buffer);
+      faceCaptureDriveId = file.id;
+    } catch (uploadErr) {
+      // A failed upload of the review photo should never block attendance itself,
+      // but it should be visible in the logs rather than silently disappearing -
+      // this exact gap made a real mismatch undiagnosable once already.
+      console.error("Failed to upload unmatched face capture for employee", session.id, uploadErr);
     }
   }
 
@@ -119,6 +142,7 @@ export async function POST(req) {
       event_type: eventType,
       lat,
       lng,
+      distance_from_clinic_meters: Math.round(distance),
       ip_address: ip,
       address,
       face_match_status: faceMatchStatus,
@@ -128,6 +152,9 @@ export async function POST(req) {
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   return NextResponse.json({ event: data, faceMatchStatus });
 }

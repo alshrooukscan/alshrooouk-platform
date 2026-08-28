@@ -112,7 +112,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
                 {tx.from_employee?.name && ` from ${tx.from_employee.name}`}
                 {tx.to_employee?.name && ` to ${tx.to_employee.name}`}
                 {tx.type === "cash_collection" && !tx.to_employee?.name && " to Owner"}
-                <span style={{ color: theme.gray }}> \u00b7 {tx.entry_date}</span>
+                <span style={{ color: theme.gray }}> · {tx.entry_date}</span>
               </div>
             </div>
           ))}

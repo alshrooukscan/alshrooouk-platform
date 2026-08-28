@@ -79,7 +79,7 @@ export default function BrandTransferPage() {
             const debt = netDebt(a, b);
             return (
               <div key={`${a}-${b}`} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-                <span style={{ color: theme.navy, fontSize: 13 }}>{BRAND_LABEL[a]} \u2194 {BRAND_LABEL[b]}</span>
+                <span style={{ color: theme.navy, fontSize: 13 }}>{BRAND_LABEL[a]} ↔ {BRAND_LABEL[b]}</span>
                 <span style={{ fontWeight: 700, color: debt.owes ? "#ba1a1a" : "#2e7d32", fontSize: 13 }}>
                   {debt.owes ? `${debt.text}: ${formatMoney(debt.amount)} EGP` : debt.text}
                 </span>
@@ -99,10 +99,10 @@ export default function BrandTransferPage() {
                 {tx.status}
               </span>
               <div style={{ flex: 1, fontSize: 13 }}>
-                <strong style={{ color: theme.navy }}>{BRAND_LABEL[tx.brand]} \u2192 {BRAND_LABEL[tx.to_brand]}</strong>{" "}
+                <strong style={{ color: theme.navy }}>{BRAND_LABEL[tx.brand]} → {BRAND_LABEL[tx.to_brand]}</strong>{" "}
                 {formatMoney(tx.amount)} EGP via {tx.payment_method}
-                {tx.note && <span style={{ color: theme.gray, fontStyle: "italic" }}> \u2014 {tx.note}</span>}
-                <span style={{ color: theme.gray }}> \u00b7 {tx.entry_date}</span>
+                {tx.note && <span style={{ color: theme.gray, fontStyle: "italic" }}> — {tx.note}</span>}
+                <span style={{ color: theme.gray }}> · {tx.entry_date}</span>
               </div>
             </div>
           ))}
@@ -133,6 +133,11 @@ function BrandTransferForm({ profile, onClose, onSaved }) {
       return;
     }
     setSaving(true);
+    // This page is already admin-only to even open (see the isAdmin gate
+    // above), so every transfer logged here is inherently logged by
+    // whoever has admin access - there's no separate person left to confirm
+    // it. It's recorded as already confirmed, by themselves, rather than
+    // sitting in a queue that's meant for reviewing OTHER people's entries.
     const { data, error: err } = await supabase
       .from("expense_transactions")
       .insert({
@@ -142,7 +147,10 @@ function BrandTransferForm({ profile, onClose, onSaved }) {
         amount: Number(amount),
         payment_method: paymentMethod,
         note: note || null,
-        status: "pending",
+        status: "confirmed",
+        confirmed_by_id: profile?.id || null,
+        confirmed_by_name: profile?.name || null,
+        confirmed_at: new Date().toISOString(),
         created_by_id: profile?.id || null,
         created_by_name: profile?.name || null,
       })

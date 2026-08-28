@@ -50,16 +50,13 @@ export default function EmployeePortalPage() {
     setCaptureEventType(eventType);
   }
 
-  async function submitClock({ eventType, lat, lng, faceDescriptor, faceCaptureBase64 }) {
-    setPunching(true);
-    const res = await fetch("/api/portal/employee/clock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventType, lat, lng, faceDescriptor, faceCaptureBase64 }),
-    });
-    const result = await res.json();
-    if (!res.ok) {
-      setGeoError(result.error || "Could not sign in/out.");
+  // FaceLocationCapture now owns the whole submit/retry/warn/confirm cycle
+  // itself (it needs the camera and location refs throughout that loop
+  // anyway) and calls this once a final outcome exists - either a
+  // successfully recorded event, or an error worth surfacing.
+  function handleClockDone(result) {
+    if (result?.error) {
+      setGeoError(result.error);
     }
     setPunching(false);
     setCaptureEventType(null);
@@ -230,7 +227,7 @@ export default function EmployeePortalPage() {
         <FaceLocationCapture
           eventType={captureEventType}
           onCancel={() => setCaptureEventType(null)}
-          onReady={submitClock}
+          onReady={handleClockDone}
         />
       )}
     </div>
@@ -239,12 +236,15 @@ export default function EmployeePortalPage() {
 
 function FaceLocationCapture({ eventType, onCancel, onReady }) {
   const [status, setStatus] = useState("Getting your location...");
-  const [attempt, setAttempt] = useState(0);
+  const [warning, setWarning] = useState(null); // { reasons, locationMessage, faceMessage }
+  const [confirming, setConfirming] = useState(false);
   const videoElRef = useRef(null);
   const canvasElRef = useRef(null);
   const streamRef = useRef(null);
   const locationRef = useRef(null);
-  const MAX_ATTEMPTS = 2;
+  const pendingRef = useRef(null); // last attempt's { lat, lng, faceDescriptor, faceCaptureBase64 }
+  const NO_FACE_MAX_ATTEMPTS = 2;
+  const MISMATCH_MAX_ATTEMPTS = 2;
 
   useEffect(() => {
     let cancelled = false;
@@ -256,20 +256,22 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
       }
     }
 
-    function finish(descriptor, captureBase64) {
-      stopStream();
-      if (!locationRef.current) return;
-      onReady({
-        eventType,
-        lat: locationRef.current.lat,
-        lng: locationRef.current.lng,
-        faceDescriptor: descriptor,
-        faceCaptureBase64: captureBase64 || null,
+    async function submitAttempt(payload, overrideConfirmed) {
+      const res = await fetch("/api/portal/employee/clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventType, ...payload, overrideConfirmed }),
       });
+      return { ok: res.ok, data: await res.json() };
     }
 
-    async function captureAndVerify(attemptNumber) {
-      if (cancelled || !videoElRef.current) return;
+    function finishDone(result) {
+      stopStream();
+      onReady(result);
+    }
+
+    async function captureAndVerify(noFaceAttempt, mismatchAttempt) {
+      if (cancelled || !videoElRef.current || !locationRef.current) return;
       setStatus("Verifying...");
       const canvas = canvasElRef.current;
       canvas.width = videoElRef.current.videoWidth || 320;
@@ -283,31 +285,46 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
       } catch {
         descriptor = null;
       }
-
       if (cancelled) return;
 
-      if (descriptor) {
-        // A descriptor was extracted, but whether it actually MATCHES the
-        // enrolled face is decided server-side (that's the only place the
-        // reference descriptor lives). If it turns out to be a mismatch, the
-        // server needs this frame to store as review evidence of who actually
-        // attempted the clock-in - so it's always sent along, not only when
-        // no face was found at all.
-        const captureBase64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
-        finish(descriptor, captureBase64);
+      if (!descriptor) {
+        const nextAttempt = noFaceAttempt + 1;
+        if (nextAttempt < NO_FACE_MAX_ATTEMPTS) {
+          setStatus(`No face detected, trying again... (${nextAttempt}/${NO_FACE_MAX_ATTEMPTS})`);
+          setTimeout(() => !cancelled && captureAndVerify(nextAttempt, mismatchAttempt), 1200);
+          return;
+        }
+        // Truly no face found after retrying - proceed with location only,
+        // same as before: never let a camera issue block a real clock-in.
+        descriptor = null;
+      }
+
+      const captureBase64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+      const payload = { lat: locationRef.current.lat, lng: locationRef.current.lng, faceDescriptor: descriptor, faceCaptureBase64: captureBase64 };
+      pendingRef.current = payload;
+
+      const { data } = await submitAttempt(payload, false);
+      if (cancelled) return;
+
+      if (!data.needsConfirmation) {
+        finishDone(data);
         return;
       }
 
-      const nextAttempt = attemptNumber + 1;
-      setAttempt(nextAttempt);
-      if (nextAttempt < MAX_ATTEMPTS) {
-        setStatus(`No face detected, trying again... (${nextAttempt}/${MAX_ATTEMPTS})`);
-        setTimeout(() => !cancelled && captureAndVerify(nextAttempt), 1200);
-      } else {
-        setStatus("Could not verify face - recording sign in/out anyway with a flag for review.");
-        const captureBase64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
-        setTimeout(() => !cancelled && finish(null, captureBase64), 1000);
+      // Only silently retry when it's specifically an unmatched-face issue on
+      // an attempt that hasn't been retried yet - a fresh frame sometimes
+      // fixes a bad angle or lighting. Location doesn't get this retry: GPS
+      // reading again isn't going to change where someone actually is.
+      const faceOnly = data.reasons.includes("face") && !data.reasons.includes("location");
+      const nextMismatchAttempt = mismatchAttempt + 1;
+      if (faceOnly && nextMismatchAttempt < MISMATCH_MAX_ATTEMPTS) {
+        setStatus("Having trouble confirming your face, trying once more...");
+        setTimeout(() => !cancelled && captureAndVerify(0, nextMismatchAttempt), 1200);
+        return;
       }
+
+      setWarning(data);
+      setStatus("");
     }
 
     async function init() {
@@ -339,10 +356,22 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
               await videoElRef.current.play();
             }
             setStatus("Look at the camera...");
-            setTimeout(() => !cancelled && captureAndVerify(0), 1200);
+            setTimeout(() => !cancelled && captureAndVerify(0, 0), 1200);
           } catch {
+            // No camera access - still check location/write via the same
+            // endpoint, with no face data attached (server marks not_enrolled
+            // or leaves it as-is; a location issue can still trigger a warning).
             setStatus("Camera permission denied - continuing with location only.");
-            setTimeout(() => !cancelled && finish(null), 1500);
+            const payload = { lat: locationRef.current.lat, lng: locationRef.current.lng, faceDescriptor: null, faceCaptureBase64: null };
+            pendingRef.current = payload;
+            const { data } = await submitAttempt(payload, false);
+            if (cancelled) return;
+            if (!data.needsConfirmation) {
+              finishDone(data);
+            } else {
+              setWarning(data);
+              setStatus("");
+            }
           }
         },
         () => {
@@ -359,6 +388,20 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function handleConfirmAnyway() {
+    if (!pendingRef.current) return;
+    setConfirming(true);
+    const res = await fetch("/api/portal/employee/clock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType, ...pendingRef.current, overrideConfirmed: true }),
+    });
+    const data = await res.json();
+    setConfirming(false);
+    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    onReady(data);
+  }
+
   function handleCancel() {
     if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
     onCancel();
@@ -366,16 +409,53 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 320, maxWidth: "90vw", textAlign: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 340, maxWidth: "90vw", textAlign: "center" }}>
         <h3 style={{ color: theme.navy, marginTop: 0, textTransform: "capitalize" }}>{eventType === "login" ? "Sign In" : "Sign Out"}</h3>
-        <div style={{ width: 240, height: 180, margin: "0 auto 12px", borderRadius: 12, overflow: "hidden", background: "#111", position: "relative" }}>
-          <video ref={videoElRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
-        </div>
-        <canvas ref={canvasElRef} style={{ display: "none" }} />
-        <p style={{ fontSize: 13, color: theme.gray }}>{status}</p>
-        <button onClick={handleCancel} style={{ marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-          Cancel
-        </button>
+
+        {!warning && (
+          <>
+            <div style={{ width: 240, height: 180, margin: "0 auto 12px", borderRadius: 12, overflow: "hidden", background: "#111", position: "relative" }}>
+              <video ref={videoElRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+            </div>
+            <canvas ref={canvasElRef} style={{ display: "none" }} />
+            <p style={{ fontSize: 13, color: theme.gray }}>{status}</p>
+            <button onClick={handleCancel} style={{ marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </>
+        )}
+
+        {warning && (
+          <div>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>&#9888;&#65039;</div>
+            {warning.locationMessage && (
+              <p style={{ fontSize: 13, color: "#202124", textAlign: "left", background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 10, padding: "10px 12px", marginBottom: warning.faceMessage ? 8 : 16 }}>
+                {warning.locationMessage}
+              </p>
+            )}
+            {warning.faceMessage && (
+              <p style={{ fontSize: 13, color: "#202124", textAlign: "left", background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 10, padding: "10px 12px", marginBottom: 16 }}>
+                {warning.faceMessage}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleCancel}
+                disabled={confirming}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmAnyway}
+                disabled={confirming}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: "#ba1a1a", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+              >
+                {confirming ? "Confirming..." : "Yes, Confirm"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

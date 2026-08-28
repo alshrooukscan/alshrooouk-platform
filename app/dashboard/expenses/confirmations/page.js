@@ -119,7 +119,7 @@ export default function ConfirmationQueuePage() {
                 </div>
                 {tx.note && <div style={{ fontSize: 12, color: theme.gray, fontStyle: "italic" }}>{tx.note}</div>}
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {tx.entry_date} \u00b7 logged by {tx.created_by_name || "unknown"}
+                  {tx.entry_date} · logged by {tx.created_by_name || "unknown"}
                   {tx.confirmed_by_name && ` \u00b7 reviewed by ${tx.confirmed_by_name}`}
                 </div>
               </div>

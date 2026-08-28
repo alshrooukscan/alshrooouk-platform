@@ -128,7 +128,7 @@ export default function StockCategoryPage({ category, title }) {
                         {variance.variance > 0 ? "+" : ""}{variance.variance}
                       </span>
                     ) : (
-                      <span style={{ color: "#bbb" }}>\u2014</span>
+                      <span style={{ color: "#bbb" }}>—</span>
                     )}
                   </Td>
                   <Td>
@@ -335,7 +335,7 @@ function Modal({ title, children, onClose }) {
       <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 380 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ margin: 0, color: theme.navy }}>{title}</h3>
-          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: theme.gray }}>\u00d7</button>
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: theme.gray }}>×</button>
         </div>
         {children}
       </div>
