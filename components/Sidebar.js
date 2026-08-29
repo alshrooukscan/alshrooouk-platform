@@ -27,7 +27,7 @@ import {
   ExternalLink,
   Banknote,
   ArrowLeftRight,
-  ShieldCheck,
+  ListChecks,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -38,6 +38,11 @@ import {
 // rather than generic shapes.
 const NAV = [
   { type: "link", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, key: "dashboard" },
+  // No permission key restricts this - every staff member can see their own
+  // tasks here regardless of role; the page itself further gates the
+  // approvals section to admin only, the same way other pages gate specific
+  // sections rather than the whole route.
+  { type: "link", href: "/dashboard/action-center", label: "Action Center", icon: ListChecks, alwaysVisible: true },
   {
     type: "group",
     label: "Scan Center Management",
@@ -82,7 +87,6 @@ const NAV = [
       // adminOnly, not grantable via a permission key, same pattern as the
       // Confirmation Queue right below it.
       { href: "/dashboard/expenses/brand-transfer", label: "Brand Transfer", icon: ArrowLeftRight, adminOnly: true },
-      { href: "/dashboard/expenses/confirmations", label: "Confirmation Queue", icon: ShieldCheck, adminOnly: true },
     ],
   },
   { type: "link", href: "/dashboard/settings", label: "Settings", icon: SettingsIcon, key: "settings" },
@@ -144,6 +148,7 @@ export default function Sidebar() {
   // check are shown, and the whole group hides if none do.
   function isVisible(navItem) {
     if (loading) return true;
+    if (navItem.alwaysVisible) return true;
     if (navItem.adminOnly) return isAdmin;
     return can(navItem.key);
   }
