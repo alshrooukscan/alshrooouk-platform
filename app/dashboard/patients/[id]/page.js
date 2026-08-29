@@ -691,8 +691,9 @@ function AddScanModal({ patient, onClose, onSaved }) {
     setDoctorResults([]);
     setForm((f) => ({
       ...f,
-      discount_on: Number(d.discount_pct) > 0,
-      discount_pct: d.discount_pct || 0,
+      discount_on: true,
+      discount_pct: 20,
+      discount_reason: "Referred Patient",
       notes: d.special_note ? (f.notes ? f.notes + " | " + d.special_note : d.special_note) : f.notes,
     }));
   }
@@ -848,14 +849,25 @@ function AddScanModal({ patient, onClose, onSaved }) {
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
               <FieldLabel>Discount %</FieldLabel>
-              <input type="number" style={inp} value={form.discount_pct} onChange={(e) => setForm({ ...form, discount_pct: e.target.value })} />
+              <input
+                type="number"
+                style={inp}
+                value={form.discount_pct}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const overCap = Number(val) > 20 && form.discount_reason === "Referred Patient";
+                  setForm({ ...form, discount_pct: val, discount_reason: overCap ? "" : form.discount_reason });
+                }}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <FieldLabel>Reason</FieldLabel>
               <select style={inp} value={form.discount_reason} onChange={(e) => setForm({ ...form, discount_reason: e.target.value })}>
                 <option value="">Select...</option>
                 {DISCOUNT_REASONS.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r} disabled={r === "Referred Patient" && Number(form.discount_pct) > 20}>
+                    {r}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? " (max 20%)" : ""}
+                  </option>
                 ))}
               </select>
             </div>
@@ -890,14 +902,20 @@ function AddScanModal({ patient, onClose, onSaved }) {
 }
 
 function Modal({ title, children, onClose, wide }) {
+  // Header stays fixed at the top of the modal while only the body below it
+  // scrolls - a flex column with the header as a non-shrinking child and the
+  // body as the one scrollable region, rather than the whole card (header
+  // included) scrolling as one block.
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 20 }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 26, width: wide ? 480 : 380, maxHeight: "88vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: wide ? 480 : 380, maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "26px 26px 14px", flexShrink: 0, borderBottom: "1px solid #f0f0f0" }}>
           <h3 style={{ margin: 0, color: theme.navy, fontSize: 17 }}>{title}</h3>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: theme.gray }}>×</button>
         </div>
-        {children}
+        <div style={{ padding: "14px 26px 26px", overflowY: "auto", minHeight: 0 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
