@@ -27,6 +27,7 @@ export default function PatientProfilePage() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showAddScan, setShowAddScan] = useState(false);
+  const [editingVisit, setEditingVisit] = useState(null);
   const [payingVisitId, setPayingVisitId] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "Cash" });
   const [paymentSaving, setPaymentSaving] = useState(false);
@@ -466,6 +467,7 @@ export default function PatientProfilePage() {
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>
                 <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>Generate Invoice</button>
+                <button onClick={() => setEditingVisit(v)} style={smallBtn}>Edit Visit</button>
                 {v.payment_status !== "paid" && (
                   <button
                     onClick={() => {
@@ -546,6 +548,18 @@ export default function PatientProfilePage() {
           onClose={() => setShowAddScan(false)}
           onSaved={() => {
             setShowAddScan(false);
+            load();
+          }}
+        />
+      )}
+
+      {editingVisit && (
+        <EditVisitModal
+          visit={editingVisit}
+          isAdmin={isAdmin}
+          onClose={() => setEditingVisit(null)}
+          onSaved={() => {
+            setEditingVisit(null);
             load();
           }}
         />
@@ -895,6 +909,296 @@ function AddScanModal({ patient, onClose, onSaved }) {
         {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
         <button type="submit" disabled={saving} style={{ ...actionBtn, marginTop: 6 }}>
           {saving ? "Saving..." : "Add Scan"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
+  const { profile } = usePermissions();
+  const [branches, setBranches] = useState([]);
+  const [examTypes, setExamTypes] = useState([]);
+  const [doctorQuery, setDoctorQuery] = useState("");
+  const [doctorResults, setDoctorResults] = useState([]);
+  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [walkIn, setWalkIn] = useState(!visit.doctor_id);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  const [form, setForm] = useState({
+    branch_id: visit.branch_id || "",
+    scan_type_ids: [],
+    discount_on: Number(visit.discount_pct) > 0,
+    discount_pct: visit.discount_pct || 0,
+    discount_reason: visit.discount_reason || "",
+    discount_reason_other: "",
+    notes: visit.notes || "",
+  });
+
+  useEffect(() => {
+    async function init() {
+      const [{ data: b }, { data: e }] = await Promise.all([
+        supabase.from("branches").select("id, name").eq("is_active", true),
+        supabase.from("exam_types").select("id, name, price, category").eq("is_active", true).order("name"),
+      ]);
+      setBranches(b || []);
+      setExamTypes(e || []);
+      // Match the visit's existing scan_types (stored as name strings) back to
+      // exam_type ids, so the same checkboxes used at creation time can show
+      // which ones are currently selected on this visit.
+      const currentNames = new Set(visit.scan_types || []);
+      const matchedIds = (e || []).filter((ex) => currentNames.has(ex.name)).map((ex) => ex.id);
+      setForm((f) => ({ ...f, scan_type_ids: matchedIds }));
+
+      if (visit.doctor_id) {
+        const { data: d } = await supabase
+          .from("doctors")
+          .select("id, name, clinic_name, clinic_code, discount_pct, special_note")
+          .eq("id", visit.doctor_id)
+          .maybeSingle();
+        if (d) setSelectedDoctor(d);
+      }
+      setLoaded(true);
+    }
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!doctorQuery) {
+      setDoctorResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const { data } = await supabase
+        .from("doctors")
+        .select("id, name, clinic_name, clinic_code, discount_pct, special_note")
+        .or(`name.ilike.%${doctorQuery}%,clinic_code.ilike.%${doctorQuery}%`)
+        .limit(8);
+      setDoctorResults(data || []);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [doctorQuery]);
+
+  function toggleScan(id) {
+    setForm((f) => ({
+      ...f,
+      scan_type_ids: f.scan_type_ids.includes(id) ? f.scan_type_ids.filter((x) => x !== id) : [...f.scan_type_ids, id],
+    }));
+  }
+
+  function selectDoctor(d) {
+    setSelectedDoctor(d);
+    setDoctorResults([]);
+    setForm((f) => ({ ...f, discount_on: true, discount_pct: 20, discount_reason: "Referred Patient" }));
+  }
+
+  const selectedExams = examTypes.filter((e) => form.scan_type_ids.includes(e.id));
+  const sumBeforeDiscount = selectedExams.reduce((s, e) => s + (Number(e.price) || 0), 0);
+  const discountPct = form.discount_on ? Number(form.discount_pct) || 0 : 0;
+  const discountAmount = sumBeforeDiscount * (discountPct / 100);
+  const sumAfterDiscount = sumBeforeDiscount - discountAmount;
+
+  const examsByCategory = CATEGORY_ORDER.map((cat) => ({
+    key: cat,
+    label: CATEGORY_LABELS[cat],
+    items: examTypes.filter((e) => (e.category || "misc") === cat),
+  })).filter((c) => c.items.length > 0);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (!walkIn && !selectedDoctor) {
+      setError('Select a referring doctor, or check "Walk-in, no referring doctor."');
+      return;
+    }
+    if (form.scan_type_ids.length === 0) {
+      setError("Select at least one scan type.");
+      return;
+    }
+    setSaving(true);
+    const scanNames = selectedExams.map((ex) => ex.name);
+    const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
+
+    const requestedValues = {
+      scan_types: scanNames,
+      doctor_id: walkIn ? null : selectedDoctor?.id || null,
+      branch_id: form.branch_id || null,
+      amount_due: sumAfterDiscount || null,
+      discount_pct: discountPct,
+      discount_reason: form.discount_on ? finalReason : null,
+      notes: form.notes || null,
+    };
+    const previousValues = {
+      scan_types: visit.scan_types || [],
+      doctor_id: visit.doctor_id || null,
+      branch_id: visit.branch_id || null,
+      amount_due: visit.amount_due,
+      discount_pct: visit.discount_pct,
+      discount_reason: visit.discount_reason,
+      notes: visit.notes,
+    };
+
+    if (isAdmin) {
+      // Admin edits apply immediately - requiring admin to approve their own
+      // edit would be a pointless, circular step.
+      const { error: err } = await supabase.from("visits").update(requestedValues).eq("id", visit.id);
+      setSaving(false);
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      logActivity({
+        actorId: profile?.id,
+        actorName: profile?.name,
+        actorType: "admin",
+        action: "visit_edited",
+        entityType: "visit",
+        entityId: visit.id,
+        details: { previousValues, requestedValues },
+      });
+    } else {
+      const { error: err } = await supabase.from("visit_edit_requests").insert({
+        visit_id: visit.id,
+        previous_values: previousValues,
+        requested_values: requestedValues,
+        requested_by_id: profile?.id || null,
+        requested_by_name: profile?.name || null,
+      });
+      setSaving(false);
+      if (err) {
+        setError(err.message);
+        return;
+      }
+    }
+    onSaved();
+  }
+
+  if (!loaded) {
+    return (
+      <Modal title="Edit Visit" onClose={onClose} wide>
+        <p style={{ color: theme.gray, fontSize: 13 }}>Loading...</p>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Edit Visit" onClose={onClose} wide>
+      {!isAdmin && (
+        <p style={{ fontSize: 12, background: "#fff8e1", color: "#8a6d00", padding: "10px 12px", borderRadius: 8, marginTop: 0, marginBottom: 14 }}>
+          This change will be sent to Action Center for admin approval - it won't apply until approved.
+        </p>
+      )}
+      <form onSubmit={handleSubmit}>
+        <FieldLabel>Branch</FieldLabel>
+        <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
+          <option value="">Select branch</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+
+        <FieldLabel>Scan Type (select multiple)</FieldLabel>
+        {examsByCategory.map((cat) => (
+          <div key={cat.key} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: theme.gray, textTransform: "uppercase", marginBottom: 4 }}>{cat.label}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {cat.items.map((ex) => (
+                <label
+                  key={ex.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 10px", borderRadius: 8,
+                    border: `1px solid ${form.scan_type_ids.includes(ex.id) ? theme.gold : "#ddd"}`,
+                    background: form.scan_type_ids.includes(ex.id) ? theme.goldLight : "#fff", cursor: "pointer",
+                  }}
+                >
+                  <input type="checkbox" checked={form.scan_type_ids.includes(ex.id)} onChange={() => toggleScan(ex.id)} />
+                  {ex.name} <span style={{ color: theme.gray }}>({Number(ex.price).toFixed(0)} EGP)</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <FieldLabel>Referring Doctor</FieldLabel>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={walkIn}
+            onChange={(e) => {
+              setWalkIn(e.target.checked);
+              if (e.target.checked) setSelectedDoctor(null);
+            }}
+          />
+          Walk-in, no referring doctor
+        </label>
+        {!walkIn && (
+          <>
+            {selectedDoctor ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: "#faf9fb", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{selectedDoctor.name} - {selectedDoctor.clinic_name}</span>
+                <button type="button" onClick={() => setSelectedDoctor(null)} style={{ fontSize: 12, color: theme.gray, background: "none", border: "none", cursor: "pointer" }}>Change</button>
+              </div>
+            ) : (
+              <>
+                <input style={inp} value={doctorQuery} onChange={(e) => setDoctorQuery(e.target.value)} placeholder="Search doctor by name or clinic code" />
+                {doctorResults.map((d) => (
+                  <div key={d.id} onClick={() => selectDoctor(d)} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
+                    {d.name} - {d.clinic_name} ({d.clinic_code})
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+        <div style={{ background: "#faf9fb", borderRadius: 8, padding: 12, margin: "10px 0" }}>
+          <TotalRow label="Sum Before Discount" value={sumBeforeDiscount} />
+          {discountPct > 0 && <TotalRow label={`Discount (${discountPct}%)`} value={-discountAmount} negative />}
+          <TotalRow label="Amount Due" value={sumAfterDiscount} bold />
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 10 }}>
+          <input type="checkbox" checked={form.discount_on} onChange={(e) => setForm({ ...form, discount_on: e.target.checked })} />
+          Apply Discount
+        </label>
+        {form.discount_on && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <FieldLabel>Discount %</FieldLabel>
+              <input
+                type="number"
+                style={inp}
+                value={form.discount_pct}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const overCap = Number(val) > 20 && form.discount_reason === "Referred Patient";
+                  setForm({ ...form, discount_pct: val, discount_reason: overCap ? "" : form.discount_reason });
+                }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <FieldLabel>Reason</FieldLabel>
+              <select style={inp} value={form.discount_reason} onChange={(e) => setForm({ ...form, discount_reason: e.target.value })}>
+                <option value="">Select...</option>
+                {DISCOUNT_REASONS.map((r) => (
+                  <option key={r} value={r} disabled={r === "Referred Patient" && Number(form.discount_pct) > 20}>
+                    {r}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? " (max 20%)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        <FieldLabel>Notes</FieldLabel>
+        <input style={inp} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        <button type="submit" disabled={saving} style={{ ...actionBtn, marginTop: 6 }}>
+          {saving ? "Saving..." : isAdmin ? "Save Changes" : "Submit for Approval"}
         </button>
       </form>
     </Modal>
