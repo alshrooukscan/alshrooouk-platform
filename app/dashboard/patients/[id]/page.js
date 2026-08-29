@@ -27,6 +27,10 @@ export default function PatientProfilePage() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showAddScan, setShowAddScan] = useState(false);
+  const [payingVisitId, setPayingVisitId] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({ amount: "", method: "Cash" });
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
   const [whatsAppPicker, setWhatsAppPicker] = useState(false);
   const [employees, setEmployees] = useState([]);
   const { profile, isAdmin } = usePermissions();
@@ -80,6 +84,31 @@ export default function PatientProfilePage() {
       details: { name: infoDraft.name },
     });
     setEditingInfo(false);
+    load();
+  }
+
+  async function logPayment(visit) {
+    const amount = Number(paymentForm.amount);
+    if (!amount || amount <= 0) {
+      setPaymentError("Enter an amount greater than zero.");
+      return;
+    }
+    setPaymentSaving(true);
+    setPaymentError("");
+    const { error: err } = await supabase.from("visit_payments").insert({
+      visit_id: visit.id,
+      amount,
+      payment_method: paymentForm.method,
+      created_by_id: profile?.id || null,
+      created_by_name: profile?.name || null,
+    });
+    setPaymentSaving(false);
+    if (err) {
+      setPaymentError(err.message);
+      return;
+    }
+    setPayingVisitId(null);
+    setPaymentForm({ amount: "", method: "Cash" });
     load();
   }
 
@@ -391,6 +420,9 @@ export default function PatientProfilePage() {
               <div style={{ fontWeight: 600, color: theme.navy }}>{(v.scan_types || []).join(", ")}</div>
               <div style={{ fontSize: 12, color: theme.gray }}>
                 {v.exam_date} · {v.branches?.name || "—"} · {v.payment_status}
+                {v.payment_status === "partial" && v.amount_due != null && (
+                  <span style={{ color: "#b45309", fontWeight: 700 }}> · Pending: {(Number(v.amount_due) - Number(v.amount_paid || 0)).toFixed(2)} EGP</span>
+                )}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 <StageChip label="Paid" active={v.payment_status === "paid"} timestamp={v.paid_at} />
@@ -434,7 +466,47 @@ export default function PatientProfilePage() {
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>
                 <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>Generate Invoice</button>
+                {v.payment_status !== "paid" && (
+                  <button
+                    onClick={() => {
+                      setPayingVisitId(payingVisitId === v.id ? null : v.id);
+                      setPaymentError("");
+                    }}
+                    style={{ ...smallBtn, background: theme.gold, color: theme.navy, fontWeight: 700, border: "none" }}
+                  >
+                    Log Payment
+                  </button>
+                )}
               </div>
+              {payingVisitId === v.id && (
+                <div style={{ background: "#faf9fb", borderRadius: 10, padding: 12, marginTop: 10, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 }}>Amount</div>
+                    <input
+                      value={paymentForm.amount}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                      placeholder="0.00"
+                      style={{ width: 100, padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 }}>Method</div>
+                    <select
+                      value={paymentForm.method}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
+                      style={{ padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }}
+                    >
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button onClick={() => logPayment(v)} disabled={paymentSaving} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                    {paymentSaving ? "Saving..." : "Confirm"}
+                  </button>
+                  {paymentError && <p style={{ color: "#ba1a1a", fontSize: 12, width: "100%", margin: 0 }}>{paymentError}</p>}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -564,6 +636,7 @@ function ScanPickerModal({ visits, onClose, onPick }) {
 }
 
 function AddScanModal({ patient, onClose, onSaved }) {
+  const { profile } = usePermissions();
   const [branches, setBranches] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
   const [doctorQuery, setDoctorQuery] = useState("");
@@ -582,7 +655,6 @@ function AddScanModal({ patient, onClose, onSaved }) {
     discount_reason_other: "",
     payment_method: "Cash",
     amount_paid: "",
-    payment_status: "pending",
     notes: "",
   });
 
@@ -652,26 +724,47 @@ function AddScanModal({ patient, onClose, onSaved }) {
     const scanNames = selectedExams.map((e) => e.name);
     const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
 
-    const { error: vErr } = await supabase.from("visits").insert({
-      patient_id: patient.id,
-      doctor_id: walkIn ? null : selectedDoctor?.id,
-      branch_id: form.branch_id || null,
-      scan_types: scanNames,
-      amount_due: sumAfterDiscount || null,
-      discount_pct: discountPct,
-      discount_reason: form.discount_on ? finalReason : null,
-      amount_paid: form.amount_paid || 0,
-      payment_status: form.payment_status,
-        paid_at: form.payment_status === "paid" ? new Date().toISOString() : null,
-      payment_method: form.payment_method,
-      notes: form.notes || null,
-    });
+    const { data: newVisit, error: vErr } = await supabase
+      .from("visits")
+      .insert({
+        patient_id: patient.id,
+        doctor_id: walkIn ? null : selectedDoctor?.id,
+        branch_id: form.branch_id || null,
+        scan_types: scanNames,
+        amount_due: sumAfterDiscount || null,
+        discount_pct: discountPct,
+        discount_reason: form.discount_on ? finalReason : null,
+        notes: form.notes || null,
+      })
+      .select("id")
+      .single();
 
-    setSaving(false);
     if (vErr) {
+      setSaving(false);
       setError(vErr.message);
       return;
     }
+
+    // amount_paid/payment_status are no longer set directly - logging a payment
+    // split here (if any amount was entered) lets the database trigger compute
+    // them, the same source of truth used for every future payment on this visit.
+    const paidNow = Number(form.amount_paid) || 0;
+    if (paidNow > 0) {
+      const { error: pErr } = await supabase.from("visit_payments").insert({
+        visit_id: newVisit.id,
+        amount: paidNow,
+        payment_method: form.payment_method,
+        created_by_id: profile?.id || null,
+        created_by_name: profile?.name || null,
+      });
+      if (pErr) {
+        setSaving(false);
+        setError(`Scan was created, but recording the payment failed: ${pErr.message}`);
+        return;
+      }
+    }
+
+    setSaving(false);
     onSaved();
   }
 
@@ -783,12 +876,9 @@ function AddScanModal({ patient, onClose, onSaved }) {
             <input style={inp} value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} placeholder="0.00" />
           </div>
         </div>
-        <FieldLabel>Payment Status</FieldLabel>
-        <select style={inp} value={form.payment_status} onChange={(e) => setForm({ ...form, payment_status: e.target.value })}>
-          <option value="paid">Paid</option>
-          <option value="partial">Partial</option>
-          <option value="pending">Pending</option>
-        </select>
+        <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+          Payment status is set automatically from the amount entered above compared to the total due - no need to pick it manually.
+        </p>
 
         {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
         <button type="submit" disabled={saving} style={{ ...actionBtn, marginTop: 6 }}>
