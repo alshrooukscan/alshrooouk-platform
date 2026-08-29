@@ -1036,7 +1036,10 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       doctor_id: visit.doctor_id || null,
       branch_id: visit.branch_id || null,
       amount_due: visit.amount_due,
-      discount_pct: visit.discount_pct,
+      // Normalized the same way the form initializes discount_pct (null -> 0)
+      // so a visit that never had a discount doesn't show a false "changed"
+      // diff in Action Center just because null and 0 aren't the same value.
+      discount_pct: visit.discount_pct || 0,
       discount_reason: visit.discount_reason,
       notes: visit.notes,
     };
