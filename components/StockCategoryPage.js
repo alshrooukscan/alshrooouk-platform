@@ -15,6 +15,7 @@ export default function StockCategoryPage({ category, title }) {
   const [showAddItem, setShowAddItem] = useState(false);
   const [showTxn, setShowTxn] = useState(null); // item being transacted on
   const [showCount, setShowCount] = useState(null); // item being counted
+  const [editingImageId, setEditingImageId] = useState(null);
 
   useEffect(() => {
     load();
@@ -87,6 +88,7 @@ export default function StockCategoryPage({ category, title }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#faf9fb", textAlign: "left" }}>
+              {category === "dental" && <Th>Image</Th>}
               <Th>Item</Th>
               <Th>Code</Th>
               <Th>Qty Remaining</Th>
@@ -104,6 +106,21 @@ export default function StockCategoryPage({ category, title }) {
               const variance = latestVariance(item);
               return (
                 <tr key={item.id} style={{ borderTop: "1px solid #f0f0f0" }}>
+                  {category === "dental" && (
+                    <Td>
+                      <div
+                        onClick={() => setEditingImageId(item.id)}
+                        style={{ width: 40, height: 40, borderRadius: 6, background: "#f0f0f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
+                        title="Click to change image"
+                      >
+                        {item.image_url ? (
+                          <img src={item.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <span style={{ fontSize: 9, color: "#bbb" }}>+ Add</span>
+                        )}
+                      </div>
+                    </Td>
+                  )}
                   <Td>{item.name}</Td>
                   <Td>{item.item_code}</Td>
                   <Td>
@@ -169,7 +186,53 @@ export default function StockCategoryPage({ category, title }) {
       {showAddItem && <AddItemModal category={category} title={title} onClose={() => setShowAddItem(false)} onSaved={load} />}
       {showTxn && <TransactionModal item={showTxn} onClose={() => setShowTxn(null)} onSaved={load} />}
       {showCount && <CountModal item={showCount} onClose={() => setShowCount(null)} onSaved={load} />}
+      {editingImageId && (
+        <ImageUploadModal
+          item={items.find((i) => i.id === editingImageId)}
+          onClose={() => setEditingImageId(null)}
+          onSaved={load}
+        />
+      )}
     </div>
+  );
+}
+
+function ImageUploadModal({ item, onClose, onSaved }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    const ext = file.name.split(".").pop();
+    const path = `${item.id}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("stock-item-images").upload(path, file, { upsert: true });
+    if (upErr) {
+      setUploading(false);
+      setError(upErr.message);
+      return;
+    }
+    const { data: pub } = supabase.storage.from("stock-item-images").getPublicUrl(path);
+    await supabase.from("stock_items").update({ image_url: pub.publicUrl }).eq("id", item.id);
+    setUploading(false);
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Modal title={`Image – ${item.name}`} onClose={onClose}>
+      {item.image_url && (
+        <img src={item.image_url} alt="" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 8, marginBottom: 12 }} />
+      )}
+      <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFile} disabled={uploading} />
+      {uploading && <p style={{ fontSize: 12, color: theme.gray }}>Uploading...</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      <p style={{ fontSize: 11, color: theme.gray, marginTop: 10 }}>
+        Shown both here and on the card doctors see when browsing Dental Stock in their portal.
+      </p>
+    </Modal>
   );
 }
 

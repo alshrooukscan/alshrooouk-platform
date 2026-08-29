@@ -91,9 +91,17 @@ export default function DoctorPortalPage() {
           <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />
           <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Al Shrooouk Scan &amp; Lab</span>
         </div>
-        <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-          Log Out
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => router.push("/portal/doctor/dental-stock")}
+            style={{ background: theme.gold, border: "none", color: theme.navy, borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+          >
+            Request Dental Stock Items
+          </button>
+          <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+            Log Out
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>

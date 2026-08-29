@@ -28,6 +28,7 @@ import {
   Banknote,
   ArrowLeftRight,
   ListChecks,
+  ShoppingBag,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -60,6 +61,7 @@ const NAV = [
     icon: Boxes,
     items: [
       { href: "/dashboard/stock/dental", label: "Dental Stock", icon: Smile, key: "stock" },
+      { href: "/dashboard/stock/dental-orders", label: "Dental Stock Orders", icon: ShoppingBag, key: "stock" },
       { href: "/dashboard/stock/el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
     ],
   },
