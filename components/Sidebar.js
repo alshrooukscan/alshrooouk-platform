@@ -29,6 +29,7 @@ import {
   ArrowLeftRight,
   ListChecks,
   ShoppingBag,
+  FileCheck2,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -51,7 +52,8 @@ const NAV = [
     items: [
       { href: "/dashboard/patients", label: "Patient", icon: User, key: "patients" },
       { href: "/dashboard/doctors", label: "Doctor", icon: Stethoscope, key: "doctors" },
-      { href: "/dashboard/vendors", label: "External Vendors", icon: Handshake, key: "vendors" },
+      { href: "/dashboard/clients", label: "Clients Management", icon: Handshake, key: "vendors" },
+      { href: "/dashboard/reports", label: "Reports", icon: FileCheck2, key: "vendors" },
       { href: "/dashboard/branches", label: "Branch Management", icon: Building2, key: "settings" },
     ],
   },

@@ -23,6 +23,12 @@ async function tryEmployee(username, password) {
   const { data } = await supabaseAdmin.from("employees").select("name, permissions").eq("id", id).single();
   return { role: "employee", id, name: data?.name, permissions: data?.permissions };
 }
+async function tryClient(username, password) {
+  const { data: id } = await supabaseAdmin.rpc("verify_client_credentials", { p_username: username, p_password: password });
+  if (!id) return null;
+  const { data } = await supabaseAdmin.from("clients").select("name").eq("id", id).single();
+  return { role: "client", id, name: data?.name };
+}
 
 export async function POST(req) {
   try {
@@ -31,7 +37,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Username and password are required" }, { status: 400 });
     }
 
-    const match = (await tryPatient(username, password)) || (await tryDoctor(username, password)) || (await tryEmployee(username, password));
+    const match = (await tryPatient(username, password)) || (await tryDoctor(username, password)) || (await tryEmployee(username, password)) || (await tryClient(username, password));
 
     if (!match) {
       return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
