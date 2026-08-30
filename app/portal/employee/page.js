@@ -467,17 +467,25 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
 }
 
 function ScheduleTab({ schedule }) {
+  const [hideOffs, setHideOffs] = useState(false);
+
   if (!schedule || schedule.length === 0) {
     return <div style={cardStyle}>No schedule has been set for you yet, check with HR.</div>;
   }
+  const visible = hideOffs ? schedule.filter((d) => !d.is_day_off) : schedule;
   const grouped = {};
-  for (const d of schedule) {
+  for (const d of visible) {
     const monthKey = d.work_date.slice(0, 7);
     grouped[monthKey] = grouped[monthKey] || [];
     grouped[monthKey].push(d);
   }
   return (
     <div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: theme.navy, marginBottom: 14, cursor: "pointer" }}>
+        <input type="checkbox" checked={hideOffs} onChange={(e) => setHideOffs(e.target.checked)} />
+        Show scheduled shifts only, hide days off
+      </label>
+      {visible.length === 0 && <div style={cardStyle}>No scheduled shifts in this view - every upcoming day is a day off.</div>}
       {Object.entries(grouped).map(([month, days]) => (
         <div key={month} style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>

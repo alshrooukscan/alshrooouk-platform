@@ -31,6 +31,12 @@ export default function SettingsPage() {
     loadAll();
   }
 
+  async function promoteToAdmin(user) {
+    if (!confirm(`Make ${user.name} an admin? They will get full access to every page, bypassing the per-module permissions below.`)) return;
+    await supabase.from("staff_profiles").update({ role: "admin" }).eq("id", user.id);
+    loadAll();
+  }
+
   return (
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 24 }}>Settings</h1>
@@ -67,10 +73,20 @@ export default function SettingsPage() {
                     <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: theme.goldLight, color: theme.navy, fontWeight: 700 }}>ADMIN</span>
                   )}
                 </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                  {u.is_active ? "Active" : "Disabled"}
-                  <input type="checkbox" checked={u.is_active} onChange={() => toggleUserActive(u)} />
-                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {u.role !== "admin" && (
+                    <button
+                      onClick={() => promoteToAdmin(u)}
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Promote to Admin
+                    </button>
+                  )}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    {u.is_active ? "Active" : "Disabled"}
+                    <input type="checkbox" checked={u.is_active} onChange={() => toggleUserActive(u)} />
+                  </label>
+                </div>
               </div>
               {u.role !== "admin" && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
