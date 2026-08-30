@@ -107,9 +107,13 @@ export default function PatientsPage() {
       });
       count = c || 0;
     } else {
-      let pq = supabase.from("patients").select("id, name, mobile, dob, created_at, drive_folder_id", { count: "exact" });
+      let pq = supabase.from("patients").select("id, name, mobile, dob, created_at, last_visit_date, drive_folder_id", { count: "exact" });
       if (mobileQuery) pq = pq.or(`mobile.ilike.%${mobileQuery}%,name.ilike.%${mobileQuery}%`);
-      pq = pq.order("created_at", { ascending: false }).range(from, to);
+      // Newest-visit-first, not newest-record-first - a patient registered
+      // long ago who was just scanned today should surface at the top, the
+      // same way the filtered view (which sorts by exam_date) already does.
+      // Patients with no visit yet fall to the end rather than the top.
+      pq = pq.order("last_visit_date", { ascending: false, nullsFirst: false }).range(from, to);
       const { data, count: c } = await pq;
       patientsPage = data || [];
       count = c || 0;

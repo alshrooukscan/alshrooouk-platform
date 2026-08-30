@@ -18,6 +18,7 @@ import { logActivity } from "../../../../lib/activityLog";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -829,6 +830,8 @@ function AddScanModal({ patient, onClose, onSaved }) {
       setError(vErr.message);
       return;
     }
+
+    await syncPatientLastVisitDate(supabase, patient.id);
 
     // amount_paid/payment_status are no longer set directly - logging a payment
     // split here (if any amount was entered) lets the database trigger compute

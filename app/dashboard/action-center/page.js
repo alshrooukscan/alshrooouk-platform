@@ -5,6 +5,7 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney } from "../../../lib/format";
 import { logActivity } from "../../../lib/activityLog";
+import { syncPatientLastVisitDate } from "../../../lib/syncPatientLastVisitDate";
 
 const BRAND_LABEL = { scan: "Scan", dental_stock: "Dental Stock", el3awama_stock: "El3awama Stock" };
 const TYPE_LABEL = {
@@ -126,6 +127,11 @@ export default function ActionCenterPage() {
         setBusyId(null);
         alert(`Could not apply this edit: ${vErr.message}`);
         return;
+      }
+      // An approved edit can change exam_date, which patients.last_visit_date
+      // needs to reflect for the patient list to sort correctly.
+      if (item.visits?.patient_id) {
+        await syncPatientLastVisitDate(supabase, item.visits.patient_id);
       }
     }
     await supabase

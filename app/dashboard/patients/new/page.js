@@ -7,6 +7,8 @@ import { formatMoney } from "../../../../lib/format";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { customerWhatsAppLink } from "../../../../lib/whatsapp";
+import { usePermissions } from "../../../../lib/usePermissions";
+import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
@@ -16,6 +18,7 @@ const PAYMENT_METHODS = ["Cash", "InstaPay", "Wallet", "Visa"];
 
 export default function NewPatientPage() {
   const router = useRouter();
+  const { profile } = usePermissions();
   const [branches, setBranches] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
   const [doctorQuery, setDoctorQuery] = useState("");
@@ -53,7 +56,12 @@ export default function NewPatientPage() {
       return;
     }
     const t = setTimeout(async () => {
-      const { data } = await supabase.from("patients").select("id, name, mobile").eq("mobile", mobile).limit(5);
+      // Partial match, not exact - a staff member typing digits should see
+      // anyone whose number contains what's been typed so far, the same way
+      // the main patient search bar works. Exact-only matching is what let
+      // a duplicate patient slip through with a phone that was one digit off
+      // from an existing record.
+      const { data } = await supabase.from("patients").select("id, name, mobile").ilike("mobile", `%${mobile}%`).limit(5);
       setExistingPatients(data || []);
     }, 400);
     return () => clearTimeout(t);
@@ -164,10 +172,6 @@ export default function NewPatientPage() {
         amount_due: sumAfterDiscount || null,
         discount_pct: discountPct,
         discount_reason: form.discount_on ? finalReason : null,
-        amount_paid: form.amount_paid || 0,
-        payment_status: form.payment_status,
-        paid_at: form.payment_status === "paid" ? new Date().toISOString() : null,
-        payment_method: form.payment_method,
         notes: form.notes || null,
       })
       .select("id")
@@ -177,6 +181,33 @@ export default function NewPatientPage() {
       setError(vErr.message);
       setSaving(false);
       return;
+    }
+
+    await syncPatientLastVisitDate(supabase, patientId);
+
+    // Logging the payment as a visit_payments row (rather than setting
+    // amount_paid/payment_status directly on the visit) is what makes it
+    // count as cash in this specific employee's hand: it's what
+    // recompute_visit_payment() reads to set the visit's real payment
+    // status, and what sync_visit_payment_to_expenses() reads to create the
+    // confirmed expense ledger entry attributed to created_by_id. Setting
+    // the visit's payment fields directly, like this form used to do, left
+    // the payment invisible to both of those and to the employee's cash
+    // ledger entirely.
+    const paidNow = Number(form.amount_paid) || 0;
+    if (paidNow > 0) {
+      const { error: pErr } = await supabase.from("visit_payments").insert({
+        visit_id: visit.id,
+        amount: paidNow,
+        payment_method: form.payment_method,
+        created_by_id: profile?.id || null,
+        created_by_name: profile?.name || null,
+      });
+      if (pErr) {
+        setError(pErr.message);
+        setSaving(false);
+        return;
+      }
     }
 
     if (!existing) {
@@ -232,11 +263,19 @@ export default function NewPatientPage() {
                     Already registered with this number: {existingPatients.map((p) => p.name).join(", ")}.
                   </span>{" "}
                   {existingPatients.map((p) => (
-                    <a key={p.id} href={`/dashboard/patients/${p.id}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, fontWeight: 700, textDecoration: "none", marginRight: 10 }}>
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => router.push(`/dashboard/patients/${p.id}`)}
+                      style={{ color: theme.gold, fontWeight: 700, textDecoration: "none", marginRight: 10, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12 }}
+                    >
                       Open {p.name}'s profile →
-                    </a>
+                    </button>
                   ))}
-                  <div style={{ color: theme.gray, marginTop: 4 }}>If this is a different person sharing the same number (e.g. family), it's fine to continue registering below.</div>
+                  <div style={{ color: theme.gray, marginTop: 4 }}>
+                    Opening a profile above leaves this form without saving it, so the new scan can be added to that existing patient instead.
+                    If this is a different person who happens to share the same number (e.g. family), it's fine to continue registering below.
+                  </div>
                 </div>
               )}
             </Field>
@@ -380,13 +419,6 @@ export default function NewPatientPage() {
               <input style={inp} value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} placeholder="0.00" />
             </Field>
           </Row>
-          <Field label="Payment Status">
-            <select style={inp} value={form.payment_status} onChange={(e) => setForm({ ...form, payment_status: e.target.value })}>
-              <option value="paid">Paid</option>
-              <option value="partial">Partial</option>
-              <option value="pending">Pending</option>
-            </select>
-          </Field>
           <Field label="Notes">
             <textarea style={{ ...inp, minHeight: 70, resize: "vertical" }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Any extra notes about this visit..." />
           </Field>
