@@ -134,6 +134,30 @@ export default function ActionCenterPage() {
       if (item.visits?.patient_id) {
         await syncPatientLastVisitDate(supabase, item.visits.patient_id);
       }
+      // A pending payment only becomes a real visit_payments row now, at
+      // approval, not when it was first requested - and it's attributed to
+      // whoever originally requested it (the employee who actually collected
+      // the cash), not to the admin approving it here. paid_at is explicitly
+      // set to when the request was submitted, not left to default to the
+      // approval moment: the cash was physically collected on the
+      // submission day, and approval can genuinely happen a day or more
+      // later, which would otherwise misattribute it to the wrong day's
+      // cash-in-hand for whoever collected it.
+      if (item.pending_payment_amount > 0) {
+        const { error: payErr } = await supabase.from("visit_payments").insert({
+          visit_id: item.visit_id,
+          amount: item.pending_payment_amount,
+          payment_method: item.pending_payment_method || "Cash",
+          created_by_id: item.requested_by_id || null,
+          created_by_name: item.requested_by_name || null,
+          paid_at: item.created_at,
+        });
+        if (payErr) {
+          setBusyId(null);
+          alert(`Visit changes were applied, but the payment could not be logged: ${payErr.message}`);
+          return;
+        }
+      }
     }
     await supabase
       .from("visit_edit_requests")
@@ -331,7 +355,7 @@ export default function ActionCenterPage() {
                       </div>
                     )}
                   </div>
-                  {changed.length === 0 ? (
+                  {changed.length === 0 && !(req.pending_payment_amount > 0) ? (
                     <p style={{ fontSize: 12, color: theme.gray, fontStyle: "italic" }}>No fields actually changed.</p>
                   ) : (
                     <div style={{ background: "#faf9fb", borderRadius: 8, padding: 10 }}>
@@ -343,6 +367,14 @@ export default function ActionCenterPage() {
                           <span style={{ color: "#2e7d32", fontWeight: 600 }}>{formatFieldValue(field, req.requested_values?.[field])}</span>
                         </div>
                       ))}
+                      {req.pending_payment_amount > 0 && (
+                        <div style={{ display: "flex", gap: 8, fontSize: 12, padding: "4px 0", flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700, color: theme.navy, minWidth: 110 }}>New Payment:</span>
+                          <span style={{ color: "#2e7d32", fontWeight: 700 }}>
+                            +{Number(req.pending_payment_amount).toFixed(2)} EGP via {req.pending_payment_method || "Cash"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

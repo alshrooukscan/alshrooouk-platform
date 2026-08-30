@@ -851,6 +851,13 @@ function AddScanModal({ patient, onClose, onSaved }) {
   const discountPct = form.discount_on ? Number(form.discount_pct) || 0 : 0;
   const discountAmount = sumBeforeDiscount * (discountPct / 100);
   const sumAfterDiscount = sumBeforeDiscount - discountAmount;
+  const alreadyPaid = Number(visit.amount_paid) || 0;
+  // Reflects the amount due as it stands with whatever's currently selected
+  // in this form (scan types, discount), not the visit's stored amount_due -
+  // if those are being changed in this same edit, "remaining" should answer
+  // "remaining after this edit goes through", not the pre-edit number.
+  const projectedNewPayment = Number(form.new_payment_amount) || 0;
+  const remainingForSettlement = sumAfterDiscount - alreadyPaid - projectedNewPayment;
 
   const examsByCategory = CATEGORY_ORDER.map((cat) => ({
     key: cat,
@@ -1080,6 +1087,13 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
     discount_reason: visit.discount_reason || "",
     discount_reason_other: "",
     notes: visit.notes || "",
+    // New money coming in now (e.g. settling the remaining balance on a
+    // partially-paid visit) is captured separately from every other field
+    // here - it isn't a correction to the visit record itself, it's a new
+    // payment event, and needs to be logged as its own visit_payments row
+    // dated today rather than baked into the visit's stored totals.
+    new_payment_amount: "",
+    new_payment_method: "Cash",
   });
 
   useEffect(() => {
@@ -1145,6 +1159,13 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   const discountPct = form.discount_on ? Number(form.discount_pct) || 0 : 0;
   const discountAmount = sumBeforeDiscount * (discountPct / 100);
   const sumAfterDiscount = sumBeforeDiscount - discountAmount;
+  const alreadyPaid = Number(visit.amount_paid) || 0;
+  // Reflects the amount due as it stands with whatever's currently selected
+  // in this form (scan types, discount), not the visit's stored amount_due -
+  // if those are being changed in this same edit, "remaining" should answer
+  // "remaining after this edit goes through", not the pre-edit number.
+  const projectedNewPayment = Number(form.new_payment_amount) || 0;
+  const remainingForSettlement = sumAfterDiscount - alreadyPaid - projectedNewPayment;
 
   const examsByCategory = CATEGORY_ORDER.map((cat) => ({
     key: cat,
@@ -1191,15 +1212,41 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       notes: visit.notes,
     };
 
+    const newPaymentAmount = Number(form.new_payment_amount) || 0;
+    if (newPaymentAmount < 0) {
+      setError("Payment amount can't be negative.");
+      setSaving(false);
+      return;
+    }
+
     if (isAdmin) {
       // Admin edits apply immediately - requiring admin to approve their own
       // edit would be a pointless, circular step.
       const { error: err } = await supabase.from("visits").update(requestedValues).eq("id", visit.id);
-      setSaving(false);
       if (err) {
+        setSaving(false);
         setError(err.message);
         return;
       }
+      if (newPaymentAmount > 0) {
+        // Same shape as the existing quick Log Payment action: no paid_at
+        // override, so it defaults to now() - the day the money actually
+        // came in, not the visit's original date, which is what makes this
+        // count correctly in today's cash-in-hand for whoever logged it.
+        const { error: payErr } = await supabase.from("visit_payments").insert({
+          visit_id: visit.id,
+          amount: newPaymentAmount,
+          payment_method: form.new_payment_method,
+          created_by_id: profile?.id || null,
+          created_by_name: profile?.name || null,
+        });
+        if (payErr) {
+          setSaving(false);
+          setError(payErr.message);
+          return;
+        }
+      }
+      setSaving(false);
       logActivity({
         actorId: profile?.id,
         actorName: profile?.name,
@@ -1207,7 +1254,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         action: "visit_edited",
         entityType: "visit",
         entityId: visit.id,
-        details: { previousValues, requestedValues },
+        details: { previousValues, requestedValues, newPaymentAmount: newPaymentAmount || undefined },
       });
     } else {
       const { error: err } = await supabase.from("visit_edit_requests").insert({
@@ -1216,6 +1263,12 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         requested_values: requestedValues,
         requested_by_id: profile?.id || null,
         requested_by_name: profile?.name || null,
+        // Held separately until an admin approves the request - the actual
+        // visit_payments row (and the cash-ledger entry it auto-creates)
+        // only gets created at that point, attributed back to this
+        // requester, not whichever admin approves it later.
+        pending_payment_amount: newPaymentAmount || null,
+        pending_payment_method: newPaymentAmount > 0 ? form.new_payment_method : null,
       });
       setSaving(false);
       if (err) {
@@ -1350,6 +1403,59 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
             </div>
           </div>
         )}
+
+        <div style={{ background: "#faf9fb", borderRadius: 10, padding: "12px 14px", margin: "14px 0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: theme.gray, textTransform: "uppercase", marginBottom: 8 }}>Financial Summary</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 13 }}>
+            <span style={{ color: theme.gray }}>Original amount:</span>
+            <span style={{ textAlign: "right", color: theme.navy }}>{sumBeforeDiscount.toFixed(2)} EGP</span>
+            {discountPct > 0 && (
+              <>
+                <span style={{ color: theme.gray }}>Discount ({discountPct}%):</span>
+                <span style={{ textAlign: "right", color: "#b45309" }}>-{discountAmount.toFixed(2)} EGP</span>
+              </>
+            )}
+            <span style={{ color: theme.gray, fontWeight: 700 }}>Amount due:</span>
+            <span style={{ textAlign: "right", color: theme.navy, fontWeight: 700 }}>{sumAfterDiscount.toFixed(2)} EGP</span>
+            <span style={{ color: theme.gray }}>Already paid:</span>
+            <span style={{ textAlign: "right", color: theme.navy }}>{alreadyPaid.toFixed(2)} EGP</span>
+            {projectedNewPayment > 0 && (
+              <>
+                <span style={{ color: theme.gray }}>This payment:</span>
+                <span style={{ textAlign: "right", color: "#2e7d32" }}>+{projectedNewPayment.toFixed(2)} EGP</span>
+              </>
+            )}
+            <span style={{ color: theme.gray, fontWeight: 700 }}>Remaining for settlement:</span>
+            <span style={{ textAlign: "right", fontWeight: 700, color: remainingForSettlement > 0.01 ? "#ba1a1a" : "#2e7d32" }}>
+              {remainingForSettlement.toFixed(2)} EGP
+            </span>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+            <div style={{ flex: 1 }}>
+              <FieldLabel>Record a New Payment (optional)</FieldLabel>
+              <input
+                type="number"
+                style={inp}
+                value={form.new_payment_amount}
+                onChange={(e) => setForm({ ...form, new_payment_amount: e.target.value })}
+                placeholder="0.00"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <FieldLabel>&nbsp;</FieldLabel>
+              <select style={inp} value={form.new_payment_method} onChange={(e) => setForm({ ...form, new_payment_method: e.target.value })}>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+            E.g. the patient just paid off the rest of a partial balance. Logged with today's date, not the visit's date, so it counts correctly in today's cash-in-hand.
+            {!isAdmin && " Like the rest of this form, it won't take effect until an admin approves it."}
+          </p>
+        </div>
 
         <FieldLabel>Notes</FieldLabel>
         <input style={inp} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
