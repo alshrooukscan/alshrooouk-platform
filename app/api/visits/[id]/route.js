@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
-// Deleting a visit is admin-only and blocked outright if the visit has any
-// logged payment or a generated invoice. This isn't overcaution: cash
-// payments already get auto-wired into the expense ledger the moment
-// they're logged (sync_visit_payment_to_expenses), and that ledger entry
-// has no column linking it back to the visit or payment that created it -
-// there is no safe way to find and reverse it if the visit disappears out
-// from under it. An employee would keep showing as holding cash for a scan
-// that no longer exists in the system, with nothing left to reconcile it
-// against. A visit with real money already collected against it needs a
-// different resolution than deletion.
+// Deleting a visit is admin-only. Explicitly allowed even when the visit has
+// a logged payment or a generated invoice, per direct instruction: a visit
+// (payment included) can be a genuine mistake, and admin confirming the
+// delete is enough authority to remove all of it, not just the visit row.
+//
+// The one real risk this creates - a cash-ledger entry (expense_transactions)
+// left behind with no link back to the visit or payment that produced it -
+// is handled by best-effort matching, not by refusing to delete. Before the
+// visit (and its payments, which cascade) are removed, this looks for the
+// specific confirmed 'visit_collection' entry that matches a payment's exact
+// amount, method, entry date, and the employee who logged it. Only deletes
+// it when that match is unique; if more than one candidate fits (e.g. the
+// same employee logged two identical-amount payments the same day), none of
+// them are touched, since guessing wrong is worse than leaving one behind
+// for manual reconciliation.
 export async function DELETE(req, { params }) {
   const { id } = params;
   const authHeader = req.headers.get("authorization") || "";
@@ -29,16 +34,43 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ error: "Visit not found." }, { status: 404 });
   }
 
-  const [{ data: payments }, { data: invoice }] = await Promise.all([
-    supabaseAdmin.from("visit_payments").select("id").eq("visit_id", id).limit(1),
-    supabaseAdmin.from("invoices").select("id").eq("visit_id", id).limit(1).maybeSingle(),
-  ]);
-  if (payments && payments.length > 0) {
-    return NextResponse.json({ error: "This visit has a logged payment and can't be deleted, since that payment is already reflected in the cash ledger. Use the visit edit request flow instead if it needs correcting." }, { status: 409 });
+  const { data: payments } = await supabaseAdmin
+    .from("visit_payments")
+    .select("amount, payment_method, paid_at, created_by_id")
+    .eq("visit_id", id);
+
+  let expenseEntriesRemoved = 0;
+  let expenseEntriesLeftForReview = 0;
+  for (const payment of payments || []) {
+    let method = (payment.payment_method || "").toLowerCase().replace(/\s+/g, "_");
+    if (method === "wallet") method = "vodafone_cash";
+    if (!["cash", "visa", "instapay", "vodafone_cash"].includes(method)) method = "cash";
+    const entryDate = payment.paid_at ? new Date(payment.paid_at).toISOString().slice(0, 10) : null;
+
+    let q = supabaseAdmin
+      .from("expense_transactions")
+      .select("id")
+      .eq("type", "visit_collection")
+      .eq("brand", "scan")
+      .eq("amount", payment.amount)
+      .eq("payment_method", method)
+      .eq("note", "Auto-logged from a visit payment");
+    if (entryDate) q = q.eq("entry_date", entryDate);
+    if (payment.created_by_id) q = q.eq("created_by_id", payment.created_by_id);
+    const { data: candidates } = await q;
+
+    if (candidates && candidates.length === 1) {
+      await supabaseAdmin.from("expense_transactions").delete().eq("id", candidates[0].id);
+      expenseEntriesRemoved++;
+    } else if (candidates && candidates.length > 1) {
+      expenseEntriesLeftForReview++;
+    }
   }
-  if (invoice) {
-    return NextResponse.json({ error: "This visit has a generated invoice and can't be deleted." }, { status: 409 });
-  }
+
+  // Any generated invoice is deleted along with the visit, per the same
+  // instruction - it's part of the same mistake being cleaned up, not a
+  // separate record left dangling.
+  await supabaseAdmin.from("invoices").delete().eq("visit_id", id);
 
   // Unlink (not delete) any report tied to this visit, so a real report -
   // pending or completed, with a real uploaded file - survives independently
@@ -52,11 +84,11 @@ export async function DELETE(req, { params }) {
 
   // patient_files.visit_id is ON DELETE SET NULL and visit_edit_requests is
   // ON DELETE CASCADE at the database level already, so both are handled
-  // automatically by this final delete.
+  // automatically by this final delete, along with visit_payments cascading.
   const { error: delErr } = await supabaseAdmin.from("visits").delete().eq("id", id);
   if (delErr) {
     return NextResponse.json({ error: delErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, expenseEntriesRemoved, expenseEntriesLeftForReview });
 }

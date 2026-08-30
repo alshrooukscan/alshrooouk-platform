@@ -19,6 +19,7 @@ const TYPE_LABEL = {
 const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", vodafone_cash: "Vodafone Cash" };
 
 const FIELD_LABELS = {
+  exam_date: "Visit Date",
   scan_types: "Scan Types",
   doctor_id: "Referring Doctor",
   branch_id: "Branch",
@@ -158,6 +159,7 @@ export default function ActionCenterPage() {
 
   function formatFieldValue(field, value) {
     if (value === null || value === undefined || value === "") return "—";
+    if (field === "exam_date") return new Date(value + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
     if (field === "doctor_id") return doctorMap[value] || "Walk-in";
     if (field === "branch_id") return branchMap[value] || value;
     if (field === "scan_types") return Array.isArray(value) ? value.join(", ") : value;

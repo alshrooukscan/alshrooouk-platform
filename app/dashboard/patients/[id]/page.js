@@ -313,7 +313,11 @@ export default function PatientProfilePage() {
   }
 
   async function handleDeleteVisit(visit) {
-    if (!confirm(`Delete this visit (${(visit.scan_types || []).join(", ")}, ${visit.exam_date})? This can't be undone.`)) return;
+    const hasPaid = visit.payment_status === "paid" || visit.payment_status === "partial";
+    const warning = hasPaid
+      ? `Delete this visit (${(visit.scan_types || []).join(", ")}, ${visit.exam_date})? It has a logged payment - deleting it also removes that payment, its cash-ledger entry where it can be found, and any invoice. This can't be undone.`
+      : `Delete this visit (${(visit.scan_types || []).join(", ")}, ${visit.exam_date})? This can't be undone.`;
+    if (!confirm(warning)) return;
     const { data: session } = await supabase.auth.getSession();
     const res = await fetch(`/api/visits/${visit.id}`, {
       method: "DELETE",
@@ -323,6 +327,11 @@ export default function PatientProfilePage() {
     if (!res.ok) {
       alert(data.error || "Could not delete this visit.");
       return;
+    }
+    if (data.expenseEntriesLeftForReview > 0) {
+      alert(
+        `Visit deleted. ${data.expenseEntriesRemoved} matching cash-ledger entry(ies) were also removed, but ${data.expenseEntriesLeftForReview} payment(s) had more than one possible matching ledger entry, so none were touched - review Expenses Management manually for those.`
+      );
     }
     await syncPatientLastVisitDate(supabase, patient.id);
     load();
@@ -891,6 +900,14 @@ function AddScanModal({ patient, onClose, onSaved }) {
   return (
     <Modal title={`Add New Scan — ${patient.name}`} onClose={onClose} wide>
       <form onSubmit={handleSubmit}>
+        <FieldLabel>Visit Date</FieldLabel>
+        <input
+          type="date"
+          style={inp}
+          value={form.exam_date}
+          onChange={(e) => setForm({ ...form, exam_date: e.target.value })}
+        />
+
         <FieldLabel>Branch</FieldLabel>
         <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
           <option value="">Select branch</option>
@@ -1033,6 +1050,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   const [loaded, setLoaded] = useState(false);
 
   const [form, setForm] = useState({
+    exam_date: visit.exam_date || "",
     branch_id: visit.branch_id || "",
     scan_type_ids: [],
     discount_on: Number(visit.discount_pct) > 0,
@@ -1128,6 +1146,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
     const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
 
     const requestedValues = {
+      exam_date: form.exam_date || null,
       scan_types: scanNames,
       doctor_id: walkIn ? null : selectedDoctor?.id || null,
       branch_id: form.branch_id || null,
@@ -1137,6 +1156,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       notes: form.notes || null,
     };
     const previousValues = {
+      exam_date: visit.exam_date || null,
       scan_types: visit.scan_types || [],
       doctor_id: visit.doctor_id || null,
       branch_id: visit.branch_id || null,
@@ -1200,6 +1220,14 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         </p>
       )}
       <form onSubmit={handleSubmit}>
+        <FieldLabel>Visit Date</FieldLabel>
+        <input
+          type="date"
+          style={inp}
+          value={form.exam_date}
+          onChange={(e) => setForm({ ...form, exam_date: e.target.value })}
+        />
+
         <FieldLabel>Branch</FieldLabel>
         <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
           <option value="">Select branch</option>
