@@ -44,7 +44,7 @@ export default function PatientProfilePage() {
   const [employees, setEmployees] = useState([]);
   const { profile, isAdmin } = usePermissions();
   const [editingInfo, setEditingInfo] = useState(false);
-  const [infoDraft, setInfoDraft] = useState({ name: "", mobile: "", email: "" });
+  const [infoDraft, setInfoDraft] = useState({ name: "", mobile: "", email: "", dob: "" });
   const [infoError, setInfoError] = useState("");
   const [savingInfo, setSavingInfo] = useState(false);
 
@@ -59,6 +59,7 @@ export default function PatientProfilePage() {
       name: patient.name || "",
       mobile: patient.mobile || "",
       email: patient.email || "",
+      dob: patient.dob || "",
     });
     setInfoError("");
     setEditingInfo(true);
@@ -76,6 +77,7 @@ export default function PatientProfilePage() {
         name: infoDraft.name,
         mobile: formatPhone(infoDraft.mobile),
         email: infoDraft.email || null,
+        dob: infoDraft.dob || null,
       })
       .eq("id", id);
     setSavingInfo(false);
@@ -386,6 +388,11 @@ export default function PatientProfilePage() {
             <p style={{ color: theme.gray, margin: "4px 0" }}>
               {formatPhone(patient.mobile)} {patient.email ? `· ${patient.email}` : ""}
             </p>
+            {patient.dob && (
+              <p style={{ color: theme.gray, margin: "4px 0", fontSize: 13 }}>
+                Date of Birth: {new Date(patient.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
           {isAdmin && (
@@ -427,6 +434,10 @@ export default function PatientProfilePage() {
             <div>
               <label style={editLabel}>Mobile</label>
               <input style={editInp} value={infoDraft.mobile} onChange={(e) => setInfoDraft({ ...infoDraft, mobile: e.target.value })} placeholder="+20 1X XXX XXXX" />
+            </div>
+            <div>
+              <label style={editLabel}>Date of Birth</label>
+              <input type="date" style={editInp} value={infoDraft.dob} onChange={(e) => setInfoDraft({ ...infoDraft, dob: e.target.value })} />
             </div>
             <div>
               <label style={editLabel}>Email</label>

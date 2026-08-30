@@ -127,13 +127,14 @@ export default function PatientsPage() {
       const ids = patientsPage.map((p) => p.id);
       const { data: recentVisits } = await supabase
         .from("visits")
-        .select("patient_id, payment_status, scanned, raw_data_uploaded, report_done, invoices(id)")
+        .select("patient_id, scan_types, payment_status, scanned, raw_data_uploaded, report_done, invoices(id)")
         .in("patient_id", ids)
         .order("created_at", { ascending: false });
       const statusMap = {};
       for (const v of recentVisits || []) {
         if (!statusMap[v.patient_id]) {
           statusMap[v.patient_id] = {
+            scan_types: v.scan_types,
             paid: v.payment_status === "paid",
             scanned: v.scanned,
             raw_data_uploaded: v.raw_data_uploaded,
@@ -350,7 +351,10 @@ export default function PatientsPage() {
             >
               <Link href={`/dashboard/patients/${p.id}`} target="_blank" style={{ textDecoration: "none", color: theme.navy, flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status ? 6 : 0 }}>{p.mobile ? formatPhone(p.mobile) : "no mobile on file"}</div>
+                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status?.scan_types?.length ? 2 : (status ? 6 : 0) }}>{p.mobile ? formatPhone(p.mobile) : "no mobile on file"}</div>
+                {status?.scan_types?.length > 0 && (
+                  <div style={{ fontSize: 12, color: theme.navy, fontWeight: 600, marginBottom: 6 }}>{status.scan_types.join(", ")}</div>
+                )}
                 {status && (
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                     {STAGE_LABELS.map((s) => (
