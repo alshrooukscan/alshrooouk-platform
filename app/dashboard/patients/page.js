@@ -127,7 +127,7 @@ export default function PatientsPage() {
       const ids = patientsPage.map((p) => p.id);
       const { data: recentVisits } = await supabase
         .from("visits")
-        .select("patient_id, scan_types, payment_status, scanned, raw_data_uploaded, report_done, invoices(id)")
+        .select("patient_id, scan_types, payment_status, scanned, raw_data_uploaded, report_done, invoices(id), amount_paid, doctor_id, doctors(name, clinic_code), visit_payments(payment_method)")
         .in("patient_id", ids)
         .order("created_at", { ascending: false });
       const statusMap = {};
@@ -140,6 +140,11 @@ export default function PatientsPage() {
             raw_data_uploaded: v.raw_data_uploaded,
             report_done: v.report_done,
             invoice_generated: (v.invoices || []).length > 0,
+            amount_paid: v.amount_paid,
+            payment_methods: [...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + "),
+            doctor_id: v.doctor_id,
+            doctor_name: v.doctors?.name,
+            clinic_code: v.doctors?.clinic_code,
           };
         }
       }
@@ -351,9 +356,22 @@ export default function PatientsPage() {
             >
               <Link href={`/dashboard/patients/${p.id}`} target="_blank" style={{ textDecoration: "none", color: theme.navy, flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status?.scan_types?.length ? 2 : (status ? 6 : 0) }}>{p.mobile ? formatPhone(p.mobile) : "no mobile on file"}</div>
+                <div style={{ fontSize: 13, color: theme.gray, marginBottom: status?.scan_types?.length ? 2 : (status ? 6 : 0) }}>
+                  {p.mobile ? formatPhone(p.mobile) : "no mobile on file"}
+                  {p.dob && ` · ${new Date(p.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+                </div>
                 {status?.scan_types?.length > 0 && (
-                  <div style={{ fontSize: 12, color: theme.navy, fontWeight: 600, marginBottom: 6 }}>{status.scan_types.join(", ")}</div>
+                  <div style={{ fontSize: 12, color: theme.navy, fontWeight: 600, marginBottom: 2 }}>{status.scan_types.join(", ")}</div>
+                )}
+                {Number(status?.amount_paid) > 0 && (
+                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
+                    Paid: {Number(status.amount_paid).toFixed(2)} EGP{status.payment_methods ? ` · ${status.payment_methods}` : ""}
+                  </div>
+                )}
+                {status?.doctor_id && (
+                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 6 }}>
+                    {status.clinic_code && `Clinic Code: ${status.clinic_code} · `}Referred by: Dr {status.doctor_name || "—"}
+                  </div>
                 )}
                 {status && (
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
