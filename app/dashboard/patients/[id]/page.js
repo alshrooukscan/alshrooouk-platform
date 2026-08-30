@@ -312,6 +312,22 @@ export default function PatientProfilePage() {
     window.open(link, "_blank");
   }
 
+  async function handleDeleteVisit(visit) {
+    if (!confirm(`Delete this visit (${(visit.scan_types || []).join(", ")}, ${visit.exam_date})? This can't be undone.`)) return;
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch(`/api/visits/${visit.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${session.session?.access_token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Could not delete this visit.");
+      return;
+    }
+    await syncPatientLastVisitDate(supabase, patient.id);
+    load();
+  }
+
   async function handleGenerateInvoice(visit) {
     const { data: invoiceNumber } = await supabase.rpc("generate_invoice_number");
     const { data: inv, error } = await supabase
@@ -540,6 +556,11 @@ export default function PatientProfilePage() {
                 <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>
                 <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>Generate Invoice</button>
                 <button onClick={() => setEditingVisit(v)} style={smallBtn}>Edit Visit</button>
+                {isAdmin && (
+                  <button onClick={() => handleDeleteVisit(v)} style={{ ...smallBtn, color: "#ba1a1a", borderColor: "#ba1a1a" }}>
+                    Delete Visit
+                  </button>
+                )}
                 <WhatsAppDropdown
                   buttonStyle={smallBtn}
                   options={[
