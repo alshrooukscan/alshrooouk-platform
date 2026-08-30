@@ -100,11 +100,15 @@ export default function NewPatientPage() {
   function selectDoctor(d) {
     setSelectedDoctor(d);
     setDoctorResults([]);
-    // Auto-fill discount and note from the doctor's own record, staff can still override.
+    // Fixed 20% "Referred Patient" discount, matching the same rule already
+    // enforced on the existing-patient page - not the doctor's own
+    // discount_pct field, which this form used to pull from directly and
+    // had no cap on at all.
     setForm((f) => ({
       ...f,
-      discount_on: Number(d.discount_pct) > 0,
-      discount_pct: d.discount_pct || 0,
+      discount_on: true,
+      discount_pct: 20,
+      discount_reason: "Referred Patient",
       notes: d.special_note ? (f.notes ? f.notes + " | " + d.special_note : d.special_note) : f.notes,
     }));
   }
@@ -388,13 +392,24 @@ export default function NewPatientPage() {
             <>
               <Row>
                 <Field label="Discount %">
-                  <input type="number" style={inp} value={form.discount_pct} onChange={(e) => setForm({ ...form, discount_pct: e.target.value })} />
+                  <input
+                    type="number"
+                    style={inp}
+                    value={form.discount_pct}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const overCap = Number(val) > 20 && form.discount_reason === "Referred Patient";
+                      setForm({ ...form, discount_pct: val, discount_reason: overCap ? "" : form.discount_reason });
+                    }}
+                  />
                 </Field>
                 <Field label="Reason">
                   <select style={inp} value={form.discount_reason} onChange={(e) => setForm({ ...form, discount_reason: e.target.value })}>
                     <option value="">Select reason...</option>
                     {DISCOUNT_REASONS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r} disabled={r === "Referred Patient" && Number(form.discount_pct) > 20}>
+                        {r}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? " (max 20%)" : ""}
+                      </option>
                     ))}
                   </select>
                 </Field>
