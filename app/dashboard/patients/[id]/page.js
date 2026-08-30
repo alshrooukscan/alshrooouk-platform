@@ -204,7 +204,18 @@ export default function PatientProfilePage() {
   }
 
   async function generateNewPassword() {
-    const username = credentials?.username || patient.mobile.replace(/\D/g, "");
+    // If this patient already has a username, reuse it - regenerating a
+    // password should never change who they log in as. Only when there is
+    // no existing username yet do we need to pick one, and since phone
+    // numbers aren't guaranteed unique (family members share a number), that
+    // pick has to go through the same collision check every other credential
+    // creation path in this app already uses - skipping it here was exactly
+    // what caused "could not generate credentials" for a patient who shared
+    // a phone with someone who'd already claimed that username.
+    const baseUsername = credentials?.username || patient.mobile.replace(/\D/g, "");
+    const username = credentials?.username
+      ? baseUsername
+      : await resolveUniqueUsername(supabase, "patient_auth", baseUsername, { excludeId: id, idColumn: "patient_id" });
     const { data: pwd } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: username });
     setCredentials({ username });
     return pwd;

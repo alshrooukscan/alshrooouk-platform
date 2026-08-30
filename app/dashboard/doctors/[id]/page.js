@@ -261,7 +261,10 @@ export default function DoctorProfilePage() {
                   {
                     label: "Greeting",
                     onClick: async () => {
-                      const username = doctor.username || (doctor.phone || "").replace(/\D/g, "");
+                      const baseUsername = doctor.username || (doctor.phone || "").replace(/\D/g, "");
+                      const username = doctor.username
+                        ? baseUsername
+                        : await resolveUniqueUsername(supabase, "doctors", baseUsername, { excludeId: doctor.id });
                       const { data: pwd } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: doctor.id, p_username: username });
                       const portalUrl = `${window.location.origin.replace("/dashboard", "")}/portal`;
                       window.open(doctorPortalWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, portalUrl, username, password: pwd }), "_blank");
