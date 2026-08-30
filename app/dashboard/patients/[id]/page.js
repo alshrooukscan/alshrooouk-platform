@@ -196,7 +196,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, assigned_employee_id, assigned_at, doctors(name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, assigned_employee_id, assigned_at, doctors(name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -411,13 +411,10 @@ export default function PatientProfilePage() {
           <div>
             <h1 style={{ color: theme.navy, margin: 0 }}>{patient.name}</h1>
             <p style={{ color: theme.gray, margin: "4px 0" }}>
-              {formatPhone(patient.mobile)} {patient.email ? `· ${patient.email}` : ""}
+              {formatPhone(patient.mobile)}
+              {patient.dob && ` · ${new Date(patient.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+              {patient.email && ` · ${patient.email}`}
             </p>
-            {patient.dob && (
-              <p style={{ color: theme.gray, margin: "4px 0", fontSize: 13 }}>
-                Date of Birth: {new Date(patient.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-              </p>
-            )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
           {isAdmin && (
@@ -522,6 +519,20 @@ export default function PatientProfilePage() {
                   <span style={{ color: "#b45309", fontWeight: 700 }}> · Pending: {(Number(v.amount_due) - Number(v.amount_paid || 0)).toFixed(2)} EGP</span>
                 )}
               </div>
+              {Number(v.amount_paid) > 0 && (
+                <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>
+                  Paid: {Number(v.amount_paid).toFixed(2)} EGP
+                  {(v.visit_payments || []).length > 0 && (
+                    <> · {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + ")}</>
+                  )}
+                </div>
+              )}
+              {v.doctor_id && (
+                <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>
+                  {v.doctors?.clinic_code && <>Clinic Code: {v.doctors.clinic_code} · </>}
+                  Referred by: Dr {v.doctors?.name || "—"}
+                </div>
+              )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 <StageChip label="Paid" active={v.payment_status === "paid"} timestamp={v.paid_at} />
                 <StageChip
