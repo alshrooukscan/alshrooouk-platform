@@ -55,19 +55,42 @@ export default function PatientPortalPage() {
             >
               {v.payment_status}
             </span>
+
+            {v.files && v.files.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0f0f0", display: "grid", gap: 6 }}>
+                {v.files.map((f) => (
+                  <a
+                    key={f.id}
+                    href={f.webViewLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, background: "#faf9fb", textDecoration: "none" }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                    {!f.exact && (
+                      <span style={{ fontSize: 9, color: theme.gray, fontStyle: "italic", whiteSpace: "nowrap", marginLeft: 8 }}>possibly related</span>
+                    )}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         ))}
 
-        <h3 style={{ color: theme.navy, marginTop: 28, marginBottom: 12 }}>Your Files</h3>
-        {data.files.length === 0 && <EmptyCard>No files uploaded yet. They'll appear here once your scan is processed.</EmptyCard>}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {data.files.map((f) => (
-            <a key={f.id} href={f.webViewLink} target="_blank" rel="noreferrer" style={{ ...cardStyle, textDecoration: "none", display: "block" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-              <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(f.createdTime).toLocaleDateString()}</div>
-            </a>
-          ))}
-        </div>
+        {data.files.length > 0 && (
+          <>
+            <h3 style={{ color: theme.navy, marginTop: 28, marginBottom: 12 }}>Other Files</h3>
+            <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Couldn't be matched to a specific scan above.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {data.files.map((f) => (
+                <a key={f.id} href={f.webViewLink} target="_blank" rel="noreferrer" style={{ ...cardStyle, textDecoration: "none", display: "block" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                </a>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -5,7 +5,13 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatPhone } from "../../../../lib/formatPhone";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
-import { doctorPortalWhatsAppLink } from "../../../../lib/whatsapp";
+import {
+  doctorPortalWhatsAppLink,
+  doctorReportWhatsAppLink,
+  doctorRawDataWhatsAppLink,
+  directWhatsAppLink,
+} from "../../../../lib/whatsapp";
+import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
@@ -239,14 +245,39 @@ export default function DoctorProfilePage() {
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Referred Patients</h3>
         {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No referrals yet.</p>}
         {visits.map((v) => (
-          <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between" }}>
+          <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name}</div>
               <div style={{ fontSize: 12, color: theme.gray }}>{(v.scan_types || []).join(", ")}</div>
             </div>
-            <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
-              <div>{v.exam_date}</div>
-              <div>{v.payment_status}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
+                <div>{v.exam_date}</div>
+                <div>{v.payment_status}</div>
+              </div>
+              <WhatsAppDropdown
+                buttonStyle={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                options={[
+                  {
+                    label: "Greeting",
+                    onClick: async () => {
+                      const username = doctor.username || (doctor.phone || "").replace(/\D/g, "");
+                      const { data: pwd } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: doctor.id, p_username: username });
+                      const portalUrl = `${window.location.origin.replace("/dashboard", "")}/portal`;
+                      window.open(doctorPortalWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, portalUrl, username, password: pwd }), "_blank");
+                    },
+                  },
+                  {
+                    label: "Report",
+                    onClick: () => window.open(doctorReportWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, patientName: v.patients?.name, scanTypes: (v.scan_types || []).join(", "), examDate: v.exam_date }), "_blank"),
+                  },
+                  {
+                    label: "Raw Data",
+                    onClick: () => window.open(doctorRawDataWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, patientName: v.patients?.name, scanTypes: (v.scan_types || []).join(", "), examDate: v.exam_date }), "_blank"),
+                  },
+                  { label: "Direct (empty)", onClick: () => window.open(directWhatsAppLink(doctor.phone), "_blank") },
+                ]}
+              />
             </div>
           </div>
         ))}

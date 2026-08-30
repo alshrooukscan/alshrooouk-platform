@@ -5,7 +5,14 @@ import { supabase } from "../../../../lib/supabase";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
-import { customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage } from "../../../../lib/whatsapp";
+import {
+  customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage,
+  patientReportWhatsAppLink, buildPatientReportMessage,
+  patientInvoiceWhatsAppLink, buildPatientInvoiceMessage,
+  patientRawDataWhatsAppLink, buildPatientRawDataMessage,
+  directWhatsAppLink,
+} from "../../../../lib/whatsapp";
+import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
@@ -249,6 +256,48 @@ export default function PatientProfilePage() {
     window.open(link, "_blank");
   }
 
+  async function sendPatientWhatsApp(visit, type) {
+    const { data: session } = await supabase.auth.getUser();
+    let text, link;
+    const scanTypes = (visit.scan_types || []).join(", ");
+
+    if (type === "greeting") {
+      return handleCustomerWhatsApp();
+    } else if (type === "report") {
+      text = buildPatientReportMessage({ patientName: patient.name, scanTypes, examDate: visit.exam_date });
+      link = patientReportWhatsAppLink({ mobile: patient.mobile, patientName: patient.name, scanTypes, examDate: visit.exam_date });
+    } else if (type === "invoice") {
+      let amount = visit.amount_due;
+      let invoiceNumber = null;
+      if (visit.invoices?.[0]?.id) {
+        const { data: inv } = await supabase.from("invoices").select("invoice_number, amount").eq("id", visit.invoices[0].id).maybeSingle();
+        if (inv) {
+          amount = inv.amount;
+          invoiceNumber = inv.invoice_number;
+        }
+      }
+      text = buildPatientInvoiceMessage({ patientName: patient.name, invoiceNumber, amount });
+      link = patientInvoiceWhatsAppLink({ mobile: patient.mobile, patientName: patient.name, invoiceNumber, amount });
+    } else if (type === "raw_data") {
+      text = buildPatientRawDataMessage({ patientName: patient.name, scanTypes, examDate: visit.exam_date });
+      link = patientRawDataWhatsAppLink({ mobile: patient.mobile, patientName: patient.name, scanTypes, examDate: visit.exam_date });
+    } else {
+      // Direct - no pre-filled text, just opens a chat with the patient.
+      link = directWhatsAppLink(patient.mobile);
+    }
+
+    if (text) {
+      await supabase.from("whatsapp_log").insert({
+        visit_id: visit.id,
+        message_type: `patient_${type}`,
+        rendered_text: text,
+        sent_at: new Date().toISOString(),
+        sent_by: session?.user?.id || null,
+      });
+    }
+    window.open(link, "_blank");
+  }
+
   async function handleGenerateInvoice(visit) {
     const { data: invoiceNumber } = await supabase.rpc("generate_invoice_number");
     const { data: inv, error } = await supabase
@@ -464,10 +513,20 @@ export default function PatientProfilePage() {
                   <span style={{ fontSize: 12, color: theme.navy, fontWeight: 600 }}>{v.employees?.name || "Unassigned"}</span>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
                 <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>
                 <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>Generate Invoice</button>
                 <button onClick={() => setEditingVisit(v)} style={smallBtn}>Edit Visit</button>
+                <WhatsAppDropdown
+                  buttonStyle={smallBtn}
+                  options={[
+                    { label: "Greeting", onClick: () => sendPatientWhatsApp(v, "greeting") },
+                    { label: "Report", onClick: () => sendPatientWhatsApp(v, "report") },
+                    { label: "Invoice", onClick: () => sendPatientWhatsApp(v, "invoice") },
+                    { label: "Raw Data", onClick: () => sendPatientWhatsApp(v, "raw_data") },
+                    { label: "Direct (empty)", onClick: () => sendPatientWhatsApp(v, "direct") },
+                  ]}
+                />
                 {v.payment_status !== "paid" && (
                   <button
                     onClick={() => {

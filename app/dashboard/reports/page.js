@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
+import { clientInvoiceWhatsAppLink, clientReportWhatsAppLink, directWhatsAppLink } from "../../../lib/whatsapp";
+import WhatsAppDropdown from "../../../components/WhatsAppDropdown";
 
 // Every report request lives here regardless of source - an internal one
 // auto-created because a scan's flagged as requiring a report, or a real
@@ -26,7 +28,7 @@ export default function ReportsPage() {
     const [{ data: r }, { data: s }] = await Promise.all([
       supabase
         .from("reports")
-        .select("*, clients(name, is_pseudo), patients(name)")
+        .select("*, clients(name, is_pseudo, contact_phone), patients(name)")
         .eq("status", filter)
         .order("created_at", { ascending: false }),
       supabase.from("staff_profiles").select("id, name").order("name"),
@@ -133,6 +135,22 @@ export default function ReportsPage() {
                       {uploadingId === r.id ? "Uploading..." : "Upload Report"}
                       <input type="file" onChange={(e) => handleFilePicked(r, e.target.files?.[0])} disabled={uploadingId === r.id} style={{ display: "none" }} />
                     </label>
+                  )}
+                  {r.source_type === "client" && r.clients?.contact_phone && (
+                    <WhatsAppDropdown
+                      buttonStyle={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                      options={[
+                        {
+                          label: "Invoice",
+                          onClick: () => window.open(clientInvoiceWhatsAppLink({ mobile: r.clients.contact_phone, clientName: r.clients.name, scanName: r.scan_name }), "_blank"),
+                        },
+                        {
+                          label: "Report",
+                          onClick: () => window.open(clientReportWhatsAppLink({ mobile: r.clients.contact_phone, clientName: r.clients.name, scanName: r.scan_name }), "_blank"),
+                        },
+                        { label: "Direct (empty)", onClick: () => window.open(directWhatsAppLink(r.clients.contact_phone), "_blank") },
+                      ]}
+                    />
                   )}
                 </div>
               </div>
