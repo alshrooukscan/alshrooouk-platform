@@ -24,7 +24,12 @@ export default function EmployeePortalPage() {
       router.replace("/login");
       return;
     }
-    setData(await r.json());
+    const d = await r.json();
+    if (d.mustChangePassword) {
+      router.replace("/portal/change-password");
+      return;
+    }
+    setData(d);
     setLoading(false);
   }
 

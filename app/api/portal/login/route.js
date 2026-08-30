@@ -8,26 +8,29 @@ import { signSession } from "../../../../lib/session";
 async function tryPatient(username, password) {
   const { data: id } = await supabaseAdmin.rpc("verify_patient_credentials", { p_username: username, p_password: password });
   if (!id) return null;
-  const { data } = await supabaseAdmin.from("patients").select("name").eq("id", id).single();
-  return { role: "patient", id, name: data?.name };
+  const [{ data }, { data: auth }] = await Promise.all([
+    supabaseAdmin.from("patients").select("name").eq("id", id).single(),
+    supabaseAdmin.from("patient_auth").select("must_change_password").eq("patient_id", id).single(),
+  ]);
+  return { role: "patient", id, name: data?.name, mustChangePassword: auth?.must_change_password ?? false };
 }
 async function tryDoctor(username, password) {
   const { data: id } = await supabaseAdmin.rpc("verify_doctor_credentials", { p_username: username, p_password: password });
   if (!id) return null;
-  const { data } = await supabaseAdmin.from("doctors").select("name").eq("id", id).single();
-  return { role: "doctor", id, name: data?.name };
+  const { data } = await supabaseAdmin.from("doctors").select("name, must_change_password").eq("id", id).single();
+  return { role: "doctor", id, name: data?.name, mustChangePassword: data?.must_change_password ?? false };
 }
 async function tryEmployee(username, password) {
   const { data: id } = await supabaseAdmin.rpc("verify_employee_credentials", { p_username: username, p_password: password });
   if (!id) return null;
-  const { data } = await supabaseAdmin.from("employees").select("name, permissions").eq("id", id).single();
-  return { role: "employee", id, name: data?.name, permissions: data?.permissions };
+  const { data } = await supabaseAdmin.from("employees").select("name, permissions, must_change_password").eq("id", id).single();
+  return { role: "employee", id, name: data?.name, permissions: data?.permissions, mustChangePassword: data?.must_change_password ?? false };
 }
 async function tryClient(username, password) {
   const { data: id } = await supabaseAdmin.rpc("verify_client_credentials", { p_username: username, p_password: password });
   if (!id) return null;
-  const { data } = await supabaseAdmin.from("clients").select("name").eq("id", id).single();
-  return { role: "client", id, name: data?.name };
+  const { data } = await supabaseAdmin.from("clients").select("name, must_change_password").eq("id", id).single();
+  return { role: "client", id, name: data?.name, mustChangePassword: data?.must_change_password ?? false };
 }
 
 export async function POST(req) {
@@ -54,7 +57,7 @@ export async function POST(req) {
     }
 
     const token = signSession(match);
-    const res = NextResponse.json({ ok: true, role: match.role, name: match.name });
+    const res = NextResponse.json({ ok: true, role: match.role, name: match.name, mustChangePassword: !!match.mustChangePassword });
     res.cookies.set("portal_session", token, {
       httpOnly: true,
       secure: true,

@@ -12,6 +12,7 @@ export async function GET() {
   }
 
   const { data: patient } = await supabaseAdmin.from("patients").select("id, name, mobile, email").eq("id", session.id).single();
+  const { data: auth } = await supabaseAdmin.from("patient_auth").select("must_change_password").eq("patient_id", session.id).single();
   const { data: visits } = await supabaseAdmin
     .from("visits")
     .select("id, scan_types, exam_date, payment_status, branches(name), doctors(name)")
@@ -82,5 +83,7 @@ export async function GET() {
     return { ...v, files: [...exact, ...guessed] };
   });
 
-  return NextResponse.json({ patient, visits: visitsWithFiles, files: stillUnmatched });
+  // Checked fresh here, not read from the session token - see the identical
+  // note in the client data route for why.
+  return NextResponse.json({ patient, visits: visitsWithFiles, files: stillUnmatched, mustChangePassword: !!auth?.must_change_password });
 }

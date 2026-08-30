@@ -40,7 +40,7 @@ export default function LoginPage() {
       setError("Invalid username or password");
       return;
     }
-    router.push(`/portal/${data.role}`);
+    router.push(data.mustChangePassword ? "/portal/change-password" : `/portal/${data.role}`);
   }
 
   return (

@@ -26,6 +26,10 @@ export default function ClientPortalPage() {
         return r.json();
       })
       .then((d) => {
+        if (d.mustChangePassword) {
+          router.replace("/portal/change-password");
+          return;
+        }
         setData(d);
         setLoading(false);
       })

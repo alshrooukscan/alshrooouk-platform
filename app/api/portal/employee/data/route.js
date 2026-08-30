@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary, permissions, staff_account_email").eq("id", session.id).single();
+  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary, permissions, staff_account_email, must_change_password").eq("id", session.id).single();
   const { data: payslips } = await supabaseAdmin
     .from("payroll_runs")
     .select("*")
@@ -50,6 +50,8 @@ export async function GET() {
     .order("work_date", { ascending: true })
     .limit(45);
 
+  // Checked fresh here, not read from the session token - see the identical
+  // note in the client data route for why.
   return NextResponse.json({
     employee,
     payslips: payslips || [],
@@ -59,5 +61,6 @@ export async function GET() {
     excuseRules: excuseRules || [],
     excuseSubmissions: excuseSubmissions || [],
     incomingTransfers: incomingTransfers || [],
+    mustChangePassword: !!employee?.must_change_password,
   });
 }

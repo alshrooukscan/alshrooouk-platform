@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: doctor } = await supabaseAdmin.from("doctors").select("id, name, clinic_name, clinic_code").eq("id", session.id).single();
+  const { data: doctor } = await supabaseAdmin.from("doctors").select("id, name, clinic_name, clinic_code, must_change_password").eq("id", session.id).single();
   // Only operational status is exposed to doctors, never payment/financial data.
   const { data: visits } = await supabaseAdmin
     .from("visits")
@@ -18,5 +18,7 @@ export async function GET() {
     .eq("doctor_id", session.id)
     .order("exam_date", { ascending: false });
 
-  return NextResponse.json({ doctor, visits: visits || [] });
+  // Checked fresh here, not read from the session token - see the identical
+  // note in the client data route for why.
+  return NextResponse.json({ doctor, visits: visits || [], mustChangePassword: !!doctor?.must_change_password });
 }
