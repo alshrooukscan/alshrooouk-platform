@@ -17,7 +17,7 @@ import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
-import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { resolveUniqueUsername, resolvePatientUsername } from "../../../../lib/uniqueUsername";
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
@@ -216,7 +216,7 @@ export default function PatientProfilePage() {
     const baseUsername = credentials?.username || patient.mobile.replace(/\D/g, "");
     const username = credentials?.username
       ? baseUsername
-      : await resolveUniqueUsername(supabase, "patient_auth", baseUsername, { excludeId: id, idColumn: "patient_id" });
+      : await resolvePatientUsername(baseUsername, id);
     const { data: pwd } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: username });
     setCredentials({ username });
     return pwd;
@@ -451,7 +451,7 @@ export default function PatientProfilePage() {
         username={credentials?.username}
         defaultUsername={(patient.mobile || "").replace(/\D/g, "")}
         onGenerate={async (username) => {
-          const unique = await resolveUniqueUsername(supabase, "patient_auth", username, { excludeId: id, idColumn: "patient_id" });
+          const unique = await resolvePatientUsername(username, id);
           const { data } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: unique });
           setCredentials({ username: unique });
           return data;

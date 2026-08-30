@@ -5,7 +5,7 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 import { formatPhone } from "../../../../lib/formatPhone";
-import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
+import { resolvePatientUsername } from "../../../../lib/uniqueUsername";
 import { customerWhatsAppLink } from "../../../../lib/whatsapp";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
@@ -212,7 +212,7 @@ export default function NewPatientPage() {
 
     if (!existing) {
       const baseUsername = normalizedMobile.replace(/\D/g, "");
-      const username = await resolveUniqueUsername(supabase, "patient_auth", baseUsername);
+      const username = await resolvePatientUsername(baseUsername);
       const { data: pwd } = await supabase.rpc("create_patient_credentials", { p_patient_id: patientId, p_username: username });
       setSaving(false);
       setNewPatientId(patientId);
