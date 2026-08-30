@@ -196,7 +196,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, assigned_employee_id, assigned_at, doctors(name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -370,7 +370,15 @@ export default function PatientProfilePage() {
   async function toggleStage(visit, field) {
     const newValue = !visit[field];
     const tsField = `${field}_at`;
-    const update = { [field]: newValue, [tsField]: newValue ? new Date().toISOString() : null };
+    const byField = `${field}_by_name`;
+    // Only marking on records who did it - unmarking clears the stamp along
+    // with the timestamp, since it no longer reflects the visit's current
+    // state and shouldn't be shown as if it still does.
+    const update = {
+      [field]: newValue,
+      [tsField]: newValue ? new Date().toISOString() : null,
+      [byField]: newValue ? profile?.name || null : null,
+    };
     await supabase.from("visits").update(update).eq("id", visit.id);
     setVisits((prev) => prev.map((v) => (v.id === visit.id ? { ...v, ...update } : v)));
     logActivity({
@@ -539,18 +547,21 @@ export default function PatientProfilePage() {
                   label="Scanned"
                   active={v.scanned}
                   timestamp={v.scanned_at}
+                  byName={v.scanned_by_name}
                   onClick={() => toggleStage(v, "scanned")}
                 />
                 <StageChip
                   label="Raw Data Uploaded"
                   active={v.raw_data_uploaded}
                   timestamp={v.raw_data_uploaded_at}
+                  byName={v.raw_data_uploaded_by_name}
                   onClick={() => toggleStage(v, "raw_data_uploaded")}
                 />
                 <StageChip
                   label="Report Done"
                   active={v.report_done}
                   timestamp={v.report_done_at}
+                  byName={v.report_done_by_name}
                   onClick={() => toggleStage(v, "report_done")}
                 />
                 <StageChip label="Invoice Generated" active={(v.invoices || []).length > 0} />
@@ -1383,9 +1394,9 @@ function TotalRow({ label, value, bold, negative }) {
   );
 }
 
-function StageChip({ label, active, onClick, timestamp }) {
+function StageChip({ label, active, onClick, timestamp, byName }) {
   const tooltip = active && timestamp
-    ? `${label} on ${new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+    ? `${label} on ${new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}${byName ? ` by ${byName}` : ""}`
     : onClick
     ? "Click to toggle"
     : undefined;
