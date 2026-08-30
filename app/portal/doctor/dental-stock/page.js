@@ -81,7 +81,7 @@ export default function DentalStockShopPage() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui", background: "#f7f7f8" }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center", maxWidth: 380, boxShadow: "0 8px 30px rgba(0,0,0,0.08)" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>\u2705</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{"\u2705"}</div>
           <h2 style={{ margin: "0 0 8px" }}>Order Confirmed</h2>
           <p style={{ color: "#666", fontSize: 14, marginBottom: 24 }}>Your order has been placed and sent to the team for fulfillment.</p>
           <button
@@ -156,7 +156,7 @@ export default function DentalStockShopPage() {
             <h3 style={{ marginTop: 0 }}>Checkout</h3>
             {cartLines.map((l) => (
               <div key={l.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
-                <span>{l.name} \u00d7 {l.qty}</span>
+                <span>{l.name}{" \u00d7 "}{l.qty}</span>
                 <span>{(Number(l.sale_price) * l.qty).toFixed(2)} EGP</span>
               </div>
             ))}

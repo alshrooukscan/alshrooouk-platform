@@ -23,7 +23,7 @@ export default function WhatsAppDropdown({ options, buttonStyle }) {
         onClick={() => setOpen((v) => !v)}
         style={buttonStyle || { padding: "7px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
       >
-        Send WhatsApp \u25be
+        Send WhatsApp {"\u25be"}
       </button>
       {open && (
         <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.12)", minWidth: 160, zIndex: 30, overflow: "hidden" }}>

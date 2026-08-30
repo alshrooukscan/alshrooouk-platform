@@ -203,7 +203,7 @@ export default function ActionCenterPage() {
                 <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{t.title}</div>
                 {t.description && <div style={{ fontSize: 13, color: theme.gray, marginTop: 2 }}>{t.description}</div>}
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
-                  Assigned by {t.created_by_name || "admin"} \u00b7 {new Date(t.created_at).toLocaleDateString()}
+                  Assigned by {t.created_by_name || "admin"}{" \u00b7 "}{new Date(t.created_at).toLocaleDateString()}
                 </div>
               </div>
               <button onClick={() => markTaskDone(t)} disabled={busyId === t.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>
@@ -218,7 +218,7 @@ export default function ActionCenterPage() {
             <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
               {doneTasks.map((t) => (
                 <div key={t.id} style={{ fontSize: 12, color: theme.gray, padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
-                  <span style={{ textDecoration: "line-through" }}>{t.title}</span> \u00b7 done {new Date(t.completed_at).toLocaleDateString()}
+                  <span style={{ textDecoration: "line-through" }}>{t.title}</span>{" \u00b7 "}done {new Date(t.completed_at).toLocaleDateString()}
                 </div>
               ))}
             </div>
@@ -266,7 +266,7 @@ export default function ActionCenterPage() {
                   </div>
                   {tx.note && <div style={{ fontSize: 12, color: theme.gray, fontStyle: "italic" }}>{tx.note}</div>}
                   <div style={{ fontSize: 11, color: theme.gray }}>
-                    {tx.entry_date} \u00b7 logged by {tx.created_by_name || "unknown"}
+                    {tx.entry_date}{" \u00b7 "}logged by {tx.created_by_name || "unknown"}
                     {tx.confirmed_by_name && ` \u00b7 reviewed by ${tx.confirmed_by_name}`}
                   </div>
                 </div>

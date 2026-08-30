@@ -53,7 +53,7 @@ export default function DentalOrdersPage() {
                 <div>
                   <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{o.doctors?.name || "Unknown doctor"} - {o.doctors?.clinic_name}</div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
-                    {new Date(o.created_at).toLocaleString()} \u00b7 via {PAYMENT_LABEL[o.payment_method] || o.payment_method}
+                    {new Date(o.created_at).toLocaleString()}{" \u00b7 "}via {PAYMENT_LABEL[o.payment_method] || o.payment_method}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -65,7 +65,7 @@ export default function DentalOrdersPage() {
                 <div style={{ marginTop: 10, paddingLeft: 4 }}>
                   {(itemsByOrder[o.id] || []).map((it) => (
                     <div key={it.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
-                      <span>{it.item_name} \u00d7 {it.quantity}</span>
+                      <span>{it.item_name}{" \u00d7 "}{it.quantity}</span>
                       <span style={{ color: theme.gray }}>{formatMoney(it.line_total)} EGP</span>
                     </div>
                   ))}
