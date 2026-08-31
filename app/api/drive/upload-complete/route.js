@@ -37,7 +37,17 @@ export async function POST(req) {
 
     if (recentVisit) {
       if (classifiedType === "raw_data") {
-        await supabaseAdmin.from("visits").update({ raw_data_uploaded: true, raw_data_uploaded_at: now }).eq("id", recentVisit.id);
+        // Raw data existing means the scan itself obviously happened - auto-flag
+        // Scanned too (only if not already marked, so we never clobber an earlier,
+        // more accurate manual timestamp or attribution).
+        const { data: visitRow } = await supabaseAdmin.from("visits").select("scanned").eq("id", recentVisit.id).maybeSingle();
+        const scanUpdate = { raw_data_uploaded: true, raw_data_uploaded_at: now };
+        if (!visitRow?.scanned) {
+          scanUpdate.scanned = true;
+          scanUpdate.scanned_at = now;
+          scanUpdate.scanned_by_name = uploaderName || uploaderEmail || null;
+        }
+        await supabaseAdmin.from("visits").update(scanUpdate).eq("id", recentVisit.id);
       } else if (classifiedType === "report") {
         await supabaseAdmin.from("visits").update({ report_done: true, report_done_at: now }).eq("id", recentVisit.id);
       }
