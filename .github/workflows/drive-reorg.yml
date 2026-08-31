@@ -1,0 +1,26 @@
+name: Drive Folder Reorg Worker
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/20 * * * *"
+concurrency:
+  group: drive-reorg
+  cancel-in-progress: false
+jobs:
+  reorg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests google-auth
+      - name: Run reorg drain
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          RUN_SECONDS: "6600"
+          WORKERS: "4"
+        run: python scripts/drive_reorg_worker.py
