@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
 import Loading from "../../../lib/Loading";
+import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 
 export default function ClientPortalPage() {
   const [data, setData] = useState(null);
@@ -12,6 +13,7 @@ export default function ClientPortalPage() {
   const [dateRequired, setDateRequired] = useState("");
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
   const router = useRouter();
 
@@ -48,28 +50,58 @@ export default function ClientPortalPage() {
       return;
     }
     setSubmitting(true);
+    setUploadProgress(0);
     setError("");
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result.split(",")[1];
-      const res = await fetch("/api/portal/client/submit-request", {
+    try {
+      const { sessionUrl, reportId } = await (async () => {
+        const initRes = await fetch("/api/portal/client/upload-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scanName: scanName.trim(), dateRequired: dateRequired || undefined,
+            fileName: file.name, mimeType: file.type, sizeBytes: file.size,
+          }),
+        });
+        const j = await initRes.json();
+        if (!initRes.ok) throw new Error(j.error || "Could not start upload");
+        return j;
+      })();
+
+      const fileId = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", sessionUrl, true);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).id);
+          else reject(new Error(`Upload failed (${xhr.status})`));
+        };
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.send(file);
+      });
+
+      const res = await fetch("/api/portal/client/upload-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scanName: scanName.trim(), dateRequired: dateRequired || undefined, fileName: file.name, mimeType: file.type, base64 }),
+        body: JSON.stringify({ fileId, reportId, fileName: file.name }),
       });
       const result = await res.json();
-      setSubmitting(false);
       if (!res.ok) {
         setError(result.error || "Something went wrong submitting this request.");
-        return;
+      } else {
+        setScanName("");
+        setDateRequired("");
+        setFile(null);
+        setShowForm(false);
+        load();
       }
-      setScanName("");
-      setDateRequired("");
-      setFile(null);
-      setShowForm(false);
-      load();
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setError(err.message || "Something went wrong submitting this request.");
+    }
+    setSubmitting(false);
+    setUploadProgress(0);
   }
 
   if (loading) return <Loading />;
@@ -108,8 +140,11 @@ export default function ClientPortalPage() {
               <label style={lbl}>Attach File</label>
               <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ marginBottom: 10 }} />
               {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
-              <button type="submit" disabled={submitting} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-                {submitting ? "Submitting..." : "Submit Request"}
+              <button type="submit" disabled={submitting} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13, position: "relative", overflow: "hidden" }}>
+                {submitting && (
+                  <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.25)", transition: "width 0.15s linear" }} />
+                )}
+                <span style={{ position: "relative" }}>{submitting ? `Submitting... ${uploadProgress}%` : "Submit Request"}</span>
               </button>
             </form>
           )}

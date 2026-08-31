@@ -1,4 +1,6 @@
 "use client";
+
+import { uploadFileToDrive } from "../../../../lib/uploadToDrive";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
@@ -34,6 +36,7 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showAddScan, setShowAddScan] = useState(false);
   const [editingVisit, setEditingVisit] = useState(null);
   const [payingVisitId, setPayingVisitId] = useState(null);
@@ -148,23 +151,28 @@ export default function PatientProfilePage() {
     if (!file) return;
     setPendingFile(null);
     setUploading(true);
+    setUploadProgress(0);
     const { data: session } = await supabase.auth.getSession();
     const uploaderEmail = session.session?.user?.email || null;
     const { data: profile } = uploaderEmail
       ? await supabase.from("staff_profiles").select("name").eq("email", uploaderEmail).maybeSingle()
       : { data: null };
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result.split(",")[1];
-      const res = await fetch("/api/drive/upload", {
+    try {
+      const fileId = await uploadFileToDrive({
+        file,
+        initEndpoint: "/api/drive/upload-session",
+        initBody: { patientId: id, filename: file.name, mimeType: file.type },
+        onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+      });
+
+      const res = await fetch("/api/drive/upload-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          fileId,
           patientId: id,
           filename: file.name,
-          mimeType: file.type,
-          base64,
           fileType,
           uploaderEmail,
           uploaderName: profile?.name || uploaderEmail,
@@ -186,9 +194,11 @@ export default function PatientProfilePage() {
         await loadFiles();
         await load();
       }
-      setUploading(false);
-    };
-    reader.readAsDataURL(file);
+    } catch (e) {
+      alert(e.message || "Upload failed");
+    }
+    setUploading(false);
+    setUploadProgress(0);
   }
 
   async function load() {
@@ -655,8 +665,11 @@ export default function PatientProfilePage() {
               Send Scan WhatsApp{visits.length > 1 ? " (choose scan)" : ""}
             </button>
           )}
-          <label style={{ ...actionBtn, display: "block", textAlign: "center", opacity: uploading ? 0.6 : 1, background: theme.gold, color: theme.navy }}>
-            {uploading ? "Uploading..." : "Upload Scan Files"}
+          <label style={{ ...actionBtn, display: "block", textAlign: "center", opacity: uploading ? 0.6 : 1, background: theme.gold, color: theme.navy, position: "relative", overflow: "hidden" }}>
+            {uploading && (
+              <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
+            )}
+            <span style={{ position: "relative" }}>{uploading ? `Uploading... ${uploadProgress}%` : "Upload Scan Files"}</span>
             <input type="file" onChange={handleFilePicked} disabled={uploading} style={{ display: "none" }} />
           </label>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: 12 }}>

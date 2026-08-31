@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
+import { uploadFileToDrive } from "../lib/uploadToDrive";
 
 // Shared document list + upload for both employee hiring paperwork and
 // branch legal documents - same shape either way (a custom name, a file,
@@ -14,6 +15,7 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
   const [fileName, setFileName] = useState("");
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -33,15 +35,6 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
     setLoading(false);
   }
 
-  function fileToBase64(f) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(",")[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(f);
-    });
-  }
-
   async function handleUpload() {
     if (!fileName.trim()) {
       setError("Give this document a name.");
@@ -52,20 +45,21 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
       return;
     }
     setUploading(true);
+    setUploadProgress(0);
     setError("");
     try {
-      const base64 = await fileToBase64(file);
-      const res = await fetch("/api/drive/upload-document", {
+      const fileId = await uploadFileToDrive({
+        file,
+        initEndpoint: "/api/drive/document-session",
+        initBody: { entityType, entityId, fileName: fileName.trim(), mimeType: file.type },
+        onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+      });
+      const res = await fetch("/api/drive/document-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          entityType,
-          entityId,
-          fileName: fileName.trim(),
-          mimeType: file.type,
-          base64,
-          uploaderId: profile?.id,
-          uploaderName: profile?.name,
+          fileId, entityType, entityId, fileName: fileName.trim(), mimeType: file.type,
+          uploaderId: profile?.id, uploaderName: profile?.name,
         }),
       });
       const data = await res.json();
@@ -78,6 +72,7 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
       setError(e.message);
     }
     setUploading(false);
+    setUploadProgress(0);
   }
 
   return (
@@ -111,9 +106,12 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
           <button
             onClick={handleUpload}
             disabled={uploading}
-            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13, position: "relative", overflow: "hidden" }}
           >
-            {uploading ? "Uploading..." : "Upload"}
+            {uploading && (
+              <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.25)", transition: "width 0.15s linear" }} />
+            )}
+            <span style={{ position: "relative" }}>{uploading ? `Uploading... ${uploadProgress}%` : "Upload"}</span>
           </button>
         </div>
       )}

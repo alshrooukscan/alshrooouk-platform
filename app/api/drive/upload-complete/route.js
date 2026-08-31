@@ -1,0 +1,50 @@
+import { NextResponse } from "next/server";
+import { getFileMeta } from "../../../../lib/googleDrive";
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+
+// Step 2: called once the browser's direct PUT to Google finished. Records
+// the file the same way the old base64 upload route used to, so every
+// downstream behaviour (visit stage flags, audit stamps) is unchanged.
+export async function POST(req) {
+  try {
+    const { fileId, patientId, filename, fileType, uploaderEmail, uploaderName } = await req.json();
+    if (!fileId || !patientId || !filename) {
+      return NextResponse.json({ error: "fileId, patientId, and filename are required" }, { status: 400 });
+    }
+    const file = await getFileMeta(fileId);
+
+    const { data: recentVisit } = await supabaseAdmin
+      .from("visits")
+      .select("id")
+      .eq("patient_id", patientId)
+      .order("exam_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const classifiedType = ["raw_data", "report", "other"].includes(fileType) ? fileType : "other";
+    const now = new Date().toISOString();
+
+    await supabaseAdmin.from("patient_files").insert({
+      patient_id: patientId,
+      visit_id: recentVisit?.id || null,
+      drive_file_id: file.id,
+      file_name: filename,
+      file_type: classifiedType,
+      uploaded_by_email: uploaderEmail || null,
+      uploaded_by_name: uploaderName || null,
+    });
+
+    if (recentVisit) {
+      if (classifiedType === "raw_data") {
+        await supabaseAdmin.from("visits").update({ raw_data_uploaded: true, raw_data_uploaded_at: now }).eq("id", recentVisit.id);
+      } else if (classifiedType === "report") {
+        await supabaseAdmin.from("visits").update({ report_done: true, report_done_at: now }).eq("id", recentVisit.id);
+      }
+    }
+
+    return NextResponse.json({ file, folderId: file.parents?.[0] });
+  } catch (e) {
+    return NextResponse.json({ error: e.message || "Could not finalize upload" }, { status: 500 });
+  }
+}

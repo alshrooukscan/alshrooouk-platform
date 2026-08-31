@@ -5,6 +5,7 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { clientInvoiceWhatsAppLink, clientReportWhatsAppLink, directWhatsAppLink } from "../../../lib/whatsapp";
 import WhatsAppDropdown from "../../../components/WhatsAppDropdown";
+import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 
 // Every report request lives here regardless of source - an internal one
 // auto-created because a scan's flagged as requiring a report, or a real
@@ -17,6 +18,7 @@ export default function ReportsPage() {
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingId, setUploadingId] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -50,24 +52,31 @@ export default function ReportsPage() {
   async function handleFilePicked(report, file) {
     if (!file) return;
     setUploadingId(report.id);
+    setUploadProgress(0);
     setError("");
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result.split(",")[1];
-      const res = await fetch("/api/reports/upload", {
+    try {
+      const fileId = await uploadFileToDrive({
+        file,
+        initEndpoint: "/api/reports/upload-session",
+        initBody: { reportId: report.id, fileName: file.name, mimeType: file.type },
+        onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+      });
+      const res = await fetch("/api/reports/upload-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportId: report.id, fileName: file.name, mimeType: file.type, base64 }),
+        body: JSON.stringify({ fileId, reportId: report.id, fileName: file.name }),
       });
       const result = await res.json();
-      setUploadingId(null);
       if (!res.ok) {
         setError(result.error || "Upload failed.");
-        return;
+      } else {
+        load();
       }
-      load();
-    };
-    reader.readAsDataURL(file);
+    } catch (e) {
+      setError(e.message || "Upload failed.");
+    }
+    setUploadingId(null);
+    setUploadProgress(0);
   }
 
   return (
@@ -131,8 +140,11 @@ export default function ReportsPage() {
                     ))}
                   </select>
                   {r.status === "pending" && (
-                    <label style={{ padding: "8px 16px", borderRadius: 8, background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12, opacity: uploadingId === r.id ? 0.6 : 1 }}>
-                      {uploadingId === r.id ? "Uploading..." : "Upload Report"}
+                    <label style={{ padding: "8px 16px", borderRadius: 8, background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12, opacity: uploadingId === r.id ? 0.6 : 1, position: "relative", overflow: "hidden" }}>
+                      {uploadingId === r.id && (
+                        <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
+                      )}
+                      <span style={{ position: "relative" }}>{uploadingId === r.id ? `Uploading... ${uploadProgress}%` : "Upload Report"}</span>
                       <input type="file" onChange={(e) => handleFilePicked(r, e.target.files?.[0])} disabled={uploadingId === r.id} style={{ display: "none" }} />
                     </label>
                   )}
