@@ -77,11 +77,14 @@ def process_one(row):
             return {"patient_id": pid, "status": "error", "err": f"folder lookup failed: {meta.status_code}"}
         real_name = meta.json()["name"]
 
-        already_renamed = real_name == target_name
+        def norm(s): return " ".join(s.strip().lower().split())
+        already_renamed = norm(real_name) == norm(target_name)
         # Safety guard: if the folder's real name is neither the expected
-        # original name NOR our own target pattern, something unexpected
-        # touched it since the match was computed - don't guess, flag it.
-        if not already_renamed and real_name.strip() != current_name.strip():
+        # original name NOR our own target pattern (case/whitespace-insensitive -
+        # matching the same normalization the original Tier A match already used),
+        # something unexpected touched it since the match was computed - don't
+        # guess, flag it.
+        if not already_renamed and norm(real_name) != norm(current_name):
             return {"patient_id": pid, "status": "needs_review",
                     "err": f"unexpected folder name '{real_name}' (expected '{current_name}' or already-migrated '{target_name}')"}
 
