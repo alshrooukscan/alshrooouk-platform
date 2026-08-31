@@ -99,7 +99,7 @@ while pend and time.time() < DEADLINE:
             nid, err = res
             if nid:
                 done[r["source_id"]] = nid; created += 1
-                buf.append({"source_id": r["source_id"], "backup_id": nid, "is_folder": True, "status": "done"})
+                buf.append({"source_id": r["source_id"], "backup_id": nid, "is_folder": True, "status": "done", "copied_at": __import__("datetime").datetime.utcnow().isoformat()+"Z"})
                 if len(buf) >= 100: flush(buf); buf = []
             else: nxt.append(r)
     if buf: flush(buf)
@@ -132,7 +132,7 @@ while time.time() < DEADLINE:
             nid, err = res
             if nid:
                 copied += 1; total_b += int(it.get("size_bytes") or 0)
-                buf.append({"source_id": it["source_id"], "backup_id": nid, "is_folder": False, "status": "done"})
+                buf.append({"source_id": it["source_id"], "backup_id": nid, "is_folder": False, "status": "done", "copied_at": __import__("datetime").datetime.utcnow().isoformat()+"Z"})
             else:
                 buf.append({"source_id": it["source_id"], "is_folder": False, "status": "pending", "err": (err or "")[:150]})
     flush(buf)
