@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
-import { listFiles } from "../../../../lib/googleDrive";
+import { listFilesGrouped } from "../../../../lib/googleDrive";
 
 export async function GET(req) {
   try {
@@ -21,7 +21,7 @@ export async function GET(req) {
       return NextResponse.json({ files: [] });
     }
 
-    const files = await listFiles(existing.drive_folder_id);
+    const files = await listFilesGrouped(existing.drive_folder_id);
     return NextResponse.json({ files });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });

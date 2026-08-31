@@ -723,20 +723,52 @@ export default function PatientProfilePage() {
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Patient Files</h3>
         {files.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No files uploaded yet.</p>}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
-          {files.map((f) => (
-            <a
-              key={f.id}
-              href={f.webViewLink}
-              target="_blank"
-              rel="noreferrer"
-              style={{ display: "block", border: "1px solid #eee", borderRadius: 10, padding: 12, textDecoration: "none", color: theme.navy }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-              <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(f.createdTime).toLocaleDateString()}</div>
-            </a>
-          ))}
-        </div>
+        {(() => {
+          // Reorganized patients have files tagged with which visit subfolder they
+          // came from (groupLabel like "2026-08-18__e8345e4c") - render those under
+          // a readable visit heading. Ungrouped (groupLabel null) files - patients
+          // not yet reorganized - render in the original flat grid, unchanged.
+          const ungrouped = files.filter((f) => !f.groupLabel);
+          const groups = {};
+          for (const f of files) {
+            if (f.groupLabel) (groups[f.groupLabel] = groups[f.groupLabel] || []).push(f);
+          }
+          const FileGrid = ({ items }) => (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+              {items.map((f) => (
+                <a
+                  key={f.id}
+                  href={f.webViewLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "block", border: "1px solid #eee", borderRadius: 10, padding: 12, textDecoration: "none", color: theme.navy }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                </a>
+              ))}
+            </div>
+          );
+          return (
+            <>
+              {ungrouped.length > 0 && <FileGrid items={ungrouped} />}
+              {Object.entries(groups).map(([label, items]) => {
+                const dateStr = label.split("__")[0];
+                const niceDate = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+                  ? new Date(dateStr).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+                  : label;
+                return (
+                  <div key={label} style={{ marginTop: ungrouped.length > 0 || label !== Object.keys(groups)[0] ? 20 : 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Visit — {niceDate}
+                    </div>
+                    <FileGrid items={items} />
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
