@@ -29,7 +29,7 @@ export default function DoctorAnalytics() {
   async function load() {
     setLoading(true);
     const { data: docs } = await supabase.from("doctors").select("id, name, clinic_code");
-    const { data: v } = await supabase.from("visits").select("doctor_id, exam_date, scan_types, patients(name)").not("doctor_id", "is", null);
+    const { data: v } = await supabase.from("visits").select("doctor_id, patient_id, exam_date, scan_types, patients(name)").not("doctor_id", "is", null);
     setDoctors(docs || []);
     setVisits(v || []);
     setLoading(false);
@@ -132,6 +132,60 @@ export default function DoctorAnalytics() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 10);
 
+  // Leaderboard. "Patients referred" counts DISTINCT patients, which is the
+  // number that actually answers "who sends us the most people" - visit count
+  // inflates any doctor whose patients come back for repeat scans.
+  const leaderboardSource = filterStart
+    ? visits.filter((v) => v.exam_date && v.exam_date >= filterStart && v.exam_date <= filterEnd)
+    : visits;
+
+  const statsByDoctor = {};
+  for (const v of leaderboardSource) {
+    if (!v.doctor_id) continue;
+    const st = (statsByDoctor[v.doctor_id] = statsByDoctor[v.doctor_id] || { visits: 0, patients: new Set(), scans: {} });
+    st.visits++;
+    if (v.patient_id) st.patients.add(v.patient_id);
+    for (const t of v.scan_types || []) st.scans[t] = (st.scans[t] || 0) + 1;
+  }
+  const docNameById = Object.fromEntries(doctors.map((d) => [d.id, d]));
+  const leaderboard = Object.entries(statsByDoctor)
+    .map(([id, st]) => ({
+      id,
+      name: docNameById[id]?.name || "Unknown doctor",
+      clinic: docNameById[id]?.clinic_code || "",
+      patients: st.patients.size,
+      visits: st.visits,
+      topScans: Object.entries(st.scans).sort((a, b) => b[1] - a[1]).slice(0, 3),
+    }))
+    .sort((a, b) => b.patients - a.patients || b.visits - a.visits)
+    .slice(0, 15);
+  const maxPatients = Math.max(...leaderboard.map((d) => d.patients), 1);
+
+  // Overall scan-type demand across every referral in the selected window.
+  const scanDemand = {};
+  for (const v of leaderboardSource) {
+    for (const t of v.scan_types || []) scanDemand[t] = (scanDemand[t] || 0) + 1;
+  }
+  const topScanTypes = Object.entries(scanDemand).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const scanDemandTotal = Object.values(scanDemand).reduce((a, b) => a + b, 0) || 1;
+
+  function openDoctorDrill(doc) {
+    const rows = leaderboardSource
+      .filter((v) => v.doctor_id === doc.id)
+      .map((v) => ({ patient: v.patients?.name || "-", date: v.exam_date, scans: (v.scan_types || []).join(", ") }))
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    setDrill({
+      title: doc.name,
+      subtitle: `${doc.patients} patient${doc.patients === 1 ? "" : "s"} referred across ${doc.visits} visit${doc.visits === 1 ? "" : "s"}`,
+      columns: [
+        { key: "patient", label: "Patient" },
+        { key: "scans", label: "Scan Types" },
+        { key: "date", label: "Date" },
+      ],
+      rows,
+    });
+  }
+
   function scanTypesFor(docId) {
     const counts = {};
     for (const v of visits) {
@@ -188,6 +242,68 @@ export default function DoctorAnalytics() {
               <Bar dataKey="count" fill={theme.gold} radius={[4, 4, 0, 0]} style={{ cursor: "pointer" }} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, marginBottom: 24 }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Top Referring Doctors</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Ranked by how many distinct patients they sent{filterStart ? " in the selected period" : " across all history"}. Click a doctor to see every referral.
+          </p>
+          {leaderboard.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No referrals in this period.</p>}
+          {leaderboard.map((d, i) => (
+            <div key={d.id} style={{ padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                <span style={{ width: 22, height: 22, borderRadius: 6, background: i < 3 ? theme.gold : "#f0f0f0", color: i < 3 ? "#fff" : theme.gray, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {i + 1}
+                </span>
+                <button
+                  onClick={() => openDoctorDrill(d)}
+                  style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", fontWeight: 700, color: theme.navy, fontSize: 13 }}
+                >
+                  {d.name}
+                  {d.clinic && <span style={{ color: theme.gold, fontSize: 11, marginLeft: 6 }}>{d.clinic}</span>}
+                </button>
+                <span style={{ fontSize: 13, fontWeight: 700, color: theme.navy, whiteSpace: "nowrap" }}>
+                  {d.patients} patient{d.patients === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div style={{ height: 6, background: "#f0f0f0", borderRadius: 3, overflow: "hidden", marginBottom: 6 }}>
+                <div style={{ height: "100%", width: `${(d.patients / maxPatients) * 100}%`, background: theme.navy, borderRadius: 3 }} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: theme.gray }}>{d.visits} visit{d.visits === 1 ? "" : "s"} &middot; usually asks for:</span>
+                {d.topScans.map(([name, count]) => (
+                  <span key={name} style={{ fontSize: 11, padding: "2px 9px", borderRadius: 999, background: "#faf9fb", color: theme.navy }}>
+                    {name} ({count})
+                  </span>
+                ))}
+                {d.topScans.length === 0 && <span style={{ fontSize: 11, color: theme.gray }}>no scan types recorded</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Most Requested Scan Types</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            What doctors actually send patients in for, across all referrals.
+          </p>
+          {topScanTypes.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No scan types recorded in this period.</p>}
+          {topScanTypes.map(([name, count]) => (
+            <div key={name} style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                <span style={{ color: theme.navy, fontWeight: 600 }}>{name}</span>
+                <span style={{ color: theme.gray, whiteSpace: "nowrap", marginLeft: 8 }}>
+                  {count} ({((count / scanDemandTotal) * 100).toFixed(0)}%)
+                </span>
+              </div>
+              <div style={{ height: 8, background: "#f0f0f0", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(count / topScanTypes[0][1]) * 100}%`, background: theme.gold, borderRadius: 4 }} />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

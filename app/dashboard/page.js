@@ -7,6 +7,7 @@ import { formatMoney } from "../../lib/format";
 import { usePermissions } from "../../lib/usePermissions";
 import ScanInsights from "../../components/analytics/ScanInsights";
 import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
+import ClientRequestsAnalytics from "../../components/analytics/ClientRequestsAnalytics";
 import HRAnalytics from "../../components/analytics/HRAnalytics";
 import StockAnalytics from "../../components/analytics/StockAnalytics";
 import DrillDownModal from "../../components/analytics/DrillDownModal";
@@ -19,6 +20,7 @@ const TABS = [
   { key: "overview", label: "Overview" },
   { key: "scans", label: "Scans" },
   { key: "doctors", label: "Doctors" },
+  { key: "requests", label: "Client Requests" },
   { key: "hr", label: "HR" },
   { key: "stock", label: "Stock" },
 ];
@@ -70,6 +72,7 @@ function DashboardTabs() {
       {tab === "overview" && <Overview />}
       {tab === "scans" && <ScanInsights />}
       {tab === "doctors" && <DoctorAnalytics />}
+      {tab === "requests" && <ClientRequestsAnalytics />}
       {tab === "hr" && <HRAnalytics />}
       {tab === "stock" && <StockAnalytics />}
     </div>
@@ -180,17 +183,55 @@ function Overview() {
       from += pageSize;
     }
 
-    // Real revenue by payment method, sourced from actual visits, not the ledger
-    // (the ledger tracks stream/direction, not how the customer actually paid).
-    // Kept with exam_date so it can be re-filtered by the period selector below.
+    // Revenue by payment method comes from visit_payments, the actual payment
+    // ledger - NOT visits.payment_method. The visit row only carries a single
+    // denormalized method, so a split payment (part cash, part Visa) collapses
+    // to one label and the other half disappears. Reading the ledger is also
+    // the only way InstaPay/Vodafone Cash entries show up at all.
     let paymentRows = [];
     let pfrom = 0;
     while (true) {
-      const { data } = await supabase.from("visits").select("payment_method, amount_paid, exam_date").gt("amount_paid", 0).range(pfrom, pfrom + pageSize - 1);
+      const { data } = await supabase
+        .from("visit_payments")
+        .select("visit_id, payment_method, amount, paid_at, visits(exam_date)")
+        .range(pfrom, pfrom + pageSize - 1);
       if (!data || data.length === 0) break;
-      paymentRows = paymentRows.concat(data);
+      paymentRows = paymentRows.concat(
+        data.map((r) => ({
+          payment_method: r.payment_method,
+          amount_paid: r.amount,
+          // Fall back to paid_at where a payment has no parent visit date, so
+          // the period filter never silently drops real money.
+          exam_date: r.visits?.exam_date || (r.paid_at ? r.paid_at.slice(0, 10) : null),
+        }))
+      );
       if (data.length < pageSize) break;
       pfrom += pageSize;
+    }
+
+    // A handful of older visits carry amount_paid without any matching ledger
+    // row. Folding them in keeps this chart's total equal to real revenue
+    // instead of quietly under-reporting by whatever those visits are worth.
+    let orphanFrom = 0;
+    const ledgerVisitIds = new Set();
+    while (true) {
+      const { data } = await supabase.from("visit_payments").select("visit_id").range(orphanFrom, orphanFrom + pageSize - 1);
+      if (!data || data.length === 0) break;
+      for (const r of data) ledgerVisitIds.add(r.visit_id);
+      if (data.length < pageSize) break;
+      orphanFrom += pageSize;
+    }
+    let vfrom = 0;
+    while (true) {
+      const { data } = await supabase.from("visits").select("id, payment_method, amount_paid, exam_date").gt("amount_paid", 0).range(vfrom, vfrom + pageSize - 1);
+      if (!data || data.length === 0) break;
+      for (const v of data) {
+        if (!ledgerVisitIds.has(v.id)) {
+          paymentRows.push({ payment_method: v.payment_method, amount_paid: v.amount_paid, exam_date: v.exam_date });
+        }
+      }
+      if (data.length < pageSize) break;
+      vfrom += pageSize;
     }
     setAllPaymentRows(paymentRows);
 
@@ -212,16 +253,31 @@ function Overview() {
   const filteredPaymentRows = start
     ? allPaymentRows.filter((r) => r.exam_date && r.exam_date >= start && r.exam_date <= end)
     : allPaymentRows;
+  // Two vocabularies exist in the data: the visit forms historically wrote
+  // "Cash"/"InstaPay"/"Wallet"/"Visa", while the expense and stock modules
+  // write "cash"/"instapay"/"vodafone_cash". Both are mapped to one label here
+  // so a method never splits into two slices.
+  const METHOD_LABELS = {
+    cash: "Cash",
+    instapay: "InstaPay",
+    "insta pay": "InstaPay",
+    vodafone_cash: "Vodafone Cash",
+    "vodafone cash": "Vodafone Cash",
+    vodafonecash: "Vodafone Cash",
+    visa: "Visa",
+    card: "Visa",
+    wallet: "Wallet",
+  };
   const byMethod = {};
-  const KNOWN_METHODS = ["cash", "instapay", "vodafone cash", "visa", "wallet"];
   for (const row of filteredPaymentRows) {
     const raw = (row.payment_method || "").trim();
-    const normalized = raw.toLowerCase();
-    const method = KNOWN_METHODS.includes(normalized)
-      ? raw.replace(/\b\w/g, (c) => c.toUpperCase())
-      : raw
-      ? "Other / Unrecognized"
-      : "Unspecified";
+    const key = raw.toLowerCase();
+    // The migration wrote the literal string "Unknown" for visits whose original
+    // method wasn't captured. Naming that honestly beats calling it
+    // "Unrecognized", which implies a parsing failure we could still fix.
+    const method =
+      METHOD_LABELS[key] ||
+      (key === "unknown" ? "Not recorded (migrated)" : raw ? raw : "Unspecified");
     byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
   }
   const paymentMethodTotals = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
@@ -396,9 +452,9 @@ function Overview() {
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
         <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits{start ? ", within the selected period" : ""}.</p>
-        {paymentMethodTotals.some(([m]) => m === "Other / Unrecognized") && (
+        {paymentMethodTotals.some(([m]) => m === "Not recorded (migrated)") && (
           <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
-            "Other / Unrecognized" mostly comes from older migrated visits where the original payment method wasn't cleanly recorded, it holds real notes text rather than a clean Cash/InstaPay/Visa/Wallet value.
+            "Not recorded (migrated)" is the {'{'}4,304{'}'} visits imported from the original Excel files, where the payment method was stored literally as "Unknown". That detail wasn't captured at the time and can't be recovered from the source data, so it isn't a reporting fault. Every visit recorded in the platform since go-live carries its real method.
           </p>
         )}
         {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded for this period.</p>}

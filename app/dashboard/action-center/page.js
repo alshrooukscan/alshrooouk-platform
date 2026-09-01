@@ -46,11 +46,26 @@ export default function ActionCenterPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [showAssignForm, setShowAssignForm] = useState(false);
+  const [swaps, setSwaps] = useState([]);
 
   useEffect(() => {
     if (!permsLoading && profile) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permsLoading, profile, approvalFilter, visitEditFilter]);
+
+  async function decideSwap(requestId, action) {
+    setBusyId(requestId);
+    const { data: sess } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/shift-swaps", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+      body: JSON.stringify({ requestId, action }),
+    });
+    const result = await res.json();
+    if (!res.ok) alert(result.error || "Could not update that swap.");
+    setBusyId(null);
+    load();
+  }
 
   async function load() {
     setLoading(true);
@@ -78,6 +93,13 @@ export default function ActionCenterPage() {
     }
     const results = await Promise.all(promises);
     setMyTasks(results[0].data || []);
+    if (isAdmin) {
+      const { data: sess } = await supabase.auth.getSession();
+      const swapRes = await fetch("/api/admin/shift-swaps", {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      });
+      if (swapRes.ok) setSwaps((await swapRes.json()).requests || []);
+    }
     if (isAdmin) {
       setApprovals(results[1].data || []);
       setStaffList(results[2].data || []);
@@ -312,6 +334,46 @@ export default function ActionCenterPage() {
 
       {isAdmin && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Shift Swaps Awaiting Approval</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Both employees have already agreed. The published roster only changes once you approve here.
+          </p>
+          {swaps.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No swaps waiting on you.</p>}
+          {swaps.map((r) => (
+            <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 6 }}>
+                {r.requester?.name} &harr; {r.target?.name}
+              </div>
+              <div style={{ fontSize: 12, color: theme.gray }}>
+                {r.requester?.name} gives up {fmtSwapDay(r.requester_day)} &rarr; goes to {r.target?.name}
+              </div>
+              <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+                {r.target?.name} gives up {fmtSwapDay(r.target_day)} &rarr; goes to {r.requester?.name}
+              </div>
+              {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", marginBottom: 8 }}>&ldquo;{r.note}&rdquo;</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => decideSwap(r.id, "approve")}
+                  disabled={busyId === r.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => decideSwap(r.id, "reject")}
+                  disabled={busyId === r.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Pending Visit Edits</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
             Any edit an employee makes to a visit lands here first - it doesn't take effect until approved.
@@ -440,3 +502,10 @@ function AssignTaskForm({ staffList, profile, onClose, onAssigned }) {
 }
 
 const inp = { width: "100%", padding: "9px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" };
+
+function fmtSwapDay(d) {
+  if (!d) return "-";
+  const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
+  if (d.is_day_off) return `${dow} ${d.work_date} (day off)`;
+  return `${dow} ${d.work_date} ${d.start_time?.slice(0, 5)}-${d.end_time?.slice(0, 5)}`;
+}

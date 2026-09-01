@@ -754,6 +754,7 @@ function describeDay(d) {
 
 const swapBadge = {
   pending: { bg: "#fff8e1", fg: "#a97c00", label: "Pending" },
+  awaiting_admin: { bg: "#e8eefc", fg: "#27214d", label: "Awaiting HR" },
   accepted: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Accepted" },
   rejected: { bg: "#fdecea", fg: "#ba1a1a", label: "Rejected" },
   cancelled: { bg: "#f0f0f0", fg: "#888", label: "Cancelled" },
@@ -832,16 +833,18 @@ function SwapsTab({ onChanged }) {
       return;
     }
     await loadSwaps();
-    // An accepted swap rewrites the roster, so the Schedule tab is now stale.
-    if (action === "accept" && onChanged) onChanged();
+    // Agreeing no longer rewrites the roster (HR approves that), so the
+    // Schedule tab is still accurate - no reload needed.
   }
 
   if (loading) return <div style={cardStyle}>Loading swaps...</div>;
   if (!swapData) return <div style={cardStyle}>Could not load swaps.</div>;
 
   const theirDays = swapData.colleagueDays.filter((d) => d.employee_id === colleagueId);
+  const OPEN = ["pending", "awaiting_admin"];
   const pendingIncoming = swapData.incoming.filter((r) => r.status === "pending");
-  const history = [...swapData.incoming.filter((r) => r.status !== "pending"), ...swapData.outgoing.filter((r) => r.status !== "pending")]
+  const awaitingHr = [...swapData.incoming, ...swapData.outgoing].filter((r) => r.status === "awaiting_admin");
+  const history = [...swapData.incoming.filter((r) => !OPEN.includes(r.status)), ...swapData.outgoing.filter((r) => !OPEN.includes(r.status))]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const pendingOutgoing = swapData.outgoing.filter((r) => r.status === "pending");
 
@@ -907,7 +910,7 @@ function SwapsTab({ onChanged }) {
             {busy ? "Sending..." : "Send Request"}
           </button>
           <p style={{ fontSize: 11, color: theme.gray, margin: "10px 0 0" }}>
-            Nothing changes on the schedule until your colleague accepts.
+            Your colleague has to agree, then HR approves. The schedule only changes after both.
           </p>
         </div>
       )}
@@ -946,6 +949,30 @@ function SwapsTab({ onChanged }) {
           </div>
         </div>
       ))}
+
+      {awaitingHr.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
+            Agreed, waiting on HR
+          </div>
+          {awaitingHr.map((r) => (
+            <div key={r.id} style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>
+                  {r.requester?.name || "You"} &harr; {r.target?.name || "You"}
+                </span>
+                <StatusPill status={r.status} />
+              </div>
+              <div style={{ fontSize: 12, color: theme.gray }}>
+                {describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}
+              </div>
+              <div style={{ fontSize: 11, color: "#a97c00", marginTop: 6 }}>
+                Both of you agreed. Your roster stays as-is until HR approves.
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
         Your requests
