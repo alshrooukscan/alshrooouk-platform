@@ -41,7 +41,7 @@ export default function DoctorProfilePage() {
     const { data: d } = await supabase.from("doctors").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, patients(name)")
+      .select("id, scan_types, exam_date, payment_status, patients(id, name)")
       .eq("doctor_id", id)
       .order("exam_date", { ascending: false });
     setDoctor(d);
@@ -249,7 +249,18 @@ export default function DoctorProfilePage() {
         {visits.map((v) => (
           <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name}</div>
+              {/* Straight to the patient. Staff were reading a name here and then
+                  searching for it again on the Patients page to open the record. */}
+              {v.patients?.id ? (
+                <a
+                  href={`/dashboard/patients/${v.patients.id}`}
+                  style={{ fontWeight: 600, color: theme.navy, textDecoration: "none", borderBottom: `1px solid ${theme.gold}` }}
+                >
+                  {v.patients.name}
+                </a>
+              ) : (
+                <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name || "Unknown patient"}</div>
+              )}
               <div style={{ fontSize: 12, color: theme.gray }}>{(v.scan_types || []).join(", ")}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

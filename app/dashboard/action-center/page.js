@@ -499,7 +499,14 @@ export default function ActionCenterPage() {
                 <div key={req.id} style={{ padding: "14px 0", borderBottom: "1px solid #f0f0f0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{req.visits?.patients?.name || "Unknown patient"}</div>
+                      {req.visits?.patient_id ? (
+                        <a href={`/dashboard/patients/${req.visits.patient_id}`}
+                           style={{ fontWeight: 700, color: theme.navy, fontSize: 14, textDecoration: "none", borderBottom: `1px solid ${theme.gold}` }}>
+                          {req.visits?.patients?.name || "Unknown patient"}
+                        </a>
+                      ) : (
+                        <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{req.visits?.patients?.name || "Unknown patient"}</div>
+                      )}
                       <div style={{ fontSize: 11, color: theme.gray }}>
                         Requested by {req.requested_by_name || "unknown"} · {new Date(req.created_at).toLocaleString()}
                         {req.reviewed_by_name && ` · reviewed by ${req.reviewed_by_name}`}

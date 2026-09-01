@@ -30,7 +30,7 @@ export default function ReportsPage() {
     const [{ data: r }, { data: s }] = await Promise.all([
       supabase
         .from("reports")
-        .select("*, clients(name, is_pseudo, contact_phone), patients(name)")
+        .select("*, clients(name, is_pseudo, contact_phone), patients(id, name)")
         .eq("status", filter)
         .order("created_at", { ascending: false }),
       supabase.from("staff_profiles").select("id, name").order("name"),
@@ -114,7 +114,15 @@ export default function ReportsPage() {
                   <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{r.scan_name}</div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
                     {r.source_type === "client" ? "Client request" : "Internal"}{" \u00b7 "}{r.clients?.name}
-                    {r.patients?.name && ` \u00b7 Patient: ${r.patients.name}`}
+                    {r.patients?.name && (
+                      <>
+                        {" \u00b7 Patient: "}
+                        <a href={`/dashboard/patients/${r.patients.id}`}
+                           style={{ color: theme.navy, fontWeight: 600, textDecoration: "none", borderBottom: `1px solid ${theme.gold}` }}>
+                          {r.patients.name}
+                        </a>
+                      </>
+                    )}
                     {" \u00b7 "}Needed by {r.date_required}
                   </div>
                   {r.client_uploaded_file_name && (
