@@ -34,7 +34,23 @@ export async function GET(req) {
     }
 
     const files = await listFilesGrouped(folderId);
-    return NextResponse.json({ files });
+
+    // Some clinics keep several same-named patients in ONE physical folder, so
+    // listing the folder raw would show each of them the others' scans. Files
+    // that patient_files attributes to a DIFFERENT patient are filtered out;
+    // anything unattributed still shows, so nothing silently disappears.
+    const { data: owned } = await supabaseAdmin
+      .from("patient_files")
+      .select("drive_file_id, patient_id")
+      .in("drive_file_id", files.map((f) => f.id).filter(Boolean));
+
+    const ownerOf = new Map((owned || []).map((r) => [r.drive_file_id, r.patient_id]));
+    const visible = files.filter((f) => {
+      const owner = ownerOf.get(f.id);
+      return !owner || owner === patientId;
+    });
+
+    return NextResponse.json({ files: visible });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
