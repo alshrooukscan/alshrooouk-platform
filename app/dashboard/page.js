@@ -1,18 +1,24 @@
 "use client";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { usePermissions } from "../../lib/usePermissions";
-import ScanInsights from "../../components/analytics/ScanInsights";
-import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
-import ClientRequestsAnalytics from "../../components/analytics/ClientRequestsAnalytics";
-import OutstandingAnalytics from "../../components/analytics/OutstandingAnalytics";
-import TrendsAnalytics from "../../components/analytics/TrendsAnalytics";
-import StockAlerts from "../../components/analytics/StockAlerts";
-import HRAnalytics from "../../components/analytics/HRAnalytics";
-import StockAnalytics from "../../components/analytics/StockAnalytics";
+// Every tab was being downloaded before the first one could render - eight
+// analytics bundles plus recharts, for a page where only one tab is ever on
+// screen. Each now loads when its tab is opened. Same components, same
+// behaviour, just not all at once.
+const loading = () => <p style={{ color: theme.gray, padding: 20 }}>Loading...</p>;
+const ScanInsights = dynamic(() => import("../../components/analytics/ScanInsights"), { loading });
+const DoctorAnalytics = dynamic(() => import("../../components/analytics/DoctorAnalytics"), { loading });
+const ClientRequestsAnalytics = dynamic(() => import("../../components/analytics/ClientRequestsAnalytics"), { loading });
+const OutstandingAnalytics = dynamic(() => import("../../components/analytics/OutstandingAnalytics"), { loading });
+const TrendsAnalytics = dynamic(() => import("../../components/analytics/TrendsAnalytics"), { loading });
+const StockAlerts = dynamic(() => import("../../components/analytics/StockAlerts"), { loading });
+const HRAnalytics = dynamic(() => import("../../components/analytics/HRAnalytics"), { loading });
+const StockAnalytics = dynamic(() => import("../../components/analytics/StockAnalytics"), { loading });
 import DrillDownModal from "../../components/analytics/DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "../../components/analytics/PeriodFilterBar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Cell as PieCell, Legend } from "recharts";

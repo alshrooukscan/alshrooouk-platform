@@ -211,38 +211,40 @@ export default function PatientProfilePage() {
 
   async function load() {
     setLoading(true);
-    const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
-    const { data: v } = await supabase
+    // The patient, their visits and their login do not depend on each other, so
+    // they are fetched together rather than in a chain of round trips.
+    const [{ data: p }, { data: v }, { data: auth }] = await Promise.all([
+      supabase.from("patients").select("*").eq("id", id).single(),
+      supabase
       .from("visits")
       .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
       .eq("patient_id", id)
-      .order("exam_date", { ascending: false });
-    const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
+        .order("exam_date", { ascending: false }),
+      supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle(),
+    ]);
 
     // Per-visit Drive folders, so staff can jump straight to the folder for one
     // scan instead of opening the patient folder and hunting through visits.
     const visitIds = (v || []).map((x) => x.id);
-    const { data: vf } = visitIds.length
-      ? await supabase
-          .from("drive_folder_index")
-          .select("entity_id, drive_folder_id")
-          .eq("entity_type", "visit")
-          .in("entity_id", visitIds)
-      : { data: [] };
+    const hasMobile = p?.mobile && p.mobile !== "0";
+    const [{ data: vf }, { data: others }] = await Promise.all([
+      visitIds.length
+        ? supabase
+            .from("drive_folder_index")
+            .select("entity_id, drive_folder_id")
+            .eq("entity_type", "visit")
+            .in("entity_id", visitIds)
+        : Promise.resolve({ data: [] }),
+      // Other people registered on this same number - siblings, parent and
+      // child, a shared household phone. They are separate patients with
+      // separate Drive folders, and staff had no way to get from one to the
+      // other except searching the name again.
+      hasMobile
+        ? supabase.from("patients").select("id, name, drive_folder_id").eq("mobile", p.mobile).neq("id", id)
+        : Promise.resolve({ data: [] }),
+    ]);
     setVisitFolders(Object.fromEntries((vf || []).map((r) => [r.entity_id, r.drive_folder_id])));
-
-    // Other people registered on this same number - siblings, parent and child,
-    // a shared household phone. They are separate patients with separate Drive
-    // folders, and staff had no way to get from one to the other except
-    // searching the name again.
-    if (p?.mobile && p.mobile !== "0") {
-      const { data: others } = await supabase
-        .from("patients")
-        .select("id, name, drive_folder_id")
-        .eq("mobile", p.mobile)
-        .neq("id", id);
-      setSameMobile(others || []);
-    }
+    setSameMobile(others || []);
 
     setPatient(p);
     setVisits(v || []);
