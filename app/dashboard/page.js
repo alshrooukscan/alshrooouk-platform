@@ -8,6 +8,7 @@ import { usePermissions } from "../../lib/usePermissions";
 import ScanInsights from "../../components/analytics/ScanInsights";
 import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
 import ClientRequestsAnalytics from "../../components/analytics/ClientRequestsAnalytics";
+import OutstandingAnalytics from "../../components/analytics/OutstandingAnalytics";
 import HRAnalytics from "../../components/analytics/HRAnalytics";
 import StockAnalytics from "../../components/analytics/StockAnalytics";
 import DrillDownModal from "../../components/analytics/DrillDownModal";
@@ -18,6 +19,7 @@ const PAYMENT_COLORS = ["#27214D", "#A98B4D", "#6D5A3A", "#8a7ba0", "#c9a86a", "
 
 const TABS = [
   { key: "overview", label: "Overview" },
+  { key: "outstanding", label: "Money Owed" },
   { key: "scans", label: "Scans" },
   { key: "doctors", label: "Doctors" },
   { key: "requests", label: "Client Requests" },
@@ -70,6 +72,7 @@ function DashboardTabs() {
       </div>
 
       {tab === "overview" && <Overview />}
+      {tab === "outstanding" && <OutstandingAnalytics />}
       {tab === "scans" && <ScanInsights />}
       {tab === "doctors" && <DoctorAnalytics />}
       {tab === "requests" && <ClientRequestsAnalytics />}
