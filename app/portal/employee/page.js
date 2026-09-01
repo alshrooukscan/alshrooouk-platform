@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import { formatMoney } from "../../../lib/format";
 import Loading from "../../../lib/Loading";
 import { loadFaceModels, extractDescriptor } from "../../../lib/faceMatch";
@@ -76,6 +77,7 @@ export default function EmployeePortalPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
+      <ImpersonationBanner impersonatedBy={data.impersonatedBy} name={data.employee?.name} />
       <div style={{ background: theme.navy, padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />
@@ -94,6 +96,7 @@ export default function EmployeePortalPage() {
           {[
             { key: "overview", label: "Overview" },
             { key: "schedule", label: "Schedule" },
+            { key: "swaps", label: "Swaps" },
             { key: "payslips", label: "Payslips" },
             { key: "vacations", label: "Vacations" },
             { key: "excuses", label: "Excuses" },
@@ -222,6 +225,7 @@ export default function EmployeePortalPage() {
         )}
 
         {tab === "schedule" && <ScheduleTab schedule={data.schedule} />}
+        {tab === "swaps" && <SwapsTab onChanged={load} />}
 
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
         {tab === "excuses" && <ExcusesTab excuseRules={data.excuseRules} excuseSubmissions={data.excuseSubmissions} onSubmitted={load} />}
@@ -733,3 +737,258 @@ function Row({ label, value, bold }) {
 const cardStyle = { background: "#fff", borderRadius: 12, padding: 14, marginBottom: 8, boxShadow: "0 2px 10px rgba(39,33,77,0.05)" };
 const labelStyle = { fontSize: 12, fontWeight: 600, color: "#27214D", display: "block", marginBottom: 6 };
 const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box", marginBottom: 14 };
+
+// ---------------------------------------------------------------------------
+// Shift swaps
+//
+// A swap is proposed against two specific, existing scheduled days: one of
+// mine, one of a named colleague's. It only takes effect when that colleague
+// accepts - at which point the two days trade owners.
+// ---------------------------------------------------------------------------
+function describeDay(d) {
+  if (!d) return "-";
+  const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
+  if (d.is_day_off) return `${dow} ${d.work_date} · Day Off`;
+  return `${dow} ${d.work_date} · ${d.start_time?.slice(0, 5)}-${d.end_time?.slice(0, 5)}`;
+}
+
+const swapBadge = {
+  pending: { bg: "#fff8e1", fg: "#a97c00", label: "Pending" },
+  accepted: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Accepted" },
+  rejected: { bg: "#fdecea", fg: "#ba1a1a", label: "Rejected" },
+  cancelled: { bg: "#f0f0f0", fg: "#888", label: "Cancelled" },
+};
+
+function StatusPill({ status }) {
+  const b = swapBadge[status] || swapBadge.cancelled;
+  return (
+    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: b.bg, color: b.fg, fontWeight: 700, whiteSpace: "nowrap" }}>
+      {b.label}
+    </span>
+  );
+}
+
+function SwapsTab({ onChanged }) {
+  const [swapData, setSwapData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [myDayId, setMyDayId] = useState("");
+  const [colleagueId, setColleagueId] = useState("");
+  const [theirDayId, setTheirDayId] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadSwaps();
+  }, []);
+
+  async function loadSwaps() {
+    setLoading(true);
+    const res = await fetch("/api/portal/employee/swap");
+    if (res.ok) setSwapData(await res.json());
+    setLoading(false);
+  }
+
+  async function submit() {
+    setError("");
+    if (!myDayId || !colleagueId || !theirDayId) {
+      setError("Pick your day, a colleague, and the day you want from them.");
+      return;
+    }
+    setBusy(true);
+    const res = await fetch("/api/portal/employee/swap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requesterDayId: myDayId, targetId: colleagueId, targetDayId: theirDayId, note }),
+    });
+    const result = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(result.error || "Could not send that request.");
+      return;
+    }
+    setShowForm(false);
+    setMyDayId("");
+    setColleagueId("");
+    setTheirDayId("");
+    setNote("");
+    loadSwaps();
+  }
+
+  async function respond(requestId, action) {
+    setError("");
+    setBusy(true);
+    const res = await fetch("/api/portal/employee/swap/respond", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId, action }),
+    });
+    const result = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(result.error || "Could not update that request.");
+      loadSwaps();
+      return;
+    }
+    await loadSwaps();
+    // An accepted swap rewrites the roster, so the Schedule tab is now stale.
+    if (action === "accept" && onChanged) onChanged();
+  }
+
+  if (loading) return <div style={cardStyle}>Loading swaps...</div>;
+  if (!swapData) return <div style={cardStyle}>Could not load swaps.</div>;
+
+  const theirDays = swapData.colleagueDays.filter((d) => d.employee_id === colleagueId);
+  const pendingIncoming = swapData.incoming.filter((r) => r.status === "pending");
+  const history = [...swapData.incoming.filter((r) => r.status !== "pending"), ...swapData.outgoing.filter((r) => r.status !== "pending")]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const pendingOutgoing = swapData.outgoing.filter((r) => r.status === "pending");
+
+  const selectStyle = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box", marginBottom: 10, background: "#fff" };
+
+  return (
+    <div>
+      <button
+        onClick={() => setShowForm((v) => !v)}
+        style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 14 }}
+      >
+        {showForm ? "Cancel" : "+ Request a Swap"}
+      </button>
+
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+
+      {showForm && (
+        <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 18 }}>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>My day to give up</label>
+          <select value={myDayId} onChange={(e) => setMyDayId(e.target.value)} style={selectStyle}>
+            <option value="">Select one of your days...</option>
+            {swapData.myDays.map((d) => (
+              <option key={d.id} value={d.id}>{describeDay(d)}</option>
+            ))}
+          </select>
+
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Swap with</label>
+          <select
+            value={colleagueId}
+            onChange={(e) => { setColleagueId(e.target.value); setTheirDayId(""); }}
+            style={selectStyle}
+          >
+            <option value="">Select a colleague...</option>
+            {swapData.colleagues.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Their day I would take</label>
+          <select value={theirDayId} onChange={(e) => setTheirDayId(e.target.value)} disabled={!colleagueId} style={{ ...selectStyle, opacity: colleagueId ? 1 : 0.6 }}>
+            <option value="">{colleagueId ? "Select one of their days..." : "Pick a colleague first"}</option>
+            {theirDays.map((d) => (
+              <option key={d.id} value={d.id}>{describeDay(d)}</option>
+            ))}
+          </select>
+          {colleagueId && theirDays.length === 0 && (
+            <p style={{ fontSize: 12, color: "#a97c00", margin: "0 0 10px" }}>This colleague has no upcoming days scheduled.</p>
+          )}
+
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Note (optional)</label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Why you're asking"
+            style={{ ...selectStyle, marginBottom: 12 }}
+          />
+
+          <button
+            onClick={submit}
+            disabled={busy}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer" }}
+          >
+            {busy ? "Sending..." : "Send Request"}
+          </button>
+          <p style={{ fontSize: 11, color: theme.gray, margin: "10px 0 0" }}>
+            Nothing changes on the schedule until your colleague accepts.
+          </p>
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>
+        Waiting on you
+      </div>
+      {pendingIncoming.length === 0 && <div style={cardStyle}>Nothing waiting for your answer.</div>}
+      {pendingIncoming.map((r) => (
+        <div key={r.id} style={cardStyle}>
+          <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 4 }}>
+            {r.requester?.name} wants to swap
+          </div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
+            They give you: {describeDay(r.requester_day)}
+          </div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+            You give them: {describeDay(r.target_day)}
+          </div>
+          {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", marginBottom: 8 }}>&ldquo;{r.note}&rdquo;</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => respond(r.id, "accept")}
+              disabled={busy}
+              style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+            >
+              Accept
+            </button>
+            <button
+              onClick={() => respond(r.id, "reject")}
+              disabled={busy}
+              style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+            >
+              Decline
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
+        Your requests
+      </div>
+      {pendingOutgoing.length === 0 && <div style={cardStyle}>No requests waiting on anyone.</div>}
+      {pendingOutgoing.map((r) => (
+        <div key={r.id} style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>Waiting on {r.target?.name}</span>
+            <StatusPill status={r.status} />
+          </div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>You give up: {describeDay(r.requester_day)}</div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>You would take: {describeDay(r.target_day)}</div>
+          <button
+            onClick={() => respond(r.id, "cancel")}
+            disabled={busy}
+            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+          >
+            Cancel Request
+          </button>
+        </div>
+      ))}
+
+      {history.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
+            History
+          </div>
+          {history.map((r) => (
+            <div key={r.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>
+                  {r.requester?.name || "You"} &rarr; {r.target?.name || "You"}
+                </div>
+                <div style={{ fontSize: 11, color: theme.gray }}>
+                  {describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}
+                </div>
+              </div>
+              <StatusPill status={r.status} />
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}

@@ -55,11 +55,13 @@ export default function ReportsPage() {
     setUploadProgress(0);
     setError("");
     try {
+      const { data: session } = await supabase.auth.getSession();
       const fileId = await uploadFileToDrive({
         file,
         initEndpoint: "/api/reports/upload-session",
         initBody: { reportId: report.id, fileName: file.name, mimeType: file.type },
         onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+        authToken: session.session?.access_token,
       });
       const res = await fetch("/api/reports/upload-complete", {
         method: "POST",

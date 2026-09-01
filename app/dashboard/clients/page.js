@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { resolveUniqueUsername } from "../../../lib/uniqueUsername";
+import LoginAsButton from "../../../components/LoginAsButton";
 
 // Real, external clients only - the branch-named pseudo-clients used to
 // attribute internal report requests are deliberately hidden here, since
@@ -96,6 +97,7 @@ export default function ClientsPage() {
                   {c.contact_phone && `${c.contact_phone} \u00b7 `}Username: {c.username || "not set"}
                 </div>
               </div>
+              {c.username && <LoginAsButton type="client" id={c.id} name={c.name} size="small" />}
             </div>
           ))}
         </div>

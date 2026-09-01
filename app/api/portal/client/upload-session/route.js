@@ -28,7 +28,7 @@ export async function POST(req) {
     if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
 
     const folderId = await ensureReportFolder(report.id);
-    const sessionUrl = await createResumableSession(folderId, fileName, mimeType || "application/octet-stream", sizeBytes);
+    const sessionUrl = await createResumableSession(folderId, fileName, mimeType || "application/octet-stream", sizeBytes, req.headers.get("origin"));
     return NextResponse.json({ sessionUrl, reportId: report.id });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Could not start upload" }, { status: 500 });

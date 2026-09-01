@@ -85,5 +85,5 @@ export async function GET() {
 
   // Checked fresh here, not read from the session token - see the identical
   // note in the client data route for why.
-  return NextResponse.json({ patient, visits: visitsWithFiles, files: stillUnmatched, mustChangePassword: !!auth?.must_change_password });
+  return NextResponse.json({ patient, visits: visitsWithFiles, files: stillUnmatched, mustChangePassword: session.impersonated ? false : !!auth?.must_change_password, impersonatedBy: session.impersonatedBy || null });
 }

@@ -22,5 +22,5 @@ export async function GET() {
   // true then, and the client changed their password since, the token still
   // says true until they log in again. Trusting it here would send them
   // into a loop, back to the change-password screen even after completing it.
-  return NextResponse.json({ client, reports: reports || [], mustChangePassword: !!client?.must_change_password });
+  return NextResponse.json({ client, reports: reports || [], mustChangePassword: session.impersonated ? false : !!client?.must_change_password, impersonatedBy: session.impersonatedBy || null });
 }

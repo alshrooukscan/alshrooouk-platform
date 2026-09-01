@@ -334,6 +334,7 @@ export default function EmployeeProfilePage() {
       </div>
 
       <PortalAccessCard
+        loginAs={{ type: "employee", id, name: employee.name }}
         hasAccount={!!employee.username}
         username={employee.username}
         defaultUsername={(employee.phone || "").replace(/\D/g, "")}

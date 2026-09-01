@@ -26,14 +26,27 @@ export async function POST(req) {
       return NextResponse.json({ error: "type and id are required" }, { status: 400 });
     }
 
-    if (type === "patient" || type === "doctor" || type === "employee") {
-      const table = type === "patient" ? "patients" : type === "doctor" ? "doctors" : "employees";
+    if (type === "patient" || type === "doctor" || type === "employee" || type === "client") {
+      const table =
+        type === "patient" ? "patients" :
+        type === "doctor" ? "doctors" :
+        type === "client" ? "clients" : "employees";
       const { data: record } = await supabaseAdmin.from(table).select("id, name").eq("id", id).single();
       if (!record) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
 
-      const payload = { role: type, id: record.id, name: record.name, impersonatedBy: admin.adminName };
+      // `impersonated` is what the portal data routes check to skip the forced
+      // password-change redirect. Without it, Login As lands on the "set a new
+      // password" screen for every account still carrying must_change_password
+      // (which, after Phase 7, is nearly all of them) instead of the real portal.
+      const payload = {
+        role: type,
+        id: record.id,
+        name: record.name,
+        impersonated: true,
+        impersonatedBy: admin.adminName,
+      };
 
       // Employee portal sessions are single-active-session enforced (see lib/session.js
       // verifyEmployeeSession) - every real login writes a fresh sessionId to
@@ -45,6 +58,16 @@ export async function POST(req) {
         await supabaseAdmin.from("employees").update({ current_session_id: sessionId }).eq("id", record.id);
         payload.sessionId = sessionId;
       }
+
+      await supabaseAdmin.from("activity_log").insert({
+        actor_id: admin.id,
+        actor_name: admin.adminName,
+        actor_type: "admin",
+        action: "logged_in_as",
+        entity_type: type,
+        entity_id: record.id,
+        details: { targetName: record.name },
+      });
 
       const token = signSession(payload);
       const res = NextResponse.json({ ok: true, role: type, name: record.name, redirect: `/portal/${type}` });

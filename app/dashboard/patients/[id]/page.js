@@ -164,6 +164,7 @@ export default function PatientProfilePage() {
         initEndpoint: "/api/drive/upload-session",
         initBody: { patientId: id, filename: file.name, mimeType: file.type, fileType, visitId },
         onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+        authToken: session.session?.access_token,
       });
 
       const res = await fetch("/api/drive/upload-complete", {
@@ -499,6 +500,7 @@ export default function PatientProfilePage() {
       </div>
 
       <PortalAccessCard
+        loginAs={{ type: "patient", id, name: patient.name }}
         hasAccount={!!credentials}
         username={credentials?.username}
         defaultUsername={(patient.mobile || "").replace(/\D/g, "")}

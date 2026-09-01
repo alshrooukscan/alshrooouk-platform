@@ -61,6 +61,7 @@ export async function GET() {
     excuseRules: excuseRules || [],
     excuseSubmissions: excuseSubmissions || [],
     incomingTransfers: incomingTransfers || [],
-    mustChangePassword: !!employee?.must_change_password,
+    mustChangePassword: session.impersonated ? false : !!employee?.must_change_password,
+    impersonatedBy: session.impersonatedBy || null,
   });
 }

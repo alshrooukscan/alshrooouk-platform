@@ -215,6 +215,7 @@ export default function DoctorProfilePage() {
       </div>
 
       <PortalAccessCard
+        loginAs={{ type: "doctor", id, name: doctor.name }}
         hasAccount={!!doctor.username}
         username={doctor.username}
         defaultUsername={(doctor.phone || "").replace(/\D/g, "")}

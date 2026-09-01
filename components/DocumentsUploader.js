@@ -48,11 +48,13 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
     setUploadProgress(0);
     setError("");
     try {
+      const { data: session } = await supabase.auth.getSession();
       const fileId = await uploadFileToDrive({
         file,
         initEndpoint: "/api/drive/document-session",
         initBody: { entityType, entityId, fileName: fileName.trim(), mimeType: file.type },
         onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+        authToken: session.session?.access_token,
       });
       const res = await fetch("/api/drive/document-complete", {
         method: "POST",

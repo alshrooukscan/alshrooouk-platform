@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireStaff } from "../../../../lib/requireStaff";
 import { ensurePatientFolder, ensureVisitFolder, ensureVisitTypeFolder, buildStandardFileName } from "../../../../lib/folderProvisioning";
 import { createResumableSession } from "../../../../lib/googleDrive";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
@@ -14,6 +15,10 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // optional and defaults to the patient's most recent visit for convenience;
 // pass it explicitly when uploading for an earlier or specific visit.
 export async function POST(req) {
+  const staff = await requireStaff(req);
+  if (!staff) {
+    return NextResponse.json({ error: "Sign in as staff to upload files." }, { status: 401 });
+  }
   try {
     const { patientId, filename, mimeType, sizeBytes, fileType, visitId } = await req.json();
     if (!patientId || !filename || !sizeBytes) {
@@ -46,7 +51,7 @@ export async function POST(req) {
     }
 
     const sessionUrl = await createResumableSession(
-      uploadFolderId, standardName, mimeType || "application/octet-stream", sizeBytes
+      uploadFolderId, standardName, mimeType || "application/octet-stream", sizeBytes, req.headers.get("origin")
     );
     return NextResponse.json({ sessionUrl, folderId: uploadFolderId, visitId: targetVisitId, standardName });
   } catch (e) {

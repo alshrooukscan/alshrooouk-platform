@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 
 export default function PatientPortalPage() {
@@ -35,6 +36,7 @@ export default function PatientPortalPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
+      <ImpersonationBanner impersonatedBy={data.impersonatedBy} name={data.patient?.name} />
       <TopBar onLogout={handleLogout} />
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px" }}>
         <h2 style={{ color: theme.navy, marginBottom: 4 }}>Hi {data.patient?.name?.split(" ")[0]},</h2>

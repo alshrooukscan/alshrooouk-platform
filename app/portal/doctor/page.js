@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 
 export default function DoctorPortalPage() {
@@ -90,6 +91,7 @@ export default function DoctorPortalPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
+      <ImpersonationBanner impersonatedBy={data.impersonatedBy} name={data.doctor?.name} />
       <div style={{ background: theme.navy, padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />

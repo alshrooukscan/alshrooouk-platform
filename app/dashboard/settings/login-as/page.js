@@ -30,6 +30,9 @@ export default function LoginAsPage() {
     } else if (tab === "employee") {
       const r = await supabase.from("employees").select("id, name, hr_id, permissions").ilike("name", `%${query}%`).limit(15);
       data = r.data || [];
+    } else if (tab === "client") {
+      const r = await supabase.from("clients").select("id, name, username, contact_phone").ilike("name", `%${query}%`).limit(15);
+      data = r.data || [];
     } else if (tab === "staff") {
       const r = await supabase.from("staff_profiles").select("id, name, email, role").ilike("name", `%${query}%`).limit(15);
       data = r.data || [];
@@ -67,11 +70,11 @@ export default function LoginAsPage() {
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Login As</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        See exactly what a specific patient, doctor, employee, or staff member sees. Opens in a new tab, your own session isn't affected for portal users.
+        See exactly what a specific patient, doctor, employee, client, or staff member sees - no password needed, it opens their real portal straight away in a new tab. Your own session isn't affected.
       </p>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {["patient", "doctor", "employee", "staff"].map((t) => (
+        {["patient", "doctor", "employee", "client", "staff"].map((t) => (
           <button
             key={t}
             onClick={() => {
@@ -127,26 +130,19 @@ export default function LoginAsPage() {
                 {tab === "patient" && r.mobile}
                 {tab === "doctor" && r.clinic_code}
                 {tab === "employee" && `${r.hr_id}${Object.values(r.permissions || {}).some(Boolean) ? " · has dashboard access" : ""}`}
+                {tab === "client" && `${r.username || ""}${r.contact_phone ? " · " + r.contact_phone : ""}`}
                 {tab === "staff" && `${r.email} · ${r.role}`}
               </div>
             </div>
-            {confirming === r.id ? (
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => handleLoginAs(r)} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: "#ba1a1a", color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 700 }}>
-                  Confirm
-                </button>
-                <button onClick={() => setConfirming(null)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer" }}>
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirming(r.id)}
-                style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 700 }}
-              >
-                Login As
-              </button>
-            )}
+            {/* Single click straight into the portal - the old two-step confirm
+                was friction with no safety value, since the action is read-only
+                inspection, opens in its own tab, and is written to activity_log. */}
+            <button
+              onClick={() => handleLoginAs(r)}
+              style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 700 }}
+            >
+              Login As
+            </button>
           </div>
         ))}
       </div>

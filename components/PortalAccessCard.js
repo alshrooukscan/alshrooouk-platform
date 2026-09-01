@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { theme } from "../lib/theme";
+import LoginAsButton from "./LoginAsButton";
 
 // Shared "generate login / reset password" UI for patient, doctor, and employee
 // cards. Each caller supplies its own onGenerate() that calls the right
@@ -8,7 +9,7 @@ import { theme } from "../lib/theme";
 // and password resets (calling it again on an existing account just issues a
 // fresh temp password), so this component only needs one action, labeled
 // differently depending on whether an account already exists.
-export default function PortalAccessCard({ hasAccount, username, defaultUsername, onGenerate, buildWhatsAppLink }) {
+export default function PortalAccessCard({ hasAccount, username, defaultUsername, onGenerate, buildWhatsAppLink, loginAs }) {
   const [usernameDraft, setUsernameDraft] = useState(username || defaultUsername || "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -103,9 +104,14 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
             <div style={{ fontSize: 12, color: theme.gray }}>Username</div>
             <div style={{ fontSize: 15, color: theme.navy, fontWeight: 700 }}>{username}</div>
           </div>
-          <button onClick={() => setConfirmingReset(true)} disabled={busy} style={btnStyle}>
-            Reset Password
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Sits next to Reset Password because that's where an admin already
+                is when they want to check what this person actually sees. */}
+            {loginAs && <LoginAsButton type={loginAs.type} id={loginAs.id} name={loginAs.name} size="small" />}
+            <button onClick={() => setConfirmingReset(true)} disabled={busy} style={btnStyle}>
+              Reset Password
+            </button>
+          </div>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 8 }}>
