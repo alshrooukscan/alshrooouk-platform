@@ -17,6 +17,9 @@ export async function POST(req) {
   const body = await req.json();
   const items = Array.isArray(body.items) ? body.items : [];
   const paymentMethod = body.paymentMethod;
+  // The doctor's stated intent at checkout. Payment is confirmed later by staff
+  // on delivery either way; this only records what they said they'd do.
+  const payLater = !!body.payLater;
 
   if (items.length === 0) {
     return NextResponse.json({ error: "Cart is empty." }, { status: 400 });
@@ -35,6 +38,7 @@ export async function POST(req) {
   const { data: orderId, error } = await supabaseAdmin.rpc("place_dental_order", {
     p_doctor_id: session.id,
     p_payment_method: method,
+    p_pay_later: !!payLater,
     p_items: cleanItems,
   });
 

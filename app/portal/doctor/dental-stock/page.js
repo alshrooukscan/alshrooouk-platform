@@ -11,6 +11,7 @@ export default function DentalStockShopPage() {
   const [cart, setCart] = useState({}); // { stock_item_id: quantity }
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [payLater, setPayLater] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const [confirmedOrder, setConfirmedOrder] = useState(null);
@@ -59,6 +60,7 @@ export default function DentalStockShopPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         paymentMethod,
+        payLater,
         items: cartLines.map((l) => ({ stockItemId: l.id, quantity: l.qty })),
       }),
     });
@@ -165,7 +167,12 @@ export default function DentalStockShopPage() {
               <span>{cartTotal.toFixed(2)} EGP</span>
             </div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, marginTop: 10 }}>Payment Method</label>
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", marginBottom: 14 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13, cursor: "pointer" }}>
+              <input type="checkbox" checked={payLater} onChange={(e) => setPayLater(e.target.checked)} />
+              <span>Pay later — settle when I collect the order</span>
+            </label>
+            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={payLater}
+              style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", marginBottom: 14, opacity: payLater ? 0.5 : 1 }}>
               <option value="cash">Cash</option>
               <option value="visa">Visa</option>
               <option value="instapay">InstaPay</option>
