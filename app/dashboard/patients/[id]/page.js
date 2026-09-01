@@ -419,9 +419,14 @@ export default function PatientProfilePage() {
     if (!newValue) {
       const setBy = visit[byField];
       if (setBy && setBy !== profile?.name && !isAdmin) {
+        // Tell them exactly where to go rather than leaving them stuck - this is
+        // the case the client described as "needs admin permission", and the
+        // bug report form is the route for it.
         alert(
           `This was marked by ${setBy}. Only ${setBy} or an admin can undo it.\n\n` +
-          `If it was marked in error, ask an admin to change it.`
+          `If it was marked in error, open "Report a Problem" in the sidebar and ` +
+          `submit it there — include this patient's name and the visit date, and ` +
+          `an admin will correct it.`
         );
         return;
       }

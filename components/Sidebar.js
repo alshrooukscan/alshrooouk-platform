@@ -30,6 +30,7 @@ import {
   ListChecks,
   ShoppingBag,
   FileCheck2,
+  LifeBuoy,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -45,6 +46,11 @@ const NAV = [
   // approvals section to admin only, the same way other pages gate specific
   // sections rather than the whole route.
   { type: "link", href: "/dashboard/action-center", label: "Action Center", icon: ListChecks, alwaysVisible: true },
+  // Everyone can report a problem, including staff whose page access is
+  // otherwise narrow - the whole point is to hear from the people who hit
+  // the fault. The page itself shows only your own reports unless you are
+  // the named owner of the list.
+  { type: "link", href: "/dashboard/bug-reports", label: "Report a Problem", icon: LifeBuoy, alwaysVisible: true },
   {
     type: "group",
     label: "Scan Center Management",
