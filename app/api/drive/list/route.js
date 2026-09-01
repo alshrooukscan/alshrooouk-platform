@@ -29,20 +29,22 @@ export async function GET(req) {
         .maybeSingle();
       folderId = p?.drive_folder_id;
     }
-    if (!folderId) {
-      return NextResponse.json({ files: [] });
-    }
-
-    const files = await listFilesGrouped(folderId);
+    // NOTE: no early return when the patient has no folder. Recovered files and
+    // files attached before a folder was provisioned still have patient_files
+    // rows, and bailing out here is what kept them invisible.
+    const files = folderId ? await listFilesGrouped(folderId) : [];
 
     // Some clinics keep several same-named patients in ONE physical folder, so
     // listing the folder raw would show each of them the others' scans. Files
     // that patient_files attributes to a DIFFERENT patient are filtered out;
     // anything unattributed still shows, so nothing silently disappears.
-    const { data: owned } = await supabaseAdmin
-      .from("patient_files")
-      .select("drive_file_id, patient_id")
-      .in("drive_file_id", files.map((f) => f.id).filter(Boolean));
+    const driveIds = files.map((f) => f.id).filter(Boolean);
+    const { data: owned } = driveIds.length
+      ? await supabaseAdmin
+          .from("patient_files")
+          .select("drive_file_id, patient_id")
+          .in("drive_file_id", driveIds)
+      : { data: [] };
 
     const ownerOf = new Map((owned || []).map((r) => [r.drive_file_id, r.patient_id]));
     const visible = files.filter((f) => {
