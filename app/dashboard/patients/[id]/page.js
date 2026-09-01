@@ -47,7 +47,11 @@ export default function PatientProfilePage() {
   const [paymentError, setPaymentError] = useState("");
   const [whatsAppPicker, setWhatsAppPicker] = useState(false);
   const [employees, setEmployees] = useState([]);
-  const { profile, isAdmin } = usePermissions();
+  const { profile, isAdmin, can } = usePermissions();
+  const [fileBusy, setFileBusy] = useState(null);
+  // Removing or replacing a colleague's upload is destructive on clinical data,
+  // so it needs the Patients module rather than just being signed in.
+  const canManageFiles = isAdmin || can("patients");
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoDraft, setInfoDraft] = useState({ name: "", mobile: "", email: "", dob: "" });
   const [infoError, setInfoError] = useState("");
@@ -405,6 +409,60 @@ export default function PatientProfilePage() {
       details: { patientId: id, patientName: patient?.name, visitId: visit.id, amount: visit.amount_due },
     });
     router.push(`/dashboard/invoices/${inv.id}`);
+  }
+
+  async function authToken() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token;
+  }
+
+  async function deleteFile(f) {
+    if (!confirm(`Remove "${f.name}"?\n\nIt is moved to the Drive bin, so it can be restored there for 30 days if this was a mistake.`)) return;
+    setFileBusy(f.id);
+    const res = await fetch("/api/drive/file", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await authToken()}` },
+      body: JSON.stringify({ fileId: f.id, patientId: id }),
+    });
+    const j = await res.json();
+    setFileBusy(null);
+    if (!res.ok) return alert(j.error || "Could not remove that file.");
+    loadFiles();
+  }
+
+  async function replaceFile(f) {
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.onchange = async () => {
+      const file = picker.files?.[0];
+      if (!file) return;
+      setFileBusy(f.id);
+      try {
+        const token = await authToken();
+        // The replacement goes into the SAME folder as the original, so a
+        // corrected file cannot drift into a different visit than the one it fixes.
+        const newId = await uploadFileToDrive({
+          file,
+          initEndpoint: "/api/drive/file",
+          initBody: { fileId: f.id, fileName: file.name, mimeType: file.type, sizeBytes: file.size },
+          onProgress: (fr) => setUploadProgress(Math.round(fr * 100)),
+          authToken: token,
+        });
+        const res = await fetch("/api/drive/file", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ oldFileId: f.id, newFileId: newId, fileName: file.name }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Could not finish the replacement");
+        loadFiles();
+      } catch (e) {
+        alert(e.message);
+      }
+      setUploadProgress(0);
+      setFileBusy(null);
+    };
+    picker.click();
   }
 
   async function toggleStage(visit, field) {
@@ -854,18 +912,36 @@ export default function PatientProfilePage() {
             if (f.groupLabel) (groups[f.groupLabel] = groups[f.groupLabel] || []).push(f);
           }
           const FileGrid = ({ items }) => (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
               {items.map((f) => (
-                <a
-                  key={f.id}
-                  href={f.webViewLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ display: "block", border: "1px solid #eee", borderRadius: 10, padding: 12, textDecoration: "none", color: theme.navy }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                  <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(f.createdTime).toLocaleDateString()}</div>
-                </a>
+                <div key={f.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
+                  <a
+                    href={f.webViewLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ display: "block", textDecoration: "none", color: theme.navy }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                    <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
+                      {new Date(f.createdTime).toLocaleDateString()}
+                      {f.typeLabel ? ` · ${f.typeLabel}` : ""}
+                    </div>
+                  </a>
+                  {canManageFiles && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>
+                        {fileBusy === f.id ? "..." : "Replace"}
+                      </button>
+                      <button
+                        onClick={() => deleteFile(f)}
+                        disabled={fileBusy === f.id}
+                        style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9" }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           );
@@ -1746,3 +1822,15 @@ const smallBtn = {
 const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box", marginBottom: 10, fontFamily: "inherit" };
 const editLabel = { display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 };
 const editInp = { width: "100%", padding: "9px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" };
+
+const fileActionBtn = {
+  flex: 1,
+  padding: "5px 8px",
+  borderRadius: 6,
+  border: "1px solid #ddd",
+  background: "#fff",
+  color: "#27214D",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+};
