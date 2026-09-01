@@ -49,7 +49,13 @@ export default function EmployeeProfilePage() {
 
   async function load() {
     setLoading(true);
-    const { data: emp } = await supabase.from("employees").select("*").eq("id", id).single();
+    // Salary, national id and the face descriptor are no longer granted to a
+    // browser session, so the full record comes through an admin-checked route.
+    const { data: sess } = await supabase.auth.getSession();
+    const empRes = await fetch(`/api/hr/employee?id=${id}`, {
+      headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+    });
+    const emp = empRes.ok ? (await empRes.json()).employee : null;
     const { data: latestPayslip } = await supabase
       .from("payroll_runs")
       .select("*")

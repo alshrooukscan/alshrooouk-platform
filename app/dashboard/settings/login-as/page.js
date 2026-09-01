@@ -28,8 +28,13 @@ export default function LoginAsPage() {
       const r = await supabase.from("doctors").select("id, name, clinic_code").ilike("name", `%${query}%`).limit(15);
       data = r.data || [];
     } else if (tab === "employee") {
-      const r = await supabase.from("employees").select("id, name, hr_id, permissions").ilike("name", `%${query}%`).limit(15);
-      data = r.data || [];
+      // permissions is admin-only at the database level now, so this goes
+      // through the same admin-checked route as the HR page.
+      const { data: sess } = await supabase.auth.getSession();
+      const res = await fetch(`/api/hr/employee?search=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      });
+      data = res.ok ? (await res.json()).employees : [];
     } else if (tab === "client") {
       const r = await supabase.from("clients").select("id, name, username, contact_phone").ilike("name", `%${query}%`).limit(15);
       data = r.data || [];
