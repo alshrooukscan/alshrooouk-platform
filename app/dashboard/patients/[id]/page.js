@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { theme } from "../../../../lib/theme";
-import { formatMoney } from "../../../../lib/format";
+import { formatMoney, formatVisitDate } from "../../../../lib/format";
 import {
   customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage,
   patientReportWhatsAppLink, buildPatientReportMessage,
@@ -533,9 +533,14 @@ export default function PatientProfilePage() {
           {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No visits yet.</p>}
           {visits.map((v) => (
             <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
-              <div style={{ fontWeight: 600, color: theme.navy }}>{(v.scan_types || []).join(", ")}</div>
-              <div style={{ fontSize: 12, color: theme.gray }}>
-                {v.exam_date} · {v.branches?.name || "—"} · {v.payment_status}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: theme.goldLight, color: theme.navy, whiteSpace: "nowrap" }}>
+                  {formatVisitDate(v.exam_date)}
+                </span>
+                <span style={{ fontWeight: 600, color: theme.navy }}>{(v.scan_types || []).join(", ")}</span>
+              </div>
+              <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>
+                {v.branches?.name || "—"} · {v.payment_status}
                 {v.payment_status === "partial" && v.amount_due != null && (
                   <span style={{ color: "#b45309", fontWeight: 700 }}> · Pending: {(Number(v.amount_due) - Number(v.amount_paid || 0)).toFixed(2)} EGP</span>
                 )}
@@ -798,7 +803,7 @@ function FileTypeModal({ fileName, visits, onClose, onPick }) {
             >
               {visits.map((v, i) => (
                 <option key={v.id} value={v.id}>
-                  {v.exam_date} {(v.scan_types || []).join(", ")}{i === 0 ? " (most recent)" : ""}
+                  {formatVisitDate(v.exam_date)} — {(v.scan_types || []).join(", ")}{i === 0 ? " (most recent)" : ""}
                 </option>
               ))}
             </select>
@@ -843,7 +848,7 @@ function ScanPickerModal({ visits, onClose, onPick }) {
           >
             <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>{(v.scan_types || []).join(", ") || "—"}</div>
             <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
-              {v.exam_date || "no date"} · {v.doctors?.name || "Walk-in"} · {v.payment_status}
+              {formatVisitDate(v.exam_date)} · {v.doctors?.name || "Walk-in"} · {v.payment_status}
             </div>
           </button>
         ))}

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import { formatVisitDate } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 
@@ -144,8 +145,11 @@ export default function DoctorPortalPage() {
                 <div style={{ marginTop: 12, paddingLeft: 4 }}>
                   {group.visits.map((v) => (
                     <div key={v.id} style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, color: theme.gray, marginBottom: 4 }}>
-                        {v.exam_date} &middot; {(v.scan_types || []).join(", ")}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 999, background: theme.goldLight, color: theme.navy, whiteSpace: "nowrap" }}>
+                          {formatVisitDate(v.exam_date)}
+                        </span>
+                        <span style={{ fontSize: 12, color: theme.gray }}>{(v.scan_types || []).join(", ")}</span>
                       </div>
                       {v.doctors?.name && (
                         <div style={{ fontSize: 11, color: theme.gray, marginBottom: 4 }}>

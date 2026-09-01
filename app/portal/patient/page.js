@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import { formatVisitDate } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 
@@ -46,7 +47,7 @@ export default function PatientPortalPage() {
         {data.visits.map((v) => (
           <div key={v.id} style={cardStyle}>
             <div style={{ fontWeight: 700, color: theme.navy }}>{(v.scan_types || []).join(", ")}</div>
-            <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{v.exam_date} &middot; {v.branches?.name}</div>
+            <div style={{ fontSize: 12, color: theme.navy, marginTop: 2, fontWeight: 600 }}>{formatVisitDate(v.exam_date)}<span style={{ color: theme.gray, fontWeight: 400 }}> &middot; {v.branches?.name}</span></div>
             <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>Referred by: {v.doctors?.name || "Walk-in, no referring doctor"}</div>
             <span
               style={{

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
+import { formatVisitDate } from "../../../../lib/format";
 import { formatPhone } from "../../../../lib/formatPhone";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import {
@@ -253,7 +254,7 @@ export default function DoctorProfilePage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
-                <div>{v.exam_date}</div>
+                <div style={{ fontWeight: 700, color: theme.navy }}>{formatVisitDate(v.exam_date)}</div>
                 <div>{v.payment_status}</div>
               </div>
               <WhatsAppDropdown
