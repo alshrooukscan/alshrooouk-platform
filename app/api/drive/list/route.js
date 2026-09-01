@@ -50,7 +50,28 @@ export async function GET(req) {
       return !owner || owner === patientId;
     });
 
-    return NextResponse.json({ files: visible });
+    // Safety net: anything patient_files records for this patient that the Drive
+    // walk did not return still gets shown. A file recorded in the database but
+    // absent from the listing is exactly the failure this endpoint keeps
+    // producing - folder moved, nested deeper than expected, or uploaded
+    // somewhere else - and silently dropping it is what made it invisible for
+    // weeks. Better to surface it than to pretend it does not exist.
+    const seen = new Set(visible.map((f) => f.id));
+    const { data: recorded } = await supabaseAdmin
+      .from("patient_files")
+      .select("drive_file_id, file_name, created_at")
+      .eq("patient_id", patientId);
+
+    const missing = (recorded || []).filter((r) => r.drive_file_id && !seen.has(r.drive_file_id));
+    const recovered = missing.map((r) => ({
+      id: r.drive_file_id,
+      name: r.file_name,
+      createdTime: r.created_at,
+      webViewLink: `https://drive.google.com/file/d/${r.drive_file_id}/view`,
+      groupLabel: null,
+    }));
+
+    return NextResponse.json({ files: [...visible, ...recovered] });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

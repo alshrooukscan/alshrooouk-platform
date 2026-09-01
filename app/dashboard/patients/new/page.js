@@ -140,9 +140,25 @@ export default function NewPatientPage() {
     setSaving(true);
     const normalizedMobile = formatPhone(form.mobile);
 
-    const { data: existing } = await supabase.from("patients").select("id").eq("mobile", normalizedMobile).maybeSingle();
+    // Match on phone AND name, not phone alone. The warning above tells staff
+    // that a different person sharing a number (a family member) can just carry
+    // on registering - but matching on phone alone silently filed that new
+    // person's scan under whoever already held the number, so the second
+    // patient never existed and their visit landed on a stranger's record.
+    //
+    // Same number + same name  -> same person, reuse the record.
+    // Same number + a new name -> a different person, give them their own.
+    const { data: sameNumber } = await supabase
+      .from("patients")
+      .select("id, name")
+      .eq("mobile", normalizedMobile);
 
-    let patientId = existing?.id;
+    const typedName = (form.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const sameHuman = (sameNumber || []).find(
+      (p) => (p.name || "").trim().toLowerCase().replace(/\s+/g, " ") === typedName
+    );
+
+    let patientId = sameHuman?.id;
     if (!patientId) {
       const { data: newPatient, error: pErr } = await supabase
         .from("patients")
