@@ -33,6 +33,7 @@ export default function PatientProfilePage() {
   const [patient, setPatient] = useState(null);
   const [visits, setVisits] = useState([]);
   const [visitFolders, setVisitFolders] = useState({});
+  const [sameMobile, setSameMobile] = useState([]);
   const [credentials, setCredentials] = useState(null);
   const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState([]);
@@ -225,6 +226,19 @@ export default function PatientProfilePage() {
           .in("entity_id", visitIds)
       : { data: [] };
     setVisitFolders(Object.fromEntries((vf || []).map((r) => [r.entity_id, r.drive_folder_id])));
+
+    // Other people registered on this same number - siblings, parent and child,
+    // a shared household phone. They are separate patients with separate Drive
+    // folders, and staff had no way to get from one to the other except
+    // searching the name again.
+    if (p?.mobile && p.mobile !== "0") {
+      const { data: others } = await supabase
+        .from("patients")
+        .select("id, name, drive_folder_id")
+        .eq("mobile", p.mobile)
+        .neq("id", id);
+      setSameMobile(others || []);
+    }
 
     setPatient(p);
     setVisits(v || []);
@@ -547,6 +561,36 @@ export default function PatientProfilePage() {
           })
         }
       />
+
+      {sameMobile.length > 0 && (
+        <div style={{ background: "#fff8e1", border: "1px solid #f0e0a8", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7a5c00", marginBottom: 6 }}>
+            {sameMobile.length} other patient{sameMobile.length === 1 ? "" : "s"} share this mobile number
+          </div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+            A shared number usually means family. Each is a separate patient with their own visits and their own Drive folder.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {sameMobile.map((o) => (
+              <span key={o.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #eadfae", borderRadius: 999, padding: "5px 12px" }}>
+                <a href={`/dashboard/patients/${o.id}`} style={{ fontSize: 12, fontWeight: 700, color: theme.navy, textDecoration: "none" }}>
+                  {o.name}
+                </a>
+                {o.drive_folder_id && (
+                  <a
+                    href={`https://drive.google.com/drive/folders/${o.drive_folder_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 11, fontWeight: 700, color: theme.gold, textDecoration: "none" }}
+                  >
+                    Drive &rarr;
+                  </a>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
