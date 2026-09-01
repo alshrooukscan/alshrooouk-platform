@@ -61,7 +61,7 @@ export async function GET(req) {
     const seen = new Set(visible.map((f) => f.id));
     const { data: recorded } = await supabaseAdmin
       .from("patient_files")
-      .select("drive_file_id, file_name, created_at")
+      .select("drive_file_id, file_name, created_at, file_type")
       .eq("patient_id", patientId);
 
     const missing = (recorded || []).filter((r) => r.drive_file_id && !seen.has(r.drive_file_id));
@@ -73,7 +73,29 @@ export async function GET(req) {
       groupLabel: null,
     }));
 
-    return NextResponse.json({ files: [...visible, ...recovered] });
+    // Old files keep the name they were given in Drive - a camera filename like
+    // "22222222-5.jpg" - because renaming thousands of existing clinical files
+    // is not worth the risk. Instead a readable label is derived here for the
+    // screen only: the patient's name and what the file is.
+    const { data: pat } = await supabaseAdmin.from("patients").select("name").eq("id", patientId).maybeSingle();
+    const typeByDriveId = new Map((recorded || []).map((r) => [r.drive_file_id, r.file_type]));
+
+    // Where nothing was recorded, the Drive subfolder it sits in says what it is.
+    const FOLDER_TYPE = { Raw_DICOM: "raw_data", Reports: "report", Images: "images", Photos: "photos", Exports: "other" };
+    const LABEL = { raw_data: "Raw Data", report: "Report", images: "Images", photos: "Photos", other: "Export" };
+
+    const withLabels = [...visible, ...recovered].map((f) => {
+      const type = typeByDriveId.get(f.id) || FOLDER_TYPE[f.typeLabel] || null;
+      return {
+        ...f,
+        fileType: type,
+        // Falls back to the real filename rather than inventing a label when
+        // there is genuinely no way to tell what the file is.
+        displayName: type && pat?.name ? `${pat.name} - ${LABEL[type]}` : f.name,
+      };
+    });
+
+    return NextResponse.json({ files: withLabels });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

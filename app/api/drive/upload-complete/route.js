@@ -36,7 +36,7 @@ export async function POST(req) {
       targetVisit = data;
     }
 
-    const classifiedType = ["raw_data", "report", "other"].includes(fileType) ? fileType : "other";
+    const classifiedType = ["raw_data", "report", "images", "photos", "other"].includes(fileType) ? fileType : "other";
     const now = new Date().toISOString();
 
     await supabaseAdmin.from("patient_files").insert({
@@ -61,6 +61,15 @@ export async function POST(req) {
           scanUpdate.scanned_by_name = uploaderName || uploaderEmail || null;
         }
         await supabaseAdmin.from("visits").update(scanUpdate).eq("id", targetVisit.id);
+      } else if (classifiedType === "images") {
+        // Scan images prove the scan happened, but they are not the raw DICOM
+        // set, so they flag Scanned only - never Raw Data Uploaded.
+        if (!targetVisit.scanned) {
+          await supabaseAdmin
+            .from("visits")
+            .update({ scanned: true, scanned_at: now, scanned_by_name: uploaderName || uploaderEmail || null })
+            .eq("id", targetVisit.id);
+        }
       } else if (classifiedType === "report") {
         // report_done_by_name was being left null here while the scanned branch
         // set its equivalent, so a report auto-flagged by an upload had no owner

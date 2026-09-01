@@ -24,7 +24,7 @@ export async function POST(req) {
     if (!patientId || !filename || !sizeBytes) {
       return NextResponse.json({ error: "patientId, filename, and sizeBytes are required" }, { status: 400 });
     }
-    const classifiedType = ["raw_data", "report", "other"].includes(fileType) ? fileType : "other";
+    const classifiedType = ["raw_data", "report", "images", "photos", "other"].includes(fileType) ? fileType : "other";
 
     let targetVisitId = visitId;
     if (!targetVisitId) {

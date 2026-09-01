@@ -931,7 +931,9 @@ export default function PatientProfilePage() {
                     rel="noreferrer"
                     style={{ display: "block", textDecoration: "none", color: theme.navy }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>
+                      {f.displayName || f.name}
+                    </div>
                     <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
                       {new Date(f.createdTime).toLocaleDateString()}
                       {f.typeLabel ? ` · ${f.typeLabel}` : ""}
@@ -1007,15 +1009,18 @@ function FileTypeModal({ fileName, visits, onClose, onPick }) {
           </div>
         )}
         <div style={{ display: "grid", gap: 8 }}>
-          <button onClick={() => onPick("raw_data", visitId)} style={{ ...actionBtn, background: theme.gold, color: theme.navy, textAlign: "left" }}>
-            Raw Scan Data <span style={{ fontWeight: 400, fontSize: 11 }}>— marks "Raw Data Uploaded"</span>
-          </button>
-          <button onClick={() => onPick("report", visitId)} style={{ ...actionBtn, background: theme.navy, color: "#fff", textAlign: "left" }}>
-            Report <span style={{ fontWeight: 400, fontSize: 11 }}>— marks "Report Done"</span>
-          </button>
-          <button onClick={() => onPick("other", visitId)} style={{ ...actionBtn, background: "#fff", color: theme.navy, border: "1px solid #ddd", textAlign: "left" }}>
-            Other <span style={{ fontWeight: 400, fontSize: 11 }}>— no status change</span>
-          </button>
+          {[
+            { key: "raw_data", label: "Raw Scan Data", note: "DICOM set — marks Raw Data Uploaded and Scanned" },
+            { key: "images", label: "Scan Images", note: "JPG/PNG of the scan — marks Scanned" },
+            { key: "report", label: "Report", note: "marks Report Done" },
+            { key: "photos", label: "Photos", note: "clinical or intra-oral photos" },
+            { key: "other", label: "Other / Export", note: "anything else" },
+          ].map((t) => (
+            <button key={t.key} onClick={() => onPick(t.key, visitId)}
+              style={{ ...actionBtn, background: t.key === "raw_data" ? theme.gold : "#fff", color: theme.navy, textAlign: "left", border: `1px solid ${t.key === "raw_data" ? theme.gold : "#ddd"}` }}>
+              {t.label} <span style={{ fontWeight: 400, fontSize: 11 }}>— {t.note}</span>
+            </button>
+          ))}
         </div>
         <button onClick={onClose} style={{ marginTop: 12, background: "none", border: "none", color: theme.gray, fontSize: 12, cursor: "pointer" }}>Cancel</button>
       </div>
