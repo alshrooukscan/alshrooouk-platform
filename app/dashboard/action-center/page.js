@@ -49,6 +49,7 @@ export default function ActionCenterPage() {
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [swaps, setSwaps] = useState([]);
   const [clockFixes, setClockFixes] = useState([]);
+  const [alerts, setAlerts] = useState({ stockZero: 0, stockLow: 0, overdueReports: 0 });
 
   useEffect(() => {
     if (!permsLoading && profile) load();
@@ -115,6 +116,17 @@ export default function ActionCenterPage() {
         headers: { Authorization: `Bearer ${sess.session?.access_token}` },
       });
       if (swapRes.ok) setSwaps((await swapRes.json()).requests || []);
+      // Things nobody is told about unless they go looking for them.
+      const [{ data: stock }, { data: rep }] = await Promise.all([
+        supabase.from("stock_items").select("qty_remaining, reorder_level"),
+        supabase.from("reports").select("date_required, status").eq("status", "pending"),
+      ]);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      setAlerts({
+        stockZero: (stock || []).filter((i) => Number(i.qty_remaining || 0) <= 0).length,
+        stockLow: (stock || []).filter((i) => Number(i.qty_remaining || 0) > 0 && Number(i.qty_remaining || 0) <= Number(i.reorder_level ?? 3)).length,
+        overdueReports: (rep || []).filter((r) => r.date_required && r.date_required < todayStr).length,
+      });
       const fixRes = await fetch("/api/admin/timeclock-corrections", {
         headers: { Authorization: `Bearer ${sess.session?.access_token}` },
       });
@@ -352,6 +364,32 @@ export default function ActionCenterPage() {
         </div>
       )}
 
+      {isAdmin && (alerts.stockZero > 0 || alerts.stockLow > 0 || alerts.overdueReports > 0) && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Needs Attention</h3>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+            {alerts.stockZero > 0 && (
+              <a href="/dashboard?tab=stockalerts" style={alertBox("#fdecea", "#ba1a1a")}>
+                <strong>{alerts.stockZero}</strong> item{alerts.stockZero === 1 ? "" : "s"} out of stock
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400 }}>Doctors can still order these — checkout will fail</span>
+              </a>
+            )}
+            {alerts.stockLow > 0 && (
+              <a href="/dashboard?tab=stockalerts" style={alertBox("#fff8e1", "#a97c00")}>
+                <strong>{alerts.stockLow}</strong> item{alerts.stockLow === 1 ? "" : "s"} running low
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400 }}>At or below their restock level</span>
+              </a>
+            )}
+            {alerts.overdueReports > 0 && (
+              <a href="/dashboard?tab=requests" style={alertBox("#fdecea", "#ba1a1a")}>
+                <strong>{alerts.overdueReports}</strong> report{alerts.overdueReports === 1 ? "" : "s"} overdue
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400 }}>Past the date the requester was promised</span>
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
       {isAdmin && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Attendance Corrections</h3>
@@ -569,4 +607,11 @@ function fmtSwapDay(d) {
   const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
   if (d.is_day_off) return `${dow} ${d.work_date} (day off)`;
   return `${dow} ${d.work_date} ${d.start_time?.slice(0, 5)}-${d.end_time?.slice(0, 5)}`;
+}
+
+function alertBox(bg, fg) {
+  return {
+    background: bg, color: fg, borderRadius: 10, padding: "12px 16px",
+    fontSize: 13, fontWeight: 700, textDecoration: "none", minWidth: 210, display: "block",
+  };
 }

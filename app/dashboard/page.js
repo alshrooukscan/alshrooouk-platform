@@ -9,6 +9,8 @@ import ScanInsights from "../../components/analytics/ScanInsights";
 import DoctorAnalytics from "../../components/analytics/DoctorAnalytics";
 import ClientRequestsAnalytics from "../../components/analytics/ClientRequestsAnalytics";
 import OutstandingAnalytics from "../../components/analytics/OutstandingAnalytics";
+import TrendsAnalytics from "../../components/analytics/TrendsAnalytics";
+import StockAlerts from "../../components/analytics/StockAlerts";
 import HRAnalytics from "../../components/analytics/HRAnalytics";
 import StockAnalytics from "../../components/analytics/StockAnalytics";
 import DrillDownModal from "../../components/analytics/DrillDownModal";
@@ -19,12 +21,14 @@ const PAYMENT_COLORS = ["#27214D", "#A98B4D", "#6D5A3A", "#8a7ba0", "#c9a86a", "
 
 const TABS = [
   { key: "overview", label: "Overview" },
+  { key: "trends", label: "Trends" },
   { key: "outstanding", label: "Money Owed" },
   { key: "scans", label: "Scans" },
   { key: "doctors", label: "Doctors" },
   { key: "requests", label: "Client Requests" },
   { key: "hr", label: "HR" },
   { key: "stock", label: "Stock" },
+  { key: "stockalerts", label: "Stock Alerts" },
 ];
 
 export default function DashboardHome() {
@@ -73,6 +77,8 @@ function DashboardTabs() {
 
       {tab === "overview" && <Overview />}
       {tab === "outstanding" && <OutstandingAnalytics />}
+      {tab === "trends" && <TrendsAnalytics />}
+      {tab === "stockalerts" && <StockAlerts />}
       {tab === "scans" && <ScanInsights />}
       {tab === "doctors" && <DoctorAnalytics />}
       {tab === "requests" && <ClientRequestsAnalytics />}
