@@ -48,6 +48,7 @@ export default function ActionCenterPage() {
   const [busyId, setBusyId] = useState(null);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [swaps, setSwaps] = useState([]);
+  const [clockFixes, setClockFixes] = useState([]);
 
   useEffect(() => {
     if (!permsLoading && profile) load();
@@ -64,6 +65,20 @@ export default function ActionCenterPage() {
     });
     const result = await res.json();
     if (!res.ok) alert(result.error || "Could not update that swap.");
+    setBusyId(null);
+    load();
+  }
+
+  async function decideClockFix(requestId, action) {
+    setBusyId(requestId);
+    const { data: sess } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/timeclock-corrections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+      body: JSON.stringify({ requestId, action }),
+    });
+    const r = await res.json();
+    if (!res.ok) alert(r.error || "Could not update that request.");
     setBusyId(null);
     load();
   }
@@ -100,6 +115,10 @@ export default function ActionCenterPage() {
         headers: { Authorization: `Bearer ${sess.session?.access_token}` },
       });
       if (swapRes.ok) setSwaps((await swapRes.json()).requests || []);
+      const fixRes = await fetch("/api/admin/timeclock-corrections", {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      });
+      if (fixRes.ok) setClockFixes((await fixRes.json()).requests || []);
     }
     if (isAdmin) {
       setApprovals(results[1].data || []);
@@ -330,6 +349,47 @@ export default function ActionCenterPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Attendance Corrections</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Sign-in and sign-out records feed payroll, so they only change when you approve it here.
+          </p>
+          {clockFixes.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing waiting on you.</p>}
+          {clockFixes.map((r) => (
+            <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 4 }}>
+                {r.employees?.name} &middot; {String(r.request_kind).replace(/_/g, " ")}
+              </div>
+              {r.timeclock_events && (
+                <div style={{ fontSize: 12, color: theme.gray }}>
+                  Recorded: {r.timeclock_events.event_type === "login" ? "Sign in" : "Sign out"}{" "}
+                  {new Date(r.timeclock_events.event_time).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {r.timeclock_events.distance_from_clinic_meters != null && ` · ${Math.round(r.timeclock_events.distance_from_clinic_meters)} m from clinic`}
+                  {r.timeclock_events.face_match_status && ` · face: ${String(r.timeclock_events.face_match_status).replace(/_/g, " ")}`}
+                </div>
+              )}
+              {r.proposed_event_time && (
+                <div style={{ fontSize: 12, color: "#1e7a3c", fontWeight: 600 }}>
+                  Should be: {new Date(r.proposed_event_time).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", margin: "6px 0 8px" }}>&ldquo;{r.reason}&rdquo;</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => decideClockFix(r.id, "approve")} disabled={busyId === r.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Approve
+                </button>
+                <button onClick={() => decideClockFix(r.id, "reject")} disabled={busyId === r.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

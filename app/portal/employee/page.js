@@ -97,6 +97,7 @@ export default function EmployeePortalPage() {
             { key: "overview", label: "Overview" },
             { key: "schedule", label: "Schedule" },
             { key: "swaps", label: "Swaps" },
+            { key: "attendance", label: "Fix Attendance" },
             { key: "payslips", label: "Payslips" },
             { key: "vacations", label: "Vacations" },
             { key: "excuses", label: "Excuses" },
@@ -226,6 +227,7 @@ export default function EmployeePortalPage() {
 
         {tab === "schedule" && <ScheduleTab schedule={data.schedule} />}
         {tab === "swaps" && <SwapsTab onChanged={load} />}
+        {tab === "attendance" && <AttendanceFixTab />}
 
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
         {tab === "excuses" && <ExcusesTab excuseRules={data.excuseRules} excuseSubmissions={data.excuseSubmissions} onSubmitted={load} />}
@@ -1019,3 +1021,169 @@ function SwapsTab({ onChanged }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Attendance corrections
+//
+// Sign-in/out records feed payroll, so nothing here edits them. The employee
+// states what was wrong and an admin decides; until then the original record
+// stands exactly as the device captured it.
+// ---------------------------------------------------------------------------
+const FIX_KINDS = [
+  { key: "wrong_time", label: "The time is wrong" },
+  { key: "wrong_location", label: "It said I was too far from the clinic" },
+  { key: "face_not_recognised", label: "My face wasn't recognised" },
+  { key: "missing_punch", label: "A sign-in or sign-out is missing entirely" },
+  { key: "other", label: "Something else" },
+];
+
+const FIX_STATUS = {
+  pending: { bg: "#fff8e1", fg: "#a97c00", label: "Waiting on admin" },
+  approved: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Approved" },
+  rejected: { bg: "#fdecea", fg: "#ba1a1a", label: "Rejected" },
+};
+
+function eventLabel(e) {
+  if (!e) return "-";
+  const when = new Date(e.event_time).toLocaleString("en-GB", {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  return `${e.event_type === "login" ? "Sign in" : "Sign out"} — ${when}`;
+}
+
+function AttendanceFixTab() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [f, setF] = useState({ eventId: "", requestKind: "", proposedEventTime: "", proposedEventType: "login", reason: "" });
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch("/api/portal/employee/timeclock-correction");
+    if (res.ok) setData(await res.json());
+    setLoading(false);
+  }
+
+  async function submit() {
+    setError("");
+    setBusy(true);
+    const res = await fetch("/api/portal/employee/timeclock-correction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(f),
+    });
+    const j = await res.json();
+    setBusy(false);
+    if (!res.ok) return setError(j.error || "Could not send that request.");
+    setShow(false);
+    setF({ eventId: "", requestKind: "", proposedEventTime: "", proposedEventType: "login", reason: "" });
+    load();
+  }
+
+  if (loading) return <div style={cardStyle}>Loading...</div>;
+  if (!data) return <div style={cardStyle}>Could not load your attendance.</div>;
+
+  const missing = f.requestKind === "missing_punch";
+  const sel = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box", marginBottom: 10, background: "#fff" };
+
+  return (
+    <div>
+      <button onClick={() => setShow((v) => !v)}
+        style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 14 }}>
+        {show ? "Cancel" : "+ Request a Correction"}
+      </button>
+
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+
+      {show && (
+        <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 18 }}>
+          <label style={fixLbl}>What was wrong?</label>
+          <select style={sel} value={f.requestKind} onChange={(e) => setF({ ...f, requestKind: e.target.value, eventId: "" })}>
+            <option value="">Choose one...</option>
+            {FIX_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+          </select>
+
+          {f.requestKind && !missing && (
+            <>
+              <label style={fixLbl}>Which record?</label>
+              <select style={sel} value={f.eventId} onChange={(e) => setF({ ...f, eventId: e.target.value })}>
+                <option value="">Select the sign-in or sign-out...</option>
+                {data.events.map((e) => <option key={e.id} value={e.id}>{eventLabel(e)}</option>)}
+              </select>
+            </>
+          )}
+
+          {missing && (
+            <>
+              <label style={fixLbl}>Was it a sign in or a sign out?</label>
+              <select style={sel} value={f.proposedEventType} onChange={(e) => setF({ ...f, proposedEventType: e.target.value })}>
+                <option value="login">Sign in</option>
+                <option value="logout">Sign out</option>
+              </select>
+            </>
+          )}
+
+          {(missing || f.requestKind === "wrong_time") && (
+            <>
+              <label style={fixLbl}>{missing ? "When did it actually happen?" : "What should the time be?"}</label>
+              <input type="datetime-local" style={sel} value={f.proposedEventTime}
+                onChange={(e) => setF({ ...f, proposedEventTime: e.target.value })} />
+            </>
+          )}
+
+          <label style={fixLbl}>Explain what happened</label>
+          <input style={sel} value={f.reason} placeholder="So an admin can check it"
+            onChange={(e) => setF({ ...f, reason: e.target.value })} />
+
+          <button onClick={submit} disabled={busy}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer" }}>
+            {busy ? "Sending..." : "Send to Admin"}
+          </button>
+          <p style={{ fontSize: 11, color: theme.gray, margin: "10px 0 0" }}>
+            Your attendance record does not change until an admin approves this.
+          </p>
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>Your requests</div>
+      {data.requests.length === 0 && <div style={cardStyle}>You haven&apos;t asked for any corrections.</div>}
+      {data.requests.map((r) => {
+        const st = FIX_STATUS[r.status] || FIX_STATUS.pending;
+        return (
+          <div key={r.id} style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>
+                {FIX_KINDS.find((k) => k.key === r.request_kind)?.label || r.request_kind}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg, whiteSpace: "nowrap" }}>
+                {st.label}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: theme.gray }}>{r.reason}</div>
+            {r.review_note && <div style={{ fontSize: 12, color: theme.navy, marginTop: 6, fontStyle: "italic" }}>Admin: {r.review_note}</div>}
+          </div>
+        );
+      })}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>Recent sign in / out</div>
+      {data.events.slice(0, 12).map((e) => (
+        <div key={e.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{eventLabel(e)}</div>
+            <div style={{ fontSize: 11, color: theme.gray }}>
+              {e.distance_from_clinic_meters != null && `${Math.round(e.distance_from_clinic_meters)} m from clinic`}
+              {e.face_match_status && ` · face: ${e.face_match_status.replace(/_/g, " ")}`}
+            </div>
+            {e.correction_note && <div style={{ fontSize: 11, color: "#1e7a3c", marginTop: 3 }}>{e.correction_note}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const fixLbl = { display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 };
