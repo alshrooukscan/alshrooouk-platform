@@ -19,7 +19,7 @@ const PAYMENT_METHODS = [
   { key: "cash", label: "Cash" },
   { key: "visa", label: "Visa" },
   { key: "instapay", label: "InstaPay" },
-  { key: "vodafone_cash", label: "Vodafone Cash" },
+  { key: "wallet", label: "Wallet" },
 ];
 const PAYMENT_METHOD_LABEL = Object.fromEntries(PAYMENT_METHODS.map((p) => [p.key, p.label]));
 

@@ -43,8 +43,10 @@ export async function DELETE(req, { params }) {
   let expenseEntriesLeftForReview = 0;
   for (const payment of payments || []) {
     let method = (payment.payment_method || "").toLowerCase().replace(/\s+/g, "_");
-    if (method === "wallet") method = "vodafone_cash";
-    if (!["cash", "visa", "instapay", "vodafone_cash"].includes(method)) method = "cash";
+    // "wallet" is canonical; vodafone_cash is the retired name for the same
+    // method and is folded in so older rows still match.
+    if (method === "vodafone_cash") method = "wallet";
+    if (!["cash", "visa", "instapay", "wallet"].includes(method)) method = "cash";
     const entryDate = payment.paid_at ? new Date(payment.paid_at).toISOString().slice(0, 10) : null;
 
     let q = supabaseAdmin

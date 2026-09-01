@@ -169,7 +169,7 @@ export default function DentalStockShopPage() {
               <option value="cash">Cash</option>
               <option value="visa">Visa</option>
               <option value="instapay">InstaPay</option>
-              <option value="vodafone_cash">Vodafone Cash</option>
+              <option value="wallet">Wallet</option>
             </select>
             {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
             <button

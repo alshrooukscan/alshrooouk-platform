@@ -16,7 +16,8 @@ const TYPE_LABEL = {
   stock_sale: "Stock Sale",
   visit_collection: "Visit Collection",
 };
-const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", vodafone_cash: "Vodafone Cash" };
+// vodafone_cash is the retired key for the same thing; both render as Wallet
+const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", wallet: "Wallet", vodafone_cash: "Wallet" };
 
 const FIELD_LABELS = {
   exam_date: "Visit Date",

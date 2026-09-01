@@ -4,7 +4,8 @@ import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 
-const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", vodafone_cash: "Vodafone Cash" };
+// vodafone_cash is the retired key for the same thing; both render as Wallet
+const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", wallet: "Wallet", vodafone_cash: "Wallet" };
 
 export default function DentalOrdersPage() {
   const [orders, setOrders] = useState([]);

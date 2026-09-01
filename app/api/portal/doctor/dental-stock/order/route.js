@@ -3,7 +3,9 @@ import { cookies } from "next/headers";
 import { verifySession } from "../../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../../lib/supabaseAdmin";
 
-const VALID_METHODS = ["cash", "visa", "instapay", "vodafone_cash"];
+// "wallet" is canonical; "vodafone_cash" is the retired name for the same
+// method, still accepted so an older client or cached page cannot 400.
+const VALID_METHODS = ["cash", "visa", "instapay", "wallet", "vodafone_cash"];
 
 export async function POST(req) {
   const token = cookies().get("portal_session")?.value;
@@ -22,6 +24,9 @@ export async function POST(req) {
   if (!VALID_METHODS.includes(paymentMethod)) {
     return NextResponse.json({ error: "Choose a valid payment method." }, { status: 400 });
   }
+  // Store the canonical key so the ledger never ends up with the same payment
+  // method recorded under two different names.
+  const method = paymentMethod === "vodafone_cash" ? "wallet" : paymentMethod;
 
   // Prices and stock are validated fresh, server-side, inside the function
   // itself - only stock_item_id and quantity from the client are ever used.
@@ -29,7 +34,7 @@ export async function POST(req) {
 
   const { data: orderId, error } = await supabaseAdmin.rpc("place_dental_order", {
     p_doctor_id: session.id,
-    p_payment_method: paymentMethod,
+    p_payment_method: method,
     p_items: cleanItems,
   });
 

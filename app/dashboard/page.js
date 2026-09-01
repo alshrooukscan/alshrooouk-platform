@@ -187,7 +187,7 @@ function Overview() {
     // ledger - NOT visits.payment_method. The visit row only carries a single
     // denormalized method, so a split payment (part cash, part Visa) collapses
     // to one label and the other half disappears. Reading the ledger is also
-    // the only way InstaPay/Vodafone Cash entries show up at all.
+    // the only way InstaPay/Wallet entries show up at all.
     let paymentRows = [];
     let pfrom = 0;
     while (true) {
@@ -257,16 +257,23 @@ function Overview() {
   // "Cash"/"InstaPay"/"Wallet"/"Visa", while the expense and stock modules
   // write "cash"/"instapay"/"vodafone_cash". Both are mapped to one label here
   // so a method never splits into two slices.
+  //
+  // "Wallet" is the canonical name for mobile-wallet payments. Vodafone Cash is
+  // one wallet among several (Orange Cash, Etisalat Cash), so it is folded into
+  // Wallet rather than given its own slice - the client confirmed they mean the
+  // same thing, and splitting them would divide identical payments in two.
   const METHOD_LABELS = {
     cash: "Cash",
     instapay: "InstaPay",
     "insta pay": "InstaPay",
-    vodafone_cash: "Vodafone Cash",
-    "vodafone cash": "Vodafone Cash",
-    vodafonecash: "Vodafone Cash",
+    wallet: "Wallet",
+    wallets: "Wallet",
+    "mobile wallet": "Wallet",
+    vodafone_cash: "Wallet",
+    "vodafone cash": "Wallet",
+    vodafonecash: "Wallet",
     visa: "Visa",
     card: "Visa",
-    wallet: "Wallet",
   };
   const byMethod = {};
   for (const row of filteredPaymentRows) {

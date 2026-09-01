@@ -25,7 +25,7 @@ import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDa
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
 const DISCOUNT_REASONS = ["Referred Patient", "Doctor / Doctor Relative", "Approved by Management", "Workers / Workers Relatives", "People in Need", "Insurance", "Other"];
-const PAYMENT_METHODS = ["Cash", "Visa", "InstaPay", "Vodafone Cash", "Wallet"];
+const PAYMENT_METHODS = ["Cash", "Visa", "InstaPay", "Wallet"];
 
 export default function PatientProfilePage() {
   const { id } = useParams();
