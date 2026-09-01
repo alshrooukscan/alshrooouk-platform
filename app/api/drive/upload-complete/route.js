@@ -7,27 +7,41 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // downstream behaviour (visit stage flags, audit stamps) is unchanged.
 export async function POST(req) {
   try {
-    const { fileId, patientId, filename, fileType, uploaderEmail, uploaderName } = await req.json();
+    const { fileId, patientId, filename, fileType, visitId, uploaderEmail, uploaderName } = await req.json();
     if (!fileId || !patientId || !filename) {
       return NextResponse.json({ error: "fileId, patientId, and filename are required" }, { status: 400 });
     }
     const file = await getFileMeta(fileId);
 
-    const { data: recentVisit } = await supabaseAdmin
-      .from("visits")
-      .select("id")
-      .eq("patient_id", patientId)
-      .order("exam_date", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Use the SAME visit upload-session already resolved (passed through from
+    // the client) rather than independently re-guessing "most recent" here -
+    // otherwise the file could physically land in one visit's folder while
+    // getting attributed to a different visit in the database if the two
+    // guesses ever disagreed (e.g. a new visit got created in between the two
+    // calls). Falls back to the old guess-by-recency only if the caller
+    // genuinely didn't have a visitId (shouldn't happen via the current UI).
+    let targetVisit = null;
+    if (visitId) {
+      const { data } = await supabaseAdmin.from("visits").select("id, scanned").eq("id", visitId).maybeSingle();
+      targetVisit = data;
+    } else {
+      const { data } = await supabaseAdmin
+        .from("visits")
+        .select("id, scanned")
+        .eq("patient_id", patientId)
+        .order("exam_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetVisit = data;
+    }
 
     const classifiedType = ["raw_data", "report", "other"].includes(fileType) ? fileType : "other";
     const now = new Date().toISOString();
 
     await supabaseAdmin.from("patient_files").insert({
       patient_id: patientId,
-      visit_id: recentVisit?.id || null,
+      visit_id: targetVisit?.id || null,
       drive_file_id: file.id,
       file_name: filename,
       file_type: classifiedType,
@@ -35,21 +49,20 @@ export async function POST(req) {
       uploaded_by_name: uploaderName || null,
     });
 
-    if (recentVisit) {
+    if (targetVisit) {
       if (classifiedType === "raw_data") {
         // Raw data existing means the scan itself obviously happened - auto-flag
         // Scanned too (only if not already marked, so we never clobber an earlier,
         // more accurate manual timestamp or attribution).
-        const { data: visitRow } = await supabaseAdmin.from("visits").select("scanned").eq("id", recentVisit.id).maybeSingle();
         const scanUpdate = { raw_data_uploaded: true, raw_data_uploaded_at: now };
-        if (!visitRow?.scanned) {
+        if (!targetVisit.scanned) {
           scanUpdate.scanned = true;
           scanUpdate.scanned_at = now;
           scanUpdate.scanned_by_name = uploaderName || uploaderEmail || null;
         }
-        await supabaseAdmin.from("visits").update(scanUpdate).eq("id", recentVisit.id);
+        await supabaseAdmin.from("visits").update(scanUpdate).eq("id", targetVisit.id);
       } else if (classifiedType === "report") {
-        await supabaseAdmin.from("visits").update({ report_done: true, report_done_at: now }).eq("id", recentVisit.id);
+        await supabaseAdmin.from("visits").update({ report_done: true, report_done_at: now }).eq("id", targetVisit.id);
       }
     }
 

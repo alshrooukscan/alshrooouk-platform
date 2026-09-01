@@ -146,7 +146,7 @@ export default function PatientProfilePage() {
     e.target.value = ""; // allow picking the same file again later
   }
 
-  async function handleFileUpload(fileType) {
+  async function handleFileUpload(fileType, visitId) {
     const file = pendingFile;
     if (!file) return;
     setPendingFile(null);
@@ -162,7 +162,7 @@ export default function PatientProfilePage() {
       const fileId = await uploadFileToDrive({
         file,
         initEndpoint: "/api/drive/upload-session",
-        initBody: { patientId: id, filename: file.name, mimeType: file.type },
+        initBody: { patientId: id, filename: file.name, mimeType: file.type, fileType, visitId },
         onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
       });
 
@@ -174,6 +174,7 @@ export default function PatientProfilePage() {
           patientId: id,
           filename: file.name,
           fileType,
+          visitId,
           uploaderEmail,
           uploaderName: profile?.name || uploaderEmail,
         }),
@@ -715,8 +716,9 @@ export default function PatientProfilePage() {
       {pendingFile && (
         <FileTypeModal
           fileName={pendingFile.name}
+          visits={visits}
           onClose={() => setPendingFile(null)}
-          onPick={(type) => handleFileUpload(type)}
+          onPick={(type, visitId) => handleFileUpload(type, visitId)}
         />
       )}
 
@@ -774,20 +776,40 @@ export default function PatientProfilePage() {
   );
 }
 
-function FileTypeModal({ fileName, onClose, onPick }) {
+function FileTypeModal({ fileName, visits, onClose, onPick }) {
+  // Default to the most recent visit - the common case (upload right after
+  // today's scan) needs zero extra clicks. Staff can switch it for a late or
+  // retroactive upload against an earlier visit.
+  const [visitId, setVisitId] = useState(visits?.[0]?.id || "");
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 26, width: 340 }}>
         <h3 style={{ margin: "0 0 4px", color: theme.navy, fontSize: 16 }}>What is this file?</h3>
         <p style={{ fontSize: 12, color: theme.gray, marginTop: 0, marginBottom: 16, wordBreak: "break-all" }}>{fileName}</p>
+        {visits && visits.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Which visit is this for?</label>
+            <select
+              value={visitId}
+              onChange={(e) => setVisitId(e.target.value)}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" }}
+            >
+              {visits.map((v, i) => (
+                <option key={v.id} value={v.id}>
+                  {v.exam_date} {(v.scan_types || []).join(", ")}{i === 0 ? " (most recent)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div style={{ display: "grid", gap: 8 }}>
-          <button onClick={() => onPick("raw_data")} style={{ ...actionBtn, background: theme.gold, color: theme.navy, textAlign: "left" }}>
+          <button onClick={() => onPick("raw_data", visitId)} style={{ ...actionBtn, background: theme.gold, color: theme.navy, textAlign: "left" }}>
             Raw Scan Data <span style={{ fontWeight: 400, fontSize: 11 }}>— marks "Raw Data Uploaded"</span>
           </button>
-          <button onClick={() => onPick("report")} style={{ ...actionBtn, background: theme.navy, color: "#fff", textAlign: "left" }}>
+          <button onClick={() => onPick("report", visitId)} style={{ ...actionBtn, background: theme.navy, color: "#fff", textAlign: "left" }}>
             Report <span style={{ fontWeight: 400, fontSize: 11 }}>— marks "Report Done"</span>
           </button>
-          <button onClick={() => onPick("other")} style={{ ...actionBtn, background: "#fff", color: theme.navy, border: "1px solid #ddd", textAlign: "left" }}>
+          <button onClick={() => onPick("other", visitId)} style={{ ...actionBtn, background: "#fff", color: theme.navy, border: "1px solid #ddd", textAlign: "left" }}>
             Other <span style={{ fontWeight: 400, fontSize: 11 }}>— no status change</span>
           </button>
         </div>
