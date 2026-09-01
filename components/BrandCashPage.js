@@ -50,7 +50,13 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
   async function load() {
     setLoading(true);
     const [{ data: bal }, { data: emps }, { data: tx }] = await Promise.all([
-      supabase.from("employee_cash_balances").select("*, employees(name)").eq("brand", brand),
+      // NO employees(name) embed here. employee_cash_balances is a VIEW with no
+      // foreign key PostgREST can follow, so asking it to embed returns
+      // 400 PGRST200 and supabase-js hands back data:null - which rendered as an
+      // empty "who is holding cash" list for EVERY user, admin included, and
+      // looked exactly like a permissions problem. Names are joined below from
+      // the employees list this same load() already fetches.
+      supabase.from("employee_cash_balances").select("*").eq("brand", brand),
       supabase.from("employees").select("id, name").eq("is_active", true).order("name"),
       supabase
         .from("expense_transactions")
@@ -60,7 +66,13 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         .order("created_at", { ascending: false })
         .limit(20),
     ]);
-    setBalances((bal || []).filter((b) => Number(b.balance) !== 0));
+    // Attach names here rather than via a PostgREST embed the view cannot support.
+    const nameById = new Map((emps || []).map((e) => [e.id, e.name]));
+    setBalances(
+      (bal || [])
+        .filter((b) => Number(b.balance) !== 0)
+        .map((b) => ({ ...b, employeeName: nameById.get(b.employee_id) || "Unknown employee" }))
+    );
     setEmployees(emps || []);
     setRecent(tx || []);
     setLoading(false);
@@ -87,7 +99,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         <div style={{ display: "grid", gap: 8 }}>
           {balances.map((b) => (
             <div key={b.employee_id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <span style={{ color: theme.navy, fontWeight: 600 }}>{b.employees?.name}</span>
+              <span style={{ color: theme.navy, fontWeight: 600 }}>{b.employeeName}</span>
               <span style={{ fontWeight: 700, color: theme.gold }}>{formatMoney(b.balance)} EGP</span>
             </div>
           ))}

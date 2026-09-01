@@ -32,6 +32,7 @@ export default function PatientProfilePage() {
   const router = useRouter();
   const [patient, setPatient] = useState(null);
   const [visits, setVisits] = useState([]);
+  const [visitFolders, setVisitFolders] = useState({});
   const [credentials, setCredentials] = useState(null);
   const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState([]);
@@ -212,6 +213,19 @@ export default function PatientProfilePage() {
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
+
+    // Per-visit Drive folders, so staff can jump straight to the folder for one
+    // scan instead of opening the patient folder and hunting through visits.
+    const visitIds = (v || []).map((x) => x.id);
+    const { data: vf } = visitIds.length
+      ? await supabase
+          .from("drive_folder_index")
+          .select("entity_id, drive_folder_id")
+          .eq("entity_type", "visit")
+          .in("entity_id", visitIds)
+      : { data: [] };
+    setVisitFolders(Object.fromEntries((vf || []).map((r) => [r.entity_id, r.drive_folder_id])));
+
     setPatient(p);
     setVisits(v || []);
     setCredentials(auth);
@@ -437,6 +451,19 @@ export default function PatientProfilePage() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+          {/* Straight into the patient's Drive folder. Staff were opening Drive
+              and searching by name to find it, which is slow and lands on the
+              wrong folder whenever two patients share a name. */}
+          {patient.drive_folder_id && (
+            <a
+              href={`https://drive.google.com/drive/folders/${patient.drive_folder_id}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.gold}`, background: theme.goldLight, color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}
+            >
+              Open Drive Folder
+            </a>
+          )}
           {isAdmin && (
             <button onClick={startEditInfo} style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
               Edit
@@ -558,6 +585,17 @@ export default function PatientProfilePage() {
                   {v.doctors?.clinic_code && <>Clinic Code: {v.doctors.clinic_code} · </>}
                   Referred by: Dr {v.doctors?.name || "—"}
                 </div>
+              )}
+              {(visitFolders[v.id] || patient.drive_folder_id) && (
+                <a
+                  href={`https://drive.google.com/drive/folders/${visitFolders[v.id] || patient.drive_folder_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "inline-block", marginTop: 6, fontSize: 11, fontWeight: 700, color: theme.gold, textDecoration: "none" }}
+                  title={visitFolders[v.id] ? "Open this visit's Drive folder" : "This visit has no folder of its own yet - opens the patient folder"}
+                >
+                  {visitFolders[v.id] ? "Open Drive folder for this visit \u2192" : "Open patient Drive folder \u2192"}
+                </a>
               )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 <StageChip label="Paid" active={v.payment_status === "paid"} timestamp={v.paid_at} />
