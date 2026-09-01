@@ -113,8 +113,8 @@ export default function DoctorPortalPage() {
         <p style={{ color: theme.gold, fontWeight: 600, marginBottom: 20 }}>{data.doctor?.clinic_code} &middot; {data.doctor?.clinic_name}</p>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Your Referred Patients</h3>
-          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>You can only see patients you've referred, and only their files for your referrals.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Clinic Patients</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Every patient referred to {data.doctor?.clinic_code} is shown here, including cases referred by other doctors at this clinic.</p>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -141,34 +141,68 @@ export default function DoctorPortalPage() {
               {openPatientId === patientId && (
                 <div style={{ marginTop: 12, paddingLeft: 4 }}>
                   {group.visits.map((v) => (
-                    <div key={v.id} style={{ marginBottom: 8 }}>
+                    <div key={v.id} style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 12, color: theme.gray, marginBottom: 4 }}>
                         {v.exam_date} &middot; {(v.scan_types || []).join(", ")}
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {v.doctors?.name && (
+                        <div style={{ fontSize: 11, color: theme.gray, marginBottom: 4 }}>
+                          Referred by Dr. {v.doctors.name}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
                         <StatusChip label="Scanned" active={v.scanned} />
                         <StatusChip label="Raw Data Uploaded" active={v.raw_data_uploaded} />
                         <StatusChip label="Report Done" active={v.report_done} />
+                      </div>
+                      <div style={{ fontSize: 11, color: v.payment_status === "paid" ? "#1e7a3c" : v.payment_status === "partial" ? "#b45309" : "#999", fontWeight: 600 }}>
+                        {v.payment_status === "paid" && "Paid in full"}
+                        {v.payment_status === "partial" && `Partial - Paid ${Number(v.amount_paid || 0).toFixed(2)} EGP, Due ${(Number(v.amount_due || 0) - Number(v.amount_paid || 0)).toFixed(2)} EGP`}
+                        {v.payment_status === "pending" && `Pending - Due ${Number(v.amount_due || 0).toFixed(2)} EGP`}
+                        {(v.visit_payments || []).length > 0 && (
+                          <span style={{ color: theme.gray, fontWeight: 400 }}> &middot; {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + ")}</span>
+                        )}
                       </div>
                     </div>
                   ))}
                   <div style={{ marginTop: 8 }}>
                     {filesLoading && !filesByPatient[patientId] && <p style={{ fontSize: 12, color: theme.gray }}>Loading files...</p>}
                     {filesByPatient[patientId]?.length === 0 && <p style={{ fontSize: 12, color: theme.gray }}>No files uploaded for this patient yet.</p>}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      {(filesByPatient[patientId] || []).map((f) => (
-                        <a
-                          key={f.id}
-                          href={f.webViewLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ background: "#faf9fb", borderRadius: 8, padding: 10, textDecoration: "none" }}
-                        >
-                          <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                          <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
-                        </a>
-                      ))}
-                    </div>
+                    {(() => {
+                      const files = filesByPatient[patientId] || [];
+                      const FileGrid = ({ items }) => (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          {items.map((f) => (
+                            <a
+                              key={f.id}
+                              href={f.webViewLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ background: "#faf9fb", borderRadius: 8, padding: 10, textDecoration: "none" }}
+                            >
+                              <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                              <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                            </a>
+                          ))}
+                        </div>
+                      );
+                      const ungrouped = files.filter((f) => !f.groupLabel);
+                      const groups = {};
+                      for (const f of files) if (f.groupLabel) (groups[f.groupLabel] = groups[f.groupLabel] || []).push(f);
+                      return (
+                        <>
+                          {ungrouped.length > 0 && <FileGrid items={ungrouped} />}
+                          {Object.entries(groups).map(([label, items]) => (
+                            <div key={label} style={{ marginTop: 8 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: theme.gray, marginBottom: 4, textTransform: "uppercase" }}>
+                                Visit &mdash; {label.split("__")[0]}
+                              </div>
+                              <FileGrid items={items} />
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}

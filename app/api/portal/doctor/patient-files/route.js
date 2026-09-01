@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
-import { listFiles } from "../../../../../lib/googleDrive";
+import { listFilesGrouped } from "../../../../../lib/googleDrive";
 
 export async function GET(req) {
   const token = cookies().get("portal_session")?.value;
@@ -17,12 +17,20 @@ export async function GET(req) {
     return NextResponse.json({ error: "patientId is required" }, { status: 400 });
   }
 
-  // Authorization boundary: this doctor may only see files for a patient they
-  // actually have a visit/referral relationship with. Never trust patientId alone.
+  // Authorization boundary: clinic-wide, matching the data route - this doctor
+  // may see files for a patient referred by ANY doctor sharing their clinic_code,
+  // not only their own referrals. Never trust patientId alone.
+  const { data: doctor } = await supabaseAdmin.from("doctors").select("clinic_code").eq("id", session.id).single();
+  let clinicDoctorIds = [session.id];
+  if (doctor?.clinic_code) {
+    const { data: clinicDoctors } = await supabaseAdmin.from("doctors").select("id").eq("clinic_code", doctor.clinic_code);
+    if (clinicDoctors?.length) clinicDoctorIds = clinicDoctors.map((d) => d.id);
+  }
+
   const { data: authorizedVisit } = await supabaseAdmin
     .from("visits")
     .select("id")
-    .eq("doctor_id", session.id)
+    .in("doctor_id", clinicDoctorIds)
     .eq("patient_id", patientId)
     .limit(1)
     .maybeSingle();
@@ -42,6 +50,6 @@ export async function GET(req) {
     return NextResponse.json({ files: [] });
   }
 
-  const files = await listFiles(folder.drive_folder_id);
+  const files = await listFilesGrouped(folder.drive_folder_id);
   return NextResponse.json({ files });
 }

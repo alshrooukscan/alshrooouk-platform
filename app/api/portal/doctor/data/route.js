@@ -11,11 +11,25 @@ export async function GET() {
   }
 
   const { data: doctor } = await supabaseAdmin.from("doctors").select("id, name, clinic_name, clinic_code, must_change_password").eq("id", session.id).single();
-  // Only operational status is exposed to doctors, never payment/financial data.
+
+  // Clinic-wide access: a doctor sees every case referred by any doctor sharing
+  // their clinic_code, not just their own referrals - confirmed client decision
+  // for multi-doctor clinics, including payment/discount info. A doctor with no
+  // clinic_code (shouldn't normally happen) falls back to their own referrals
+  // only, so this can never accidentally expose the whole system.
+  let clinicDoctorIds = [session.id];
+  if (doctor?.clinic_code) {
+    const { data: clinicDoctors } = await supabaseAdmin
+      .from("doctors")
+      .select("id")
+      .eq("clinic_code", doctor.clinic_code);
+    if (clinicDoctors?.length) clinicDoctorIds = clinicDoctors.map((d) => d.id);
+  }
+
   const { data: visits } = await supabaseAdmin
     .from("visits")
-    .select("id, patient_id, scan_types, exam_date, scanned, raw_data_uploaded, report_done, patients(name, mobile)")
-    .eq("doctor_id", session.id)
+    .select("id, patient_id, doctor_id, scan_types, exam_date, scanned, raw_data_uploaded, report_done, payment_status, amount_due, amount_paid, patients(name, mobile), doctors(name), visit_payments(payment_method)")
+    .in("doctor_id", clinicDoctorIds)
     .order("exam_date", { ascending: false });
 
   // Checked fresh here, not read from the session token - see the identical
