@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { theme } from "../../../../lib/theme";
-import { formatMoney, formatVisitDate } from "../../../../lib/format";
+import { formatMoney, formatVisitDate, doctorLabel } from "../../../../lib/format";
 import {
   customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage,
   patientReportWhatsAppLink, buildPatientReportMessage,
@@ -546,6 +546,16 @@ export default function PatientProfilePage() {
           {/* Straight into the patient's Drive folder. Staff were opening Drive
               and searching by name to find it, which is slow and lands on the
               wrong folder whenever two patients share a name. */}
+          {/* The referring doctor, taken from the most recent visit. Visits are
+              ordered newest first, so this is who last sent this patient in. */}
+          {visits.find((v) => v.doctors?.id) && (
+            <a
+              href={`/dashboard/doctors/${visits.find((v) => v.doctors?.id).doctors.id}`}
+              style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}
+            >
+              {doctorLabel(visits.find((v) => v.doctors?.id).doctors.name)}
+            </a>
+          )}
           {patient.drive_folder_id && (
             <a
               href={`https://drive.google.com/drive/folders/${patient.drive_folder_id}`}
@@ -705,16 +715,16 @@ export default function PatientProfilePage() {
               {v.doctor_id && (
                 <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>
                   {v.doctors?.clinic_code && <>Clinic Code: {v.doctors.clinic_code} · </>}
-                  Referred by: Dr {v.doctors?.name || "—"}
+                  {v.doctors?.name ? `Referred by: ${doctorLabel(v.doctors.name)}` : "Walk-in, no referring doctor"}
                 </div>
               )}
               {v.doctors?.id && (
                 <a
                   href={`/dashboard/doctors/${v.doctors.id}`}
                   style={{ display: "inline-block", marginTop: 6, marginRight: 14, fontSize: 11, fontWeight: 700, color: theme.navy, textDecoration: "none" }}
-                  title={`Open ${v.doctors.name}'s page`}
+                  title={`Open ${doctorLabel(v.doctors.name)}'s page`}
                 >
-                  Dr. {v.doctors.name} &rarr;
+                  {doctorLabel(v.doctors.name)} &rarr;
                 </a>
               )}
               {(visitFolders[v.id] || patient.drive_folder_id) && (

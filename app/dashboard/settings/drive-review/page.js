@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
+import { doctorLabel } from "../../../../lib/format";
 import { theme } from "../../../../lib/theme";
 
 export default function DriveReviewPage() {
@@ -124,7 +125,7 @@ export default function DriveReviewPage() {
               <span style={{ color: theme.gray, fontSize: 13 }}> — patient in system</span>
               <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
                 {c.referringDoctor
-                  ? `Referred by Dr. ${c.referringDoctor.name} (clinic ${c.referringDoctor.clinic_code})`
+                  ? `Referred by ${doctorLabel(c.referringDoctor.name)} (clinic ${c.referringDoctor.clinic_code})`
                   : "No referring doctor on file"}
               </div>
               {c.driveConfirmed && (

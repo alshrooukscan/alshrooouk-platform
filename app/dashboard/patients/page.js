@@ -6,6 +6,7 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
+import { doctorLabel } from "../../../lib/format";
 
 const PAGE_SIZE = 50;
 // Each stage filter is tri-state: null = All (no filter), true = On (must
@@ -370,7 +371,7 @@ export default function PatientsPage() {
                 )}
                 {status?.doctor_id && (
                   <div style={{ fontSize: 12, color: theme.gray, marginBottom: 6 }}>
-                    {status.clinic_code && `Clinic Code: ${status.clinic_code} · `}Referred by: Dr {status.doctor_name || "—"}
+                    {status.clinic_code && `Clinic Code: ${status.clinic_code} · `}{status.doctor_name ? `Referred by: ${doctorLabel(status.doctor_name)}` : "Walk-in"}
                   </div>
                 )}
                 {status && (

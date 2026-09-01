@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
-import { formatVisitDate } from "../../../lib/format";
+import { formatVisitDate, doctorLabel } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 
@@ -153,7 +153,7 @@ export default function DoctorPortalPage() {
                       </div>
                       {v.doctors?.name && (
                         <div style={{ fontSize: 11, color: theme.gray, marginBottom: 4 }}>
-                          Referred by Dr. {v.doctors.name}
+                          Referred by {doctorLabel(v.doctors.name)}
                         </div>
                       )}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
