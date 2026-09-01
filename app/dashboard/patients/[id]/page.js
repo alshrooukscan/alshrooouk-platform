@@ -210,7 +210,7 @@ export default function PatientProfilePage() {
     const { data: p } = await supabase.from("patients").select("*").eq("id", id).single();
     const { data: v } = await supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
+      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
       .eq("patient_id", id)
       .order("exam_date", { ascending: false });
     const { data: auth } = await supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle();
@@ -411,6 +411,21 @@ export default function PatientProfilePage() {
     const newValue = !visit[field];
     const tsField = `${field}_at`;
     const byField = `${field}_by_name`;
+
+    // Un-marking a stage is restricted to the person who set it, or an admin.
+    // These flags are a record of who did the work; letting anyone clear
+    // someone else's mark makes the audit stamp meaningless and lets one
+    // employee quietly undo another's completed step.
+    if (!newValue) {
+      const setBy = visit[byField];
+      if (setBy && setBy !== profile?.name && !isAdmin) {
+        alert(
+          `This was marked by ${setBy}. Only ${setBy} or an admin can undo it.\n\n` +
+          `If it was marked in error, ask an admin to change it.`
+        );
+        return;
+      }
+    }
     // Only marking on records who did it - unmarking clears the stamp along
     // with the timestamp, since it no longer reflects the visit's current
     // state and shouldn't be shown as if it still does.
@@ -629,6 +644,15 @@ export default function PatientProfilePage() {
                   {v.doctors?.clinic_code && <>Clinic Code: {v.doctors.clinic_code} · </>}
                   Referred by: Dr {v.doctors?.name || "—"}
                 </div>
+              )}
+              {v.doctors?.id && (
+                <a
+                  href={`/dashboard/doctors/${v.doctors.id}`}
+                  style={{ display: "inline-block", marginTop: 6, marginRight: 14, fontSize: 11, fontWeight: 700, color: theme.navy, textDecoration: "none" }}
+                  title={`Open ${v.doctors.name}'s page`}
+                >
+                  Dr. {v.doctors.name} &rarr;
+                </a>
               )}
               {(visitFolders[v.id] || patient.drive_folder_id) && (
                 <a
@@ -1007,7 +1031,10 @@ function AddScanModal({ patient, onClose, onSaved }) {
   const discountPct = form.discount_on ? Number(form.discount_pct) || 0 : 0;
   const discountAmount = sumBeforeDiscount * (discountPct / 100);
   const sumAfterDiscount = sumBeforeDiscount - discountAmount;
-  const alreadyPaid = Number(visit.amount_paid) || 0;
+  // A brand-new scan has no prior payments. This previously read visit.amount_paid,
+  // copied from EditVisitModal, but AddScanModal has no `visit` prop - so it threw
+  // ReferenceError on render and the page died with "a client-side exception".
+  const alreadyPaid = 0;
   // Reflects the amount due as it stands with whatever's currently selected
   // in this form (scan types, discount), not the visit's stored amount_due -
   // if those are being changed in this same edit, "remaining" should answer
@@ -1043,7 +1070,12 @@ function AddScanModal({ patient, onClose, onSaved }) {
         doctor_id: walkIn ? null : selectedDoctor?.id,
         branch_id: form.branch_id || null,
         scan_types: scanNames,
-        amount_due: sumAfterDiscount || null,
+        exam_date: form.exam_date || null,
+        // `sumAfterDiscount || null` turned a fully-discounted visit (0) into
+        // NULL, which then read as "no amount set" and stayed pending forever.
+        // Zero is a real, settled amount.
+        amount_due: sumAfterDiscount,
+        payment_status: sumAfterDiscount <= 0 ? "paid" : "pending",
         discount_pct: discountPct,
         discount_reason: form.discount_on ? finalReason : null,
         notes: form.notes || null,

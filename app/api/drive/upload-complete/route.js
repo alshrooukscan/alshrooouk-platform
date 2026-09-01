@@ -54,7 +54,7 @@ export async function POST(req) {
         // Raw data existing means the scan itself obviously happened - auto-flag
         // Scanned too (only if not already marked, so we never clobber an earlier,
         // more accurate manual timestamp or attribution).
-        const scanUpdate = { raw_data_uploaded: true, raw_data_uploaded_at: now };
+        const scanUpdate = { raw_data_uploaded: true, raw_data_uploaded_at: now, raw_data_uploaded_by_name: uploaderName || uploaderEmail || null };
         if (!targetVisit.scanned) {
           scanUpdate.scanned = true;
           scanUpdate.scanned_at = now;
@@ -62,7 +62,14 @@ export async function POST(req) {
         }
         await supabaseAdmin.from("visits").update(scanUpdate).eq("id", targetVisit.id);
       } else if (classifiedType === "report") {
-        await supabaseAdmin.from("visits").update({ report_done: true, report_done_at: now }).eq("id", targetVisit.id);
+        // report_done_by_name was being left null here while the scanned branch
+        // set its equivalent, so a report auto-flagged by an upload had no owner
+        // recorded - and nothing to enforce the "only the person who set it can
+        // unset it" rule against.
+        await supabaseAdmin
+          .from("visits")
+          .update({ report_done: true, report_done_at: now, report_done_by_name: uploaderName || uploaderEmail || null })
+          .eq("id", targetVisit.id);
       }
     }
 
