@@ -260,14 +260,24 @@ async function generateInvoicePdf(req, params) {
     page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.9, width: taW, height: taH });
   }
 
-  // Seal: 93pt across, centred at (468.3, 76) - low enough that it runs past
-  // the bottom of the frame, as it does on the issued receipt.
+  // Seal. Drawn last so it sits over everything, and shifted left and down so
+  // it lands ON the address and the phone line and runs past the bottom of the
+  // frame - a stamp pressed onto a finished receipt, not placed in a gap left
+  // for it.
+  //
+  // This only works because the asset's paper was made transparent: the file
+  // was fully opaque, 73% of it solid white, so overlapping it on the text
+  // would have painted a white box over the words instead of inking over them.
   if (stamped) {
-    const stampW = 93, stampH = stampW * (138 / 139);
-    page.drawImage(stampImage, {
-      x: 468.3 - stampW / 2, y: 76 - stampH / 2,
-      width: stampW, height: stampH, opacity: 0.85,
-    });
+    const stampW = 104, stampH = stampW * (138 / 139);
+    const tilt = -9;
+    const rad = (tilt * Math.PI) / 180;
+    const cx = 424, cy = 74;
+    // pdf-lib rotates about the anchor rather than the centre, so the anchor is
+    // worked back from where the seal should actually land.
+    const x = cx - ((stampW / 2) * Math.cos(rad) - (stampH / 2) * Math.sin(rad));
+    const y = cy - ((stampW / 2) * Math.sin(rad) + (stampH / 2) * Math.cos(rad));
+    page.drawImage(stampImage, { x, y, width: stampW, height: stampH, rotate: degrees(tilt), opacity: 0.9 });
   }
 
   const bytes = await pdf.save();
