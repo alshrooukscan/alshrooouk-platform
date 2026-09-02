@@ -4,6 +4,7 @@ import { createCanvas, registerFont } from "canvas";
 import fs from "fs";
 import path from "path";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { amountInArabicWords } from "../../../../../lib/arabicAmount";
 
 const BLACK = rgb(0.05, 0.05, 0.05);
 const RED = rgb(0.8, 0.05, 0.05);
@@ -11,17 +12,22 @@ const RED = rgb(0.8, 0.05, 0.05);
 let fontRegistered = false;
 function ensureFontRegistered() {
   if (fontRegistered) return;
-  const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansArabic.ttf");
-  registerFont(fontPath, { family: "NotoArabic" });
+  const dir = path.join(process.cwd(), "public", "fonts");
+  registerFont(path.join(dir, "NotoSansArabic.ttf"), { family: "NotoArabic" });
+  // Times New Roman does not exist on Linux and has no Arabic anyway. Noto
+  // Naskh Arabic is the serif Arabic face that pairs with it - same upright
+  // serif feel, proper Arabic shaping - so the Arabic reads as Times does.
+  registerFont(path.join(dir, "NotoNaskhArabic.ttf"), { family: "NaskhArabic" });
+  registerFont(path.join(dir, "NotoNaskhArabic-Bold.ttf"), { family: "NaskhArabic", weight: "bold" });
   fontRegistered = true;
 }
 
-function renderArabicToPng(text, { size = 24, color = "#0d0d0d", widthPx = 900, heightPx = 60, align = "right", bold = false } = {}) {
+function renderArabicToPng(text, { size = 24, color = "#0d0d0d", widthPx = 900, heightPx = 60, align = "right", bold = false, family = "NaskhArabic" } = {}) {
   ensureFontRegistered();
   const canvas = createCanvas(widthPx, heightPx);
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = color;
-  ctx.font = `${bold ? "bold " : ""}${size}px NotoArabic`;
+  ctx.font = `${bold ? "bold " : ""}${size}px ${family}`;
   ctx.textAlign = align;
   ctx.textBaseline = "middle";
   const x = align === "right" ? widthPx - 4 : align === "center" ? widthPx / 2 : 4;
@@ -62,9 +68,10 @@ async function generateInvoicePdf(req, params) {
   }
 
   const pdf = await PDFDocument.create();
-  const page = pdf.addPage([565, 420]); // landscape, matches the real paper receipt's proportions
+  // A5 landscape: 595.28 x 419.53 pt.
+  const page = pdf.addPage([595.28, 419.53]);
   const courierBold = await pdf.embedFont(StandardFonts.CourierBold);
-  const helvBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const courier = await pdf.embedFont(StandardFonts.Courier);
   const { width, height } = page.getSize();
 
   const logoImage = await pdf.embedPng(await loadAsset(req, "invoice-logo.png"));
@@ -74,97 +81,104 @@ async function generateInvoicePdf(req, params) {
     return pdf.embedPng(renderArabicToPng(text, opts));
   }
 
-  // Layout mirrors Copy_of_Invoice_Template.docx exactly: thin frame, logo
-  // left, title and receipt number CENTRED, values right-aligned in a middle
-  // column with the Arabic labels on the far right, and a centred bold footer.
+  // A5 landscape. Frame, logo left, title and number centred, values
+  // right-aligned in a middle column with the Arabic labels on the far right.
   page.drawRectangle({ x: 8, y: 8, width: width - 16, height: height - 16, borderColor: BLACK, borderWidth: 1 });
 
-  // Logo, top-left
-  const logoW = 88, logoH = (logoImage.height / logoImage.width) * logoW;
-  page.drawImage(logoImage, { x: 34, y: height - 30 - logoH, width: logoW, height: logoH });
+  // Logo, top-left. The asset is square (400x400) so it is drawn square.
+  const logoW = 74;
+  page.drawImage(logoImage, { x: 30, y: height - 26 - logoW, width: logoW, height: logoW });
 
-  // Title, CENTRED on the page - not right-aligned
-  const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 40, widthPx: 760, heightPx: 70, align: "center", bold: true });
-  const titleDrawW = 210, titleDrawH = (titleImg.height / titleImg.width) * titleDrawW;
-  page.drawImage(titleImg, { x: (width - titleDrawW) / 2, y: height - 52 - titleDrawH / 2, width: titleDrawW, height: titleDrawH });
+  // Title in the serif Arabic face, centred.
+  const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 44, widthPx: 800, heightPx: 80, align: "center", bold: false });
+  const titleW = 168, titleH = (titleImg.height / titleImg.width) * titleW;
+  page.drawImage(titleImg, { x: (width - titleW) / 2, y: height - 40 - titleH / 2, width: titleW, height: titleH });
 
-  // Receipt number, red Courier, CENTRED beneath the title
+  // Receipt number: Courier New, red, centred beneath the title.
   const seqMatch = invoice.invoice_number.match(/(\d+)$/);
   const receiptStr = seqMatch ? seqMatch[1] : invoice.invoice_number;
-  const numSize = 20;
+  const numSize = 19;
   const numW = courierBold.widthOfTextAtSize(receiptStr, numSize);
-  page.drawText(receiptStr, { x: (width - numW) / 2, y: height - 86, size: numSize, font: courierBold, color: RED });
+  page.drawText(receiptStr, { x: (width - numW) / 2, y: height - 80, size: numSize, font: courierBold, color: RED });
 
-  page.drawLine({ start: { x: 52, y: height - 106 }, end: { x: width - 52, y: height - 106 }, thickness: 1.1, color: BLACK });
+  page.drawLine({ start: { x: 46, y: height - 100 }, end: { x: width - 46, y: height - 100 }, thickness: 1, color: BLACK });
 
-  // Fields. Labels sit at the right margin; values are RIGHT-aligned and end at
-  // a fixed column short of them, which is what the template does - the old
-  // version left-aligned the values against the opposite margin instead.
-  let y = height - 146;
-  const LABEL_RIGHT = width - 46;   // right edge of the Arabic label
-  const VALUE_RIGHT = width - 150;  // right edge of the value column
-  const fieldLabels = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:", unit: "جم" };
+  let y = height - 136;
+  const LABEL_RIGHT = width - 40;
+  const VALUE_RIGHT = width - 128;
+  const LABELS = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:" };
 
   async function label(key) {
-    const img = await drawArabicImage(fieldLabels[key], { size: 30, widthPx: 300, heightPx: 48, align: "right", bold: false });
-    const h = 14, w = (img.width / img.height) * h;
+    const img = await drawArabicImage(LABELS[key], { size: 30, widthPx: 300, heightPx: 48, align: "right" });
+    const h = 13, w = (img.width / img.height) * h;
     page.drawImage(img, { x: LABEL_RIGHT - w, y: y - 3, width: w, height: h });
   }
-  function valueRight(text, size = 13) {
-    const w = helvBold.widthOfTextAtSize(String(text), size);
-    page.drawText(String(text), { x: VALUE_RIGHT - w, y, size, font: helvBold, color: BLACK });
-    return w;
+
+  // Latin values in Courier New, right-aligned to the value column.
+  function valueRight(text, size = 11) {
+    const w = courierBold.widthOfTextAtSize(String(text), size);
+    page.drawText(String(text), { x: VALUE_RIGHT - w, y, size, font: courierBold, color: BLACK });
   }
 
-  // Amount row reads, right to left: المبلغ:  {{total}} جم {{trans}}
+  // Amount row: the figure, then جم, then the sum written out in Arabic words.
+  // The payment method used to sit here; the client asked for the written
+  // amount instead, which is what makes a receipt legally legible.
   await label("amount");
   {
-    const amountStr = Number(invoice.amount).toLocaleString("en-US");
-    const amountW = valueRight(amountStr);
-    const unitImg = await drawArabicImage(fieldLabels.unit, { size: 26, widthPx: 90, heightPx: 40, align: "right", bold: false });
-    const unitH = 12, unitW = (unitImg.width / unitImg.height) * unitH;
-    page.drawImage(unitImg, { x: VALUE_RIGHT - amountW - 8 - unitW, y: y - 2, width: unitW, height: unitH });
-    if (invoice.trans) {
-      const tw = helvBold.widthOfTextAtSize(String(invoice.trans), 13);
-      page.drawText(String(invoice.trans), { x: VALUE_RIGHT - amountW - 16 - unitW - tw, y, size: 13, font: helvBold, color: BLACK });
-    }
+    const figure = Number(invoice.amount).toLocaleString("en-US");
+    const words = amountInArabicWords(invoice.amount);
+    // Rendered as one right-to-left string so the figure, the unit and the
+    // words sit in the correct order without positioning each piece by hand.
+    const line = `${figure} جم ${words}`;
+    const img = await drawArabicImage(line, { size: 26, widthPx: 1700, heightPx: 44, align: "right" });
+    const h = 12.5, w = (img.width / img.height) * h;
+    // Long amounts must not run under the label, so the line shrinks to fit.
+    const maxW = VALUE_RIGHT - 40;
+    const drawW = Math.min(w, maxW);
+    const drawH = drawW === w ? h : (img.height / img.width) * drawW;
+    page.drawImage(img, { x: VALUE_RIGHT - drawW, y: y - (drawH - h) / 2 - 3, width: drawW, height: drawH });
   }
-  y -= 38;
+  y -= 34;
 
-  // The template shows a human date, not an ISO string.
   const examDate = invoice.exam_date
     ? new Date(`${invoice.exam_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
     : "";
   for (const [key, val] of [["name", invoice.patient_name], ["exam", invoice.exam], ["date", examDate]]) {
     await label(key);
     if (val) valueRight(val);
-    y -= 38;
+    y -= 34;
   }
 
-  y -= 4;
+  y -= 2;
   const dividerY = y;
-  page.drawLine({ start: { x: 52, y: dividerY }, end: { x: width - 52, y: dividerY }, thickness: 1.1, color: BLACK });
+  page.drawLine({ start: { x: 46, y: dividerY }, end: { x: width - 46, y: dividerY }, thickness: 1, color: BLACK });
 
-  // Footer: address then phone, both CENTRED and bold, as in the template.
-  let fy = dividerY - 26;
+  // Address in the serif Arabic face; the phone line in Courier New.
+  let fy = dividerY - 24;
   const addrImg = await drawArabicImage(
     "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر",
-    { size: 20, widthPx: 1100, heightPx: 34, align: "center", bold: true }
+    { size: 22, widthPx: 1300, heightPx: 36, align: "center" }
   );
-  const addrH = 13, addrW = (addrImg.width / addrImg.height) * addrH;
+  const addrH = 11, addrW = (addrImg.width / addrImg.height) * addrH;
   page.drawImage(addrImg, { x: (width - addrW) / 2, y: fy, width: addrW, height: addrH });
-  fy -= 22;
+  fy -= 20;
 
-  const phoneImg = await drawArabicImage("ت : 15184 - 0128887187", { size: 20, widthPx: 420, heightPx: 34, align: "center", bold: true });
-  const phoneH = 13, phoneW = (phoneImg.width / phoneImg.height) * phoneH;
-  page.drawImage(phoneImg, { x: (width - phoneW) / 2, y: fy, width: phoneW, height: phoneH });
+  {
+    const digits = "15184 - 0128887187";
+    const taImg = await drawArabicImage("ت :", { size: 22, widthPx: 120, heightPx: 36, align: "right" });
+    const taH = 10.5, taW = (taImg.width / taImg.height) * taH;
+    const digitsW = courier.widthOfTextAtSize(digits, 10.5);
+    // "ت :" sits to the RIGHT of the digits, as the line reads right to left.
+    const blockW = taW + 5 + digitsW;
+    const startX = (width - blockW) / 2;
+    page.drawText(digits, { x: startX, y: fy, size: 10.5, font: courier, color: BLACK });
+    page.drawImage(taImg, { x: startX + digitsW + 5, y: fy - 1, width: taW, height: taH });
+  }
 
-  // Two variants of the same receipt. The .docx has no seal because that copy
-  // is stamped by hand after printing; ?stamp=1 produces the digitally stamped
-  // version instead, using the clinic's real seal.
+  // Seal, only on the stamped copy. Asset is 139x138, drawn to that ratio.
   if (stamped) {
-    const stampW = 62, stampH = (stampImage.height / stampImage.width) * stampW;
-    page.drawImage(stampImage, { x: width - 40 - stampW, y: 20, width: stampW, height: stampH, opacity: 0.9 });
+    const stampW = 58, stampH = stampW * (138 / 139);
+    page.drawImage(stampImage, { x: width - 34 - stampW, y: 18, width: stampW, height: stampH, opacity: 0.9 });
   }
 
   const bytes = await pdf.save();
