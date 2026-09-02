@@ -725,7 +725,6 @@ export default function PatientProfilePage() {
                   {v.doctors?.name ? `Referred by: ${doctorLabel(v.doctors.name)}` : "Walk-in, no referring doctor"}
                 </div>
               )}
-              <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>Visit date: {formatVisitDate(v.exam_date)}</div>
               {v.doctors?.id && (
                 <a
                   href={`/dashboard/doctors/${v.doctors.id}`}
