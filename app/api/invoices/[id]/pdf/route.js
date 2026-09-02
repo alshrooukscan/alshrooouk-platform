@@ -81,22 +81,22 @@ async function generateInvoicePdf(req, params) {
 
   // Title, CENTRED on the page - not right-aligned
   const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 40, widthPx: 760, heightPx: 70, align: "center", bold: true });
-  const titleDrawW = 176, titleDrawH = (titleImg.height / titleImg.width) * titleDrawW;
-  page.drawImage(titleImg, { x: (width - titleDrawW) / 2, y: height - 44 - titleDrawH / 2, width: titleDrawW, height: titleDrawH });
+  const titleDrawW = 210, titleDrawH = (titleImg.height / titleImg.width) * titleDrawW;
+  page.drawImage(titleImg, { x: (width - titleDrawW) / 2, y: height - 52 - titleDrawH / 2, width: titleDrawW, height: titleDrawH });
 
   // Receipt number, red Courier, CENTRED beneath the title
   const seqMatch = invoice.invoice_number.match(/(\d+)$/);
   const receiptStr = seqMatch ? seqMatch[1] : invoice.invoice_number;
   const numSize = 20;
   const numW = courierBold.widthOfTextAtSize(receiptStr, numSize);
-  page.drawText(receiptStr, { x: (width - numW) / 2, y: height - 96, size: numSize, font: courierBold, color: RED });
+  page.drawText(receiptStr, { x: (width - numW) / 2, y: height - 86, size: numSize, font: courierBold, color: RED });
 
-  page.drawLine({ start: { x: 52, y: height - 116 }, end: { x: width - 52, y: height - 116 }, thickness: 1.1, color: BLACK });
+  page.drawLine({ start: { x: 52, y: height - 106 }, end: { x: width - 52, y: height - 106 }, thickness: 1.1, color: BLACK });
 
   // Fields. Labels sit at the right margin; values are RIGHT-aligned and end at
   // a fixed column short of them, which is what the template does - the old
   // version left-aligned the values against the opposite margin instead.
-  let y = height - 158;
+  let y = height - 146;
   const LABEL_RIGHT = width - 46;   // right edge of the Arabic label
   const VALUE_RIGHT = width - 150;  // right edge of the value column
   const fieldLabels = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:", unit: "جم" };
@@ -127,7 +127,11 @@ async function generateInvoicePdf(req, params) {
   }
   y -= 38;
 
-  for (const [key, val] of [["name", invoice.patient_name], ["exam", invoice.exam], ["date", invoice.exam_date]]) {
+  // The template shows a human date, not an ISO string.
+  const examDate = invoice.exam_date
+    ? new Date(`${invoice.exam_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "";
+  for (const [key, val] of [["name", invoice.patient_name], ["exam", invoice.exam], ["date", examDate]]) {
     await label(key);
     if (val) valueRight(val);
     y -= 38;
@@ -138,17 +142,17 @@ async function generateInvoicePdf(req, params) {
   page.drawLine({ start: { x: 52, y: dividerY }, end: { x: width - 52, y: dividerY }, thickness: 1.1, color: BLACK });
 
   // Footer: address then phone, both CENTRED and bold, as in the template.
-  let fy = dividerY - 22;
+  let fy = dividerY - 26;
   const addrImg = await drawArabicImage(
     "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر",
     { size: 20, widthPx: 1100, heightPx: 34, align: "center", bold: true }
   );
-  const addrH = 10, addrW = (addrImg.width / addrImg.height) * addrH;
+  const addrH = 13, addrW = (addrImg.width / addrImg.height) * addrH;
   page.drawImage(addrImg, { x: (width - addrW) / 2, y: fy, width: addrW, height: addrH });
-  fy -= 20;
+  fy -= 22;
 
   const phoneImg = await drawArabicImage("ت : 15184 - 0128887187", { size: 20, widthPx: 420, heightPx: 34, align: "center", bold: true });
-  const phoneH = 10, phoneW = (phoneImg.width / phoneImg.height) * phoneH;
+  const phoneH = 13, phoneW = (phoneImg.width / phoneImg.height) * phoneH;
   page.drawImage(phoneImg, { x: (width - phoneW) / 2, y: fy, width: phoneW, height: phoneH });
 
   // The clinic's seal is not in the .docx - that document is stamped by hand
