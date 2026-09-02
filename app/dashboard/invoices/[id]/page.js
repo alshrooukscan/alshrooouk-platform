@@ -34,9 +34,9 @@ export default function InvoiceViewPage() {
     window.open(`/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`, "_blank");
   }
 
-  function handleSendWhatsApp() {
+  function handleSendWhatsApp(stamped) {
     if (!patientMobile) return;
-    const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf?stamp=1`;
+    const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`;
     const text =
       `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number}\n` +
       `Amount: ${formatMoney(invoice.amount)} EGP\n` +
@@ -115,9 +115,9 @@ export default function InvoiceViewPage() {
           </div>
         </div>
 
-        <div className="no-print" style={{ display: "flex", gap: 12, padding: "0 32px 32px" }}>
+        <div className="no-print" style={{ display: "flex", gap: 12, padding: "0 32px 32px", flexWrap: "wrap" }}>
           <button
-            onClick={handleSendWhatsApp}
+            onClick={() => handleSendWhatsApp(false)}
             disabled={!patientMobile}
             style={{
               flex: 1,
@@ -131,7 +131,24 @@ export default function InvoiceViewPage() {
               opacity: patientMobile ? 1 : 0.5,
             }}
           >
-            Send via WhatsApp
+            WhatsApp (no stamp)
+          </button>
+          <button
+            onClick={() => handleSendWhatsApp(true)}
+            disabled={!patientMobile}
+            style={{
+              flex: 1,
+              padding: "12px 0",
+              borderRadius: 8,
+              border: "none",
+              background: theme.gold,
+              color: theme.navy,
+              fontWeight: 700,
+              cursor: patientMobile ? "pointer" : "not-allowed",
+              opacity: patientMobile ? 1 : 0.5,
+            }}
+          >
+            WhatsApp (stamped)
           </button>
           <button
             onClick={() => handleDownloadPdf(false)}
