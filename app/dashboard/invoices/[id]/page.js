@@ -3,7 +3,57 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
-import { formatMoney } from "../../../../lib/format";
+import { formatMoney, formatVisitDate } from "../../../../lib/format";
+
+// One button definition for all four actions. They previously each carried
+// their own inline styles and had drifted into four different widths, weights
+// and colours; the only thing that should differ is whether an action is the
+// primary one.
+const BUTTON_BASE = {
+  width: "100%",
+  padding: "11px 14px",
+  borderRadius: 10,
+  fontSize: 13,
+  fontWeight: 700,
+  fontFamily: "inherit",
+  lineHeight: 1.25,
+  cursor: "pointer",
+  transition: "opacity .15s",
+  whiteSpace: "nowrap",
+};
+
+function ActionButton({ children, onClick, disabled, primary, title }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        ...BUTTON_BASE,
+        border: primary ? "1px solid transparent" : `1px solid ${theme.gold}`,
+        background: primary ? theme.gold : "#fff",
+        color: theme.navy,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, value, big }) {
+  return (
+    <div style={{ marginBottom: big ? 26 : 20 }}>
+      <div style={{ fontSize: 10.5, letterSpacing: 0.8, color: theme.gray, fontWeight: 700, marginBottom: 5 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: big ? 30 : 15, fontWeight: big ? 800 : 600, color: theme.navy, lineHeight: 1.3 }}>
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
 
 export default function InvoiceViewPage() {
   const { id } = useParams();
@@ -11,9 +61,7 @@ export default function InvoiceViewPage() {
   const [patientMobile, setPatientMobile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    load();
-  }, [id]);
+  useEffect(() => { load(); }, [id]);
 
   async function load() {
     const { data: inv } = await supabase.from("invoices").select("*").eq("id", id).single();
@@ -28,13 +76,13 @@ export default function InvoiceViewPage() {
     setLoading(false);
   }
 
-  // Two variants: the plain receipt, which is printed and sealed by hand, and
-  // a digitally stamped copy for sending without printing.
-  function handleDownloadPdf(stamped) {
+  // Two variants of the same receipt: the plain one, which is printed and
+  // sealed by hand, and a digitally stamped copy for sending without printing.
+  function openPdf(stamped) {
     window.open(`/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`, "_blank");
   }
 
-  function handleSendWhatsApp(stamped) {
+  function sendWhatsApp(stamped) {
     if (!patientMobile) return;
     const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`;
     const text =
@@ -42,17 +90,23 @@ export default function InvoiceViewPage() {
       `Amount: ${formatMoney(invoice.amount)} EGP\n` +
       `Patient: ${invoice.patient_name}\n` +
       `Exam: ${invoice.exam}\n` +
-      `Date: ${invoice.exam_date}\n\n` +
+      `Date: ${formatVisitDate(invoice.exam_date)}\n\n` +
       `View/Download Receipt: ${pdfUrl}`;
-    const link = `https://api.whatsapp.com/send?phone=${patientMobile}&text=${encodeURIComponent(text)}`;
-    window.open(link, "_blank");
+    window.open(
+      `https://api.whatsapp.com/send?phone=${patientMobile}&text=${encodeURIComponent(text)}`,
+      "_blank"
+    );
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!invoice) return <p style={{ color: theme.gray }}>Invoice not found.</p>;
+  const centred = { minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center" };
+  if (loading) return <div style={{ ...centred, color: theme.gray }}>Loading...</div>;
+  if (!invoice) return <div style={{ ...centred, color: theme.gray }}>Receipt not found.</div>;
+
+  const noMobile = !patientMobile;
 
   return (
-    <div>
+    // Centred in the page both ways, rather than pinned to the top-left.
+    <div style={{ minHeight: "78vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
       <style>{`
         @media print {
           aside, .no-print { display: none !important; }
@@ -62,136 +116,75 @@ export default function InvoiceViewPage() {
 
       <div
         style={{
-          maxWidth: 560,
-          margin: "0 auto",
+          width: "100%",
+          maxWidth: 520,
           background: "#fff",
-          borderRadius: 16,
+          borderRadius: 18,
           overflow: "hidden",
-          boxShadow: "0 8px 40px rgba(39,33,77,0.12)",
+          boxShadow: "0 10px 44px rgba(39,33,77,0.13)",
         }}
       >
-        <div style={{ background: theme.navy, color: "#fff", padding: "28px 32px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 22 }}>Al Shrooouk Scan &amp; Lab</h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, opacity: 0.8 }}>
-                Medical Center 3 &middot; Nasr City
-              </p>
+        <div style={{ background: theme.navy, color: "#fff", padding: "24px 30px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700 }}>Al Shrooouk Scan &amp; Lab</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 12, opacity: 0.75 }}>Medical Center 3 &middot; Nasr City</p>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: 1 }}>RECEIPT NUMBER</div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{invoice.invoice_number}</div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 9.5, opacity: 0.65, letterSpacing: 1, fontWeight: 700 }}>RECEIPT NUMBER</div>
+              <div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
+                {invoice.invoice_number}
+              </div>
             </div>
           </div>
         </div>
 
-        <div style={{ padding: 32, position: "relative" }}>
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 120,
-              color: theme.navy,
-              opacity: 0.03,
-              fontWeight: 900,
-              pointerEvents: "none",
-            }}
-          >
-            SH
-          </div>
-
-          <Row label="TOTAL AMOUNT DUE" value={`${formatMoney(invoice.amount)} EGP`} big />
-          <div style={{ display: "flex", gap: 24, marginTop: 20 }}>
-            <Row label="PATIENT NAME" value={invoice.patient_name} />
-          </div>
-          <div style={{ display: "flex", gap: 24, marginTop: 20 }}>
-            <Row label="EXAM / SCAN TYPE" value={invoice.exam} />
-          </div>
-          <div style={{ display: "flex", gap: 24, marginTop: 20 }}>
-            <Row label="EXAM DATE" value={invoice.exam_date} />
-          </div>
+        <div style={{ padding: "28px 30px 4px" }}>
+          <Field label="TOTAL AMOUNT DUE" value={`${formatMoney(invoice.amount)} EGP`} big />
+          <Field label="PATIENT NAME" value={invoice.patient_name} />
+          <Field label="EXAM / SCAN TYPE" value={invoice.exam} />
+          <Field label="EXAM DATE" value={formatVisitDate(invoice.exam_date)} />
         </div>
 
-        <div className="no-print" style={{ display: "flex", gap: 12, padding: "0 32px 32px", flexWrap: "wrap" }}>
-          <button
-            onClick={() => handleSendWhatsApp(false)}
-            disabled={!patientMobile}
-            style={{
-              flex: 1,
-              padding: "12px 0",
-              borderRadius: 8,
-              border: `1px solid ${theme.gold}`,
-              background: "#fff",
-              color: theme.navy,
-              fontWeight: 700,
-              cursor: patientMobile ? "pointer" : "not-allowed",
-              opacity: patientMobile ? 1 : 0.5,
-            }}
-          >
-            WhatsApp (no stamp)
-          </button>
-          <button
-            onClick={() => handleSendWhatsApp(true)}
-            disabled={!patientMobile}
-            style={{
-              flex: 1,
-              padding: "12px 0",
-              borderRadius: 8,
-              border: "none",
-              background: theme.gold,
-              color: theme.navy,
-              fontWeight: 700,
-              cursor: patientMobile ? "pointer" : "not-allowed",
-              opacity: patientMobile ? 1 : 0.5,
-            }}
-          >
-            WhatsApp (stamped)
-          </button>
-          <button
-            onClick={() => handleDownloadPdf(false)}
-            style={{
-              flex: 1,
-              padding: "12px 0",
-              borderRadius: 8,
-              border: "none",
-              background: theme.navy,
-              color: "#fff",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Download (no stamp)
-          </button>
-          <button
-            onClick={() => handleDownloadPdf(true)}
-            className="no-print"
-            style={{
-              padding: "12px 24px",
-              borderRadius: 10,
-              border: "none",
-              background: theme.gold,
-              color: theme.navy,
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: "pointer",
-            }}
-          >
-            Download (stamped)
-          </button>
+        <div className="no-print" style={{ padding: "8px 30px 30px" }}>
+          <div style={{ height: 1, background: "#EDECF0", marginBottom: 20 }} />
+
+          <div style={{ fontSize: 10.5, letterSpacing: 0.8, color: theme.gray, fontWeight: 700, marginBottom: 10 }}>
+            SEND TO PATIENT
+          </div>
+          {/* Equal columns, so the four actions are the same width whatever
+              their label length. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+            <ActionButton onClick={() => sendWhatsApp(false)} disabled={noMobile}
+              title={noMobile ? "This patient has no mobile number on record." : "Send the plain receipt"}>
+              WhatsApp — plain
+            </ActionButton>
+            <ActionButton onClick={() => sendWhatsApp(true)} disabled={noMobile} primary
+              title={noMobile ? "This patient has no mobile number on record." : "Send the stamped receipt"}>
+              WhatsApp — stamped
+            </ActionButton>
+          </div>
+
+          <div style={{ fontSize: 10.5, letterSpacing: 0.8, color: theme.gray, fontWeight: 700, marginBottom: 10 }}>
+            DOWNLOAD
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <ActionButton onClick={() => openPdf(false)} title="Print this copy and stamp it by hand">
+              PDF — plain
+            </ActionButton>
+            <ActionButton onClick={() => openPdf(true)} primary title="Carries the clinic seal">
+              PDF — stamped
+            </ActionButton>
+          </div>
+
+          {noMobile && (
+            <p style={{ fontSize: 11.5, color: "#A9762B", margin: "14px 0 0", lineHeight: 1.5 }}>
+              This patient has no mobile number on record, so the receipt can&apos;t be sent on WhatsApp. Add one to
+              their record to enable it.
+            </p>
+          )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value, big }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: "#999", letterSpacing: 1 }}>{label}</div>
-      <div style={{ fontSize: big ? 28 : 16, fontWeight: 700, color: "#27214D" }}>{value}</div>
     </div>
   );
 }
