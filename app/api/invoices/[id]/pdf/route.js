@@ -214,7 +214,7 @@ async function generateInvoicePdf(req, params) {
     const wordsImg = await drawArabicImage(kashida(amountInArabicWords(invoice.amount), 3));
     let wordsH = 13, wordsW = (wordsImg.width / wordsImg.height) * wordsH;
 
-    const GAP = 6;
+    const GAP = 1;
     // If the written amount is long, only that part shrinks - the figure stays
     // legible, which is the number that matters on a receipt.
     const available = VALUE_RIGHT - INNER_L - figW - unitW - GAP * 2;
