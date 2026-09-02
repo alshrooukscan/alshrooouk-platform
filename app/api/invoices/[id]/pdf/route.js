@@ -135,174 +135,125 @@ async function generateInvoicePdf(req, params) {
     return pdf.embedPng(renderArabicToPng(text, opts));
   }
 
-  // Geometry taken from the receipt the clinic actually issues: an inset frame
-  // with generous margins, the logo tucked beside a centred title, tightly
-  // spaced rows, a wrapped address and a large seal sitting over the corner.
-  const FRAME_X = 44, FRAME_W = width - 88;
-  const FRAME_TOP = height - 34, FRAME_BOTTOM = 30;
+  // Every position below is measured from the receipt the clinic issues, scaled
+  // to A5 (the source image is 1462x1032, so 1px = 0.407pt). Guessing at these
+  // is what kept producing something that looked close but read differently.
+  const FRAME_X = 49.6, FRAME_W = 507.6;
+  const FRAME_TOP = 378.8, FRAME_BOTTOM = 45.8;
+  const FRAME_R = FRAME_X + FRAME_W;
   page.drawRectangle({
     x: FRAME_X, y: FRAME_BOTTOM, width: FRAME_W, height: FRAME_TOP - FRAME_BOTTOM,
     borderColor: BLACK, borderWidth: 1.2,
   });
 
-  const INNER_L = FRAME_X + 22;
-  const INNER_R = FRAME_X + FRAME_W - 22;
+  // Both rules run the full width of the frame, not inset.
+  const DIV_TOP = 289.4, DIV_BOTTOM = 134.5;
+  for (const dy of [DIV_TOP, DIV_BOTTOM]) {
+    page.drawLine({ start: { x: FRAME_X, y: dy }, end: { x: FRAME_R, y: dy }, thickness: 1.2, color: BLACK });
+  }
 
-  // Title, centred in the frame.
+  // Title: 232.5pt wide, centred on x=253 - noticeably left of centre, because
+  // the logo occupies the space to its left.
   const titleImg = await drawArabicImage(kashida("إيصال استلام نقدية", 3), { size: 40, bold: true });
-  const titleW = 150, titleH = (titleImg.height / titleImg.width) * titleW;
-  const titleCx = FRAME_X + FRAME_W * 0.56;
-  page.drawImage(titleImg, { x: titleCx - titleW / 2, y: height - 78, width: titleW, height: titleH });
+  const titleW = 232.5, titleH = (titleImg.height / titleImg.width) * titleW;
+  page.drawImage(titleImg, { x: 253 - titleW / 2, y: 344.5 - titleH / 2, width: titleW, height: titleH });
 
-  // Logo sits to the LEFT of the title, not out at the margin.
-  const logoW = 78;
-  page.drawImage(logoImage, { x: FRAME_X + FRAME_W * 0.13, y: height - 92 - logoW / 2, width: logoW, height: logoW });
+  // Logo to the left of the title.
+  const logoW = 80;
+  page.drawImage(logoImage, { x: 149 - logoW / 2, y: 336.6 - logoW / 2, width: logoW, height: logoW });
 
-  // Receipt number: Courier, red, centred beneath the title.
+  // Receipt number: Courier, red, centred on x=300 - right of the title's centre.
   const seqMatch = invoice.invoice_number.match(/(\d+)$/);
   const receiptStr = seqMatch ? seqMatch[1] : invoice.invoice_number;
-  const numSize = 15;
+  const numSize = 13;
   const numW = courier.widthOfTextAtSize(receiptStr, numSize);
-  page.drawText(receiptStr, { x: titleCx - numW / 2, y: height - 100, size: numSize, font: courier, color: RED });
+  page.drawText(receiptStr, { x: 300 - numW / 2, y: 315, size: numSize, font: courier, color: RED });
 
-  page.drawLine({ start: { x: INNER_L, y: height - 126 }, end: { x: INNER_R, y: height - 126 }, thickness: 1.2, color: BLACK });
-
-  // Rows sit close together, as on the issued receipt - not spread down the page.
-  let y = height - 165;
-  const ROW_GAP = 27;
-  const LABEL_RIGHT = INNER_R;
-  const VALUE_RIGHT = INNER_R - 108;
-  // The colon belongs AFTER the Arabic word, which in a right-to-left line puts
-  // it on the LEFT. Without a bidi algorithm the canvas was placing this
-  // neutral character at the visual end of the run instead, so it printed on
-  // the wrong side of every label. Leading the string with the colon puts it
-  // where it actually belongs; verified by rendering the alternatives.
+  // Field rows. Labels right-align at 502.7; values right-align at 397.2.
+  const LABEL_RIGHT = 502.7;
+  const VALUE_RIGHT = 397.2;
+  const INNER_L = 91.2;
+  const VALUE_SIZE = 12;
+  const ROWS_Y = [246, 220.7, 195.4, 170.1];
   const LABELS = { amount: ":المبلغ", name: ": الاسم", exam: ": الفحص", date: ":تاريخ الفحص" };
 
-  async function label(key) {
+  async function label(key, yy) {
     const img = await drawArabicImage(kashida(LABELS[key], 3), { size: 26, bold: true });
-    const h = 13, w = (img.width / img.height) * h;
-    page.drawImage(img, { x: LABEL_RIGHT - w, y: y - 3, width: w, height: h });
+    const h = 12, w = (img.width / img.height) * h;
+    page.drawImage(img, { x: LABEL_RIGHT - w, y: yy - 3, width: w, height: h });
+  }
+  function valueRight(text, yy) {
+    const w = courier.widthOfTextAtSize(String(text), VALUE_SIZE);
+    page.drawText(String(text), { x: VALUE_RIGHT - w, y: yy, size: VALUE_SIZE, font: courier, color: BLACK });
   }
 
-  // Values are regular-weight Courier, right-aligned to the value column.
-  function valueRight(text, size = 10.5, yy = y) {
-    const w = courier.widthOfTextAtSize(String(text), size);
-    page.drawText(String(text), { x: VALUE_RIGHT - w, y: yy, size, font: courier, color: BLACK });
-  }
-
-  await label("amount");
+  // Amount row. The canvas has no bidirectional layout, so the figure, the unit
+  // and the written sum are placed by hand, right to left, in reading order.
+  await label("amount", ROWS_Y[0]);
   {
-    // The canvas has no bidirectional layout, so a mixed line of Latin digits
-    // and Arabic came out scrambled - the figure landed correctly on the right
-    // but "جم" was thrown to the far left, away from the number it belongs to.
-    // The three pieces are therefore placed by hand, right to left, which is
-    // how the line actually reads: figure, then جم, then the words.
+    const y0 = ROWS_Y[0];
     const figure = Number(invoice.amount).toLocaleString("en-US");
-    const figSize = 11;
-    const figW = courier.widthOfTextAtSize(figure, figSize);
-
+    const figW = courier.widthOfTextAtSize(figure, VALUE_SIZE);
     const unitImg = await drawArabicImage("جم");
-    const unitH = 13, unitW = (unitImg.width / unitImg.height) * unitH;
-
+    const unitH = 12, unitW = (unitImg.width / unitImg.height) * unitH;
     const wordsImg = await drawArabicImage(kashida(amountInArabicWords(invoice.amount), 3));
-    let wordsH = 13, wordsW = (wordsImg.width / wordsImg.height) * wordsH;
+    let wordsH = 12, wordsW = (wordsImg.width / wordsImg.height) * wordsH;
 
     const GAP = 1;
-    // If the written amount is long, only that part shrinks - the figure stays
-    // legible, which is the number that matters on a receipt.
     const available = VALUE_RIGHT - INNER_L - figW - unitW - GAP * 2;
     if (wordsW > available) {
       wordsW = available;
       wordsH = (wordsImg.height / wordsImg.width) * wordsW;
     }
-
-    let x = VALUE_RIGHT;
-    x -= figW;
-    page.drawText(figure, { x, y, size: figSize, font: courier, color: BLACK });
+    let x = VALUE_RIGHT - figW;
+    page.drawText(figure, { x, y: y0, size: VALUE_SIZE, font: courier, color: BLACK });
     x -= GAP + unitW;
-    page.drawImage(unitImg, { x, y: y - 3, width: unitW, height: unitH });
+    page.drawImage(unitImg, { x, y: y0 - 2.5, width: unitW, height: unitH });
     x -= GAP + wordsW;
-    page.drawImage(wordsImg, { x, y: y - 3 - (wordsH - 13) / 2, width: wordsW, height: wordsH });
+    page.drawImage(wordsImg, { x, y: y0 - 2.5 - (wordsH - 12) / 2, width: wordsW, height: wordsH });
   }
-  y -= ROW_GAP;
 
-  await label("name");
-  if (invoice.patient_name) valueRight(invoice.patient_name);
-  y -= ROW_GAP;
+  await label("name", ROWS_Y[1]);
+  if (invoice.patient_name) valueRight(invoice.patient_name, ROWS_Y[1]);
 
-  await label("exam");
-  if (invoice.exam) valueRight(invoice.exam);
-  y -= ROW_GAP;
+  await label("exam", ROWS_Y[2]);
+  if (invoice.exam) valueRight(invoice.exam, ROWS_Y[2]);
 
-  // The issued receipt carries the full timestamp, wrapped when it runs long.
-  await label("date");
-  {
-    const full = invoice.exam_date ? receiptDate(invoice.exam_date) : "";
-    const size = 10.5;
-    const maxW = VALUE_RIGHT - INNER_L;
-    const words = full.split(" ");
-    const lines = [];
-    let cur = "";
-    for (const w of words) {
-      const test = cur ? `${cur} ${w}` : w;
-      if (courier.widthOfTextAtSize(test, size) > maxW && cur) {
-        lines.push(cur);
-        cur = w;
-      } else cur = test;
-    }
-    if (cur) lines.push(cur);
-    lines.forEach((ln, i) => valueRight(ln, size, y - i * 13));
-    y -= (lines.length - 1) * 13;
-  }
-  y -= ROW_GAP + 6;
+  await label("date", ROWS_Y[3]);
+  if (invoice.exam_date) valueRight(receiptDate(invoice.exam_date), ROWS_Y[3]);
 
-  const dividerY = y;
-  page.drawLine({ start: { x: INNER_L, y: dividerY }, end: { x: INNER_R, y: dividerY }, thickness: 1.2, color: BLACK });
-
-  // Address, bold, centred, wrapped across two lines as on the issued receipt.
+  // Address: two lines, 320pt wide, centred on x=257.
   const addrParts = [
     "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة",
     "الحادية عشر - مدينة نصر",
   ];
-  let fy = dividerY - 22;
+  let fy = 113.5;
   for (const part of addrParts) {
     const img = await drawArabicImage(kashida(part, 3), { size: 24, bold: true });
-    const h = 11.5, w = (img.width / img.height) * h;
-    page.drawImage(img, { x: FRAME_X + (FRAME_W - w) / 2, y: fy, width: w, height: h });
-    fy -= 15;
+    const h = 10, w = (img.width / img.height) * h;
+    page.drawImage(img, { x: 257 - w / 2, y: fy, width: w, height: h });
+    fy -= 12.2;
   }
 
-  fy -= 10;
+  // Phone line sits lower and is centred on x=300, not on the address centre.
   {
     const digits = "15184 - 0128887187";
     const taImg = await drawArabicImage(": ت", { size: 24, bold: true });
-    const taH = 11.5, taW = (taImg.width / taImg.height) * taH;
-    const size = 10.5;
-    const digitsW = courier.widthOfTextAtSize(digits, size);
+    const taH = 10, taW = (taImg.width / taImg.height) * taH;
+    const digitsW = courier.widthOfTextAtSize(digits, VALUE_SIZE);
     const blockW = taW + 6 + digitsW;
-    const startX = FRAME_X + (FRAME_W - blockW) / 2;
-    page.drawText(digits, { x: startX, y: fy, size, font: courier, color: BLACK });
-    page.drawImage(taImg, { x: startX + digitsW + 6, y: fy - 1, width: taW, height: taH });
+    const startX = 300 - blockW / 2;
+    page.drawText(digits, { x: startX, y: 71.5, size: VALUE_SIZE, font: courier, color: BLACK });
+    page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.5, width: taW, height: taH });
   }
 
-  // A hand-applied seal never lands square. It is tilted, it runs over the
-  // footer text and past the frame, and it sits low on the sheet - so it is
-  // drawn that way rather than tucked neatly into the corner.
+  // Seal: 93pt across, centred at (468.3, 76) - low enough that it runs past
+  // the bottom of the frame, as it does on the issued receipt.
   if (stamped) {
-    const stampW = 104, stampH = stampW * (138 / 139);
-    const tilt = -11;
-    const rad = (tilt * Math.PI) / 180;
-    // pdf-lib rotates about the anchor, not the centre, so the anchor is
-    // worked back from where the seal should actually sit.
-    const cx = FRAME_X + FRAME_W * 0.80;
-    const cy = FRAME_BOTTOM + 46;
-    const x = cx - ((stampW / 2) * Math.cos(rad) - (stampH / 2) * Math.sin(rad));
-    const y = cy - ((stampW / 2) * Math.sin(rad) + (stampH / 2) * Math.cos(rad));
+    const stampW = 93, stampH = stampW * (138 / 139);
     page.drawImage(stampImage, {
-      x, y, width: stampW, height: stampH,
-      rotate: degrees(tilt),
-      opacity: 0.82,
+      x: 468.3 - stampW / 2, y: 76 - stampH / 2,
+      width: stampW, height: stampH, opacity: 0.85,
     });
   }
 
