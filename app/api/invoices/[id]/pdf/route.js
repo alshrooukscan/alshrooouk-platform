@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
 import { createCanvas, registerFont } from "canvas";
 import fs from "fs";
 import path from "path";
@@ -78,26 +78,15 @@ function renderArabicToPng(text, { size = 26, color = "#0d0d0d", bold = false, f
 }
 
 
-// "Thu Nov 09 2023 00:00:00 GMT+0200 (Eastern European Standard Time)" - the
-// timestamp exactly as the clinic's own receipt prints it. Built for Cairo
-// rather than the server's clock, which is UTC and would print GMT+0000.
-function cairoTimestamp(dateOnly) {
+// "Tue Sep 01 2026" - the date only. The clinic's older receipts carried the
+// full timestamp with a timezone name, which took two lines and told the
+// patient nothing useful.
+function receiptDate(dateOnly) {
   const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const [y, m, d] = dateOnly.split("-").map(Number);
-  const noon = new Date(Date.UTC(y, m - 1, d, 12));
-
-  // Egypt observes summer time, so the offset is read from the zone itself
-  // rather than hard-coded to +2.
-  const tzName = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", timeZoneName: "long" })
-    .formatToParts(noon).find((p) => p.type === "timeZoneName")?.value || "Eastern European Standard Time";
-  const shortOffset = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", timeZoneName: "longOffset" })
-    .formatToParts(noon).find((p) => p.type === "timeZoneName")?.value || "GMT+02:00";
-  const offset = shortOffset.replace(":", "");
-
   const dow = DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-  const dd = String(d).padStart(2, "0");
-  return `${dow} ${MONTHS[m - 1]} ${dd} ${y} 00:00:00 ${offset} (${tzName})`;
+  return `${dow} ${MONTHS[m - 1]} ${String(d).padStart(2, "0")} ${y}`;
 }
 
 const assetCache = {};
@@ -249,7 +238,7 @@ async function generateInvoicePdf(req, params) {
   // The issued receipt carries the full timestamp, wrapped when it runs long.
   await label("date");
   {
-    const full = invoice.exam_date ? cairoTimestamp(invoice.exam_date) : "";
+    const full = invoice.exam_date ? receiptDate(invoice.exam_date) : "";
     const size = 10.5;
     const maxW = VALUE_RIGHT - INNER_L;
     const words = full.split(" ");
@@ -297,11 +286,24 @@ async function generateInvoicePdf(req, params) {
     page.drawImage(taImg, { x: startX + digitsW + 6, y: fy - 1, width: taW, height: taH });
   }
 
-  // The seal is large and sits over the bottom-right corner, overlapping the
-  // footer the way a hand-applied stamp does.
+  // A hand-applied seal never lands square. It is tilted, it runs over the
+  // footer text and past the frame, and it sits low on the sheet - so it is
+  // drawn that way rather than tucked neatly into the corner.
   if (stamped) {
-    const stampW = 96, stampH = stampW * (138 / 139);
-    page.drawImage(stampImage, { x: INNER_R - stampW + 14, y: FRAME_BOTTOM + 6, width: stampW, height: stampH, opacity: 0.88 });
+    const stampW = 104, stampH = stampW * (138 / 139);
+    const tilt = -11;
+    const rad = (tilt * Math.PI) / 180;
+    // pdf-lib rotates about the anchor, not the centre, so the anchor is
+    // worked back from where the seal should actually sit.
+    const cx = FRAME_X + FRAME_W * 0.80;
+    const cy = FRAME_BOTTOM + 46;
+    const x = cx - ((stampW / 2) * Math.cos(rad) - (stampH / 2) * Math.sin(rad));
+    const y = cy - ((stampW / 2) * Math.sin(rad) + (stampH / 2) * Math.cos(rad));
+    page.drawImage(stampImage, {
+      x, y, width: stampW, height: stampH,
+      rotate: degrees(tilt),
+      opacity: 0.82,
+    });
   }
 
   const bytes = await pdf.save();
