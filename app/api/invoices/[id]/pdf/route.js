@@ -238,26 +238,29 @@ async function generateInvoicePdf(req, params) {
   // than centred, because on the issued receipt the two lines do NOT share a
   // centre - the first sits well left of the second. Setting the width also
   // fixes the type size, which measuring by height alone had got too small.
-  // Two lines, as the original has them.
+  // Two lines, both centred in the frame so the margins left and right match.
   //
-  // Sizing both by width gave each line a DIFFERENT type size - the short
-  // second line has a narrower canvas, so scaling it to a target width blew it
-  // up and it collided with the first. The scale factor is taken from line one
-  // and reused, which keeps one type size across both; line two's width then
-  // follows from its own text and is centred on the measured axis.
+  // Sizing each line to its own target width gave them different type sizes -
+  // the short second line has a narrower canvas, so scaling it to a fixed width
+  // magnified it. The scale factor is taken from line one and reused, which
+  // keeps one type size across both; line two's width then follows from its own
+  // text.
+  //
+  // Kashida is applied after every joining letter rather than every third, so
+  // the strokes stretch the way they do on the original.
   {
     const L1 = "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة";
     const L2 = "الحادية عشر - مدينة نصر";
-    const img1 = await drawArabicImage(kashida(L1, 3), { size: 24, bold: true });
-    const img2 = await drawArabicImage(kashida(L2, 3), { size: 24, bold: true });
-    const W1 = 316.4;
+    const img1 = await drawArabicImage(kashida(L1, 1), { size: 24, bold: true });
+    const img2 = await drawArabicImage(kashida(L2, 1), { size: 24, bold: true });
+    const CENTRE = FRAME_X + FRAME_W / 2;
+    const W1 = 340;
     const k = W1 / img1.width;
     const h1 = img1.height * k;
     const W2 = img2.width * k;
     const h2 = img2.height * k;
-    page.drawImage(img1, { x: 92.7, y: 101, width: W1, height: h1 });
-    // Line two is centred on x=300.5, the same axis as the phone line below it.
-    page.drawImage(img2, { x: 300.5 - W2 / 2, y: 89, width: W2, height: h2 });
+    page.drawImage(img1, { x: CENTRE - W1 / 2, y: 103, width: W1, height: h1 });
+    page.drawImage(img2, { x: CENTRE - W2 / 2, y: 89, width: W2, height: h2 });
   }
 
   // Phone line sits lower and is centred on x=300, not on the address centre.
