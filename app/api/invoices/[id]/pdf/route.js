@@ -265,9 +265,9 @@ async function generateInvoicePdf(req, params) {
   // frame - a stamp pressed onto a finished receipt, not placed in a gap left
   // for it.
   //
-  // This only works because the asset's paper was made transparent: the file
-  // was fully opaque, 73% of it solid white, so overlapping it on the text
-  // would have painted a white box over the words instead of inking over them.
+  // The asset is a proper cut-out - transparent paper, ink only - so it
+  // composites over the words rather than covering them. Opacity is full,
+  // because the cut-out already carries the ink's own density.
   if (stamped) {
     const stampW = 104, stampH = stampW * (138 / 139);
     const tilt = -9;
@@ -277,7 +277,7 @@ async function generateInvoicePdf(req, params) {
     // worked back from where the seal should actually land.
     const x = cx - ((stampW / 2) * Math.cos(rad) - (stampH / 2) * Math.sin(rad));
     const y = cy - ((stampW / 2) * Math.sin(rad) + (stampH / 2) * Math.cos(rad));
-    page.drawImage(stampImage, { x, y, width: stampW, height: stampH, rotate: degrees(tilt), opacity: 0.9 });
+    page.drawImage(stampImage, { x, y, width: stampW, height: stampH, rotate: degrees(tilt) });
   }
 
   const bytes = await pdf.save();
