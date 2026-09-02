@@ -36,6 +36,7 @@ export default function PatientsPage() {
   const [statusByPatient, setStatusByPatient] = useState({});
   const [totalCount, setTotalCount] = useState(0);
   const [withoutFolderCount, setWithoutFolderCount] = useState(0);
+  const [sharedFolderCount, setSharedFolderCount] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loginAsBusy, setLoginAsBusy] = useState(null);
@@ -45,6 +46,19 @@ export default function PatientsPage() {
     supabase.from("doctors").select("id, name, clinic_code").order("name").then(({ data }) => setDoctors(data || []));
     supabase.from("exam_types").select("name").eq("is_active", true).order("name").then(({ data }) => setExamTypes(data || []));
     supabase.from("patients").select("id", { count: "exact", head: true }).is("drive_folder_id", null).then(({ count }) => setWithoutFolderCount(count || 0));
+    // A folder pointer can exist and still be wrong. Several patients sharing
+    // one folder means duplicate records, or two real people whose scans land
+    // in the same place - both worth seeing, and neither visible in a count of
+    // missing folders.
+    supabase
+      .from("patients")
+      .select("drive_folder_id")
+      .not("drive_folder_id", "is", null)
+      .then(({ data }) => {
+        const seen = {};
+        for (const r of data || []) seen[r.drive_folder_id] = (seen[r.drive_folder_id] || 0) + 1;
+        setSharedFolderCount(Object.values(seen).filter((n) => n > 1).reduce((a, b) => a + b, 0));
+      });
   }, []);
 
   useEffect(() => {
@@ -207,8 +221,14 @@ export default function PatientsPage() {
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ background: "#fff", borderRadius: 12, padding: "12px 20px", boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>PATIENTS WITHOUT A DRIVE FOLDER</div>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>NO DRIVE FOLDER LINKED</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: withoutFolderCount > 0 ? "#a97c00" : theme.navy }}>{withoutFolderCount.toLocaleString()}</div>
+          <div style={{ fontSize: 10, color: theme.gray }}>of {totalCount.toLocaleString()} patients</div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 20px", boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>SHARING A FOLDER</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: sharedFolderCount > 0 ? "#ba1a1a" : theme.navy }}>{sharedFolderCount.toLocaleString()}</div>
+          <div style={{ fontSize: 10, color: theme.gray }}>linked, but not to their own folder</div>
         </div>
         <button onClick={handleExportMissingFolders} disabled={exporting} style={{ ...pageBtn, alignSelf: "center" }}>
           {exporting ? "Preparing..." : "Export List (No Folder)"}
