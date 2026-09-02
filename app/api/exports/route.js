@@ -77,8 +77,9 @@ export async function GET(req) {
     const longest = rows.reduce((m, r) => Math.max(m, String(r[c] ?? "").length), c.length);
     return { wch: Math.min(Math.max(longest + 2, 10), 45) };
   });
+  // Autofilter on the header. Freeze panes are a paid SheetJS feature, so the
+  // filter is what carries the usability of a long sheet here.
   ws["!autofilter"] = { ref: ws["!ref"] };
-  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
 
   XLSX.utils.book_append_sheet(wb, ws, report.label.slice(0, 30));
 
