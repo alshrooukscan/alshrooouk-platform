@@ -52,6 +52,10 @@ export async function GET(req, { params }) {
 }
 
 async function generateInvoicePdf(req, params) {
+  // Unstamped is the default, matching the template exactly. The stamped copy
+  // is the one that goes to a patient without being printed and sealed by hand.
+  const stamped = new URL(req.url).searchParams.get("stamp") === "1";
+
   const { data: invoice, error } = await supabaseAdmin.from("invoices").select("*").eq("id", params.id).single();
   if (error || !invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
@@ -64,7 +68,7 @@ async function generateInvoicePdf(req, params) {
   const { width, height } = page.getSize();
 
   const logoImage = await pdf.embedPng(await loadAsset(req, "invoice-logo.png"));
-  const stampImage = await pdf.embedPng(await loadAsset(req, "stamp.png"));
+  const stampImage = stamped ? await pdf.embedPng(await loadAsset(req, "stamp.png")) : null;
 
   async function drawArabicImage(text, opts) {
     return pdf.embedPng(renderArabicToPng(text, opts));
@@ -155,17 +159,19 @@ async function generateInvoicePdf(req, params) {
   const phoneH = 13, phoneW = (phoneImg.width / phoneImg.height) * phoneH;
   page.drawImage(phoneImg, { x: (width - phoneW) / 2, y: fy, width: phoneW, height: phoneH });
 
-  // The clinic's seal is not in the .docx - that document is stamped by hand
-  // after printing. Kept, small and clear of the text, because an issued
-  // receipt carries it; say the word and it comes off.
-  const stampW = 62, stampH = (stampImage.height / stampImage.width) * stampW;
-  page.drawImage(stampImage, { x: width - 40 - stampW, y: 20, width: stampW, height: stampH, opacity: 0.9 });
+  // Two variants of the same receipt. The .docx has no seal because that copy
+  // is stamped by hand after printing; ?stamp=1 produces the digitally stamped
+  // version instead, using the clinic's real seal.
+  if (stamped) {
+    const stampW = 62, stampH = (stampImage.height / stampImage.width) * stampW;
+    page.drawImage(stampImage, { x: width - 40 - stampW, y: 20, width: stampW, height: stampH, opacity: 0.9 });
+  }
 
   const bytes = await pdf.save();
   return new NextResponse(bytes, {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${invoice.invoice_number}.pdf"`,
+      "Content-Disposition": `inline; filename="${invoice.invoice_number}${stamped ? "-stamped" : ""}.pdf"`,
     },
   });
 }

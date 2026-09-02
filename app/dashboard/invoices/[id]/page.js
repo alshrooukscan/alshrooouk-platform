@@ -28,13 +28,15 @@ export default function InvoiceViewPage() {
     setLoading(false);
   }
 
-  function handleDownloadPdf() {
-    window.open(`/api/invoices/${id}/pdf`, "_blank");
+  // Two variants: the plain receipt, which is printed and sealed by hand, and
+  // a digitally stamped copy for sending without printing.
+  function handleDownloadPdf(stamped) {
+    window.open(`/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`, "_blank");
   }
 
   function handleSendWhatsApp() {
     if (!patientMobile) return;
-    const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf`;
+    const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf?stamp=1`;
     const text =
       `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number}\n` +
       `Amount: ${formatMoney(invoice.amount)} EGP\n` +
@@ -132,7 +134,7 @@ export default function InvoiceViewPage() {
             Send via WhatsApp
           </button>
           <button
-            onClick={handleDownloadPdf}
+            onClick={() => handleDownloadPdf(false)}
             style={{
               flex: 1,
               padding: "12px 0",
@@ -144,7 +146,23 @@ export default function InvoiceViewPage() {
               cursor: "pointer",
             }}
           >
-            Download PDF
+            Download (no stamp)
+          </button>
+          <button
+            onClick={() => handleDownloadPdf(true)}
+            className="no-print"
+            style={{
+              padding: "12px 24px",
+              borderRadius: 10,
+              border: "none",
+              background: theme.gold,
+              color: theme.navy,
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            Download (stamped)
           </button>
         </div>
       </div>
