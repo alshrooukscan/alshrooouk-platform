@@ -238,17 +238,18 @@ async function generateInvoicePdf(req, params) {
   // than centred, because on the issued receipt the two lines do NOT share a
   // centre - the first sits well left of the second. Setting the width also
   // fixes the type size, which measuring by height alone had got too small.
-  // Positions are of the INK, not the drawn box: the rendered image carries
-  // padding either side, so setting the box to the measured width left the text
-  // a few points narrow and inset. The box is widened and shifted to compensate.
-  const addrLines = [
-    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 92.7, w: 316.4, y: 101 },
-    { text: "الحادية عشر - مدينة نصر", x: 223.4, w: 153.2, y: 90.5 },
-  ];
-  for (const ln of addrLines) {
-    const img = await drawArabicImage(kashida(ln.text, 3), { size: 24, bold: true });
-    const h = (img.height / img.width) * ln.w;
-    page.drawImage(img, { x: ln.x, y: ln.y, width: ln.w, height: h });
+  // Address on a single line. Split across two it left an awkward short second
+  // line and pushed the seal off the text; on one line the seal falls across
+  // its right end, where the address actually begins in Arabic.
+  //
+  // The width is of the INK, not the drawn box: the rendered image carries
+  // padding either side, so the box is widened to compensate.
+  {
+    const ADDRESS = "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر";
+    const img = await drawArabicImage(kashida(ADDRESS, 3), { size: 24, bold: true });
+    const w = 448;
+    const h = (img.height / img.width) * w;
+    page.drawImage(img, { x: 92.7, y: 97, width: w, height: h });
   }
 
   // Phone line sits lower and is centred on x=300, not on the address centre.
