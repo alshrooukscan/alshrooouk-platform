@@ -238,9 +238,12 @@ async function generateInvoicePdf(req, params) {
   // than centred, because on the issued receipt the two lines do NOT share a
   // centre - the first sits well left of the second. Setting the width also
   // fixes the type size, which measuring by height alone had got too small.
+  // Positions are of the INK, not the drawn box: the rendered image carries
+  // padding either side, so setting the box to the measured width left the text
+  // a few points narrow and inset. The box is widened and shifted to compensate.
   const addrLines = [
-    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 97.3, w: 320.1, y: 104 },
-    { text: "الحادية عشر - مدينة نصر", x: 224.0, w: 150.3, y: 93.8 },
+    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 82.3, w: 326.8, y: 101 },
+    { text: "الحادية عشر - مدينة نصر", x: 223.4, w: 153.2, y: 90.5 },
   ];
   for (const ln of addrLines) {
     const img = await drawArabicImage(kashida(ln.text, 3), { size: 24, bold: true });
@@ -256,8 +259,8 @@ async function generateInvoicePdf(req, params) {
     const digitsW = courier.widthOfTextAtSize(digits, VALUE_SIZE);
     const blockW = taW + 6 + digitsW;
     const startX = 300 - blockW / 2;
-    page.drawText(digits, { x: startX, y: 77.2, size: VALUE_SIZE, font: courier, color: BLACK });
-    page.drawImage(taImg, { x: startX + digitsW + 6, y: 76.2, width: taW, height: taH });
+    page.drawText(digits, { x: startX, y: 71.8, size: VALUE_SIZE, font: courier, color: BLACK });
+    page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.8, width: taW, height: taH });
   }
 
   // Seal. Drawn last so it sits over everything, and shifted left and down so
@@ -273,9 +276,11 @@ async function generateInvoicePdf(req, params) {
     // moved it 44pt further left to force an overlap, but the original already
     // catches the right end of the address and runs past the frame from here -
     // so it is put back where it actually sits.
-    const stampW = 92.8, stampH = stampW * (138 / 139);
+    // The cut-out's ink fills only 87% of its canvas, so a 92.8pt box printed a
+    // seal noticeably smaller than the original's. Sized from the ink instead.
+    const stampW = 106.7, stampH = stampW * (138 / 139);
     page.drawImage(stampImage, {
-      x: 468.2 - stampW / 2, y: 75.8 - stampH / 2,
+      x: 467.4 - stampW / 2, y: 76.4 - stampH / 2,
       width: stampW, height: stampH,
     });
   }
