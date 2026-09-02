@@ -191,8 +191,8 @@ async function generateInvoicePdf(req, params) {
 
   async function label(key, yy) {
     const img = await drawArabicImage(kashida(LABELS[key], 3), { size: 26, bold: true });
-    const h = 12, w = (img.width / img.height) * h;
-    page.drawImage(img, { x: LABEL_RIGHT - w, y: yy - 3, width: w, height: h });
+    const h = 15.9, w = (img.width / img.height) * h;
+    page.drawImage(img, { x: LABEL_RIGHT - w, y: yy - 5, width: w, height: h });
   }
   function valueRight(text, yy) {
     const w = courier.widthOfTextAtSize(String(text), VALUE_SIZE);
@@ -207,9 +207,9 @@ async function generateInvoicePdf(req, params) {
     const figure = Number(invoice.amount).toLocaleString("en-US");
     const figW = courier.widthOfTextAtSize(figure, VALUE_SIZE);
     const unitImg = await drawArabicImage("جم");
-    const unitH = 12, unitW = (unitImg.width / unitImg.height) * unitH;
+    const unitH = 14.5, unitW = (unitImg.width / unitImg.height) * unitH;
     const wordsImg = await drawArabicImage(kashida(amountInArabicWords(invoice.amount), 3));
-    let wordsH = 12, wordsW = (wordsImg.width / wordsImg.height) * wordsH;
+    let wordsH = 14.5, wordsW = (wordsImg.width / wordsImg.height) * wordsH;
 
     const GAP = 1;
     const available = VALUE_RIGHT - INNER_L - figW - unitW - GAP * 2;
@@ -220,9 +220,9 @@ async function generateInvoicePdf(req, params) {
     let x = VALUE_RIGHT - figW;
     page.drawText(figure, { x, y: y0, size: VALUE_SIZE, font: courier, color: BLACK });
     x -= GAP + unitW;
-    page.drawImage(unitImg, { x, y: y0 - 2.5, width: unitW, height: unitH });
+    page.drawImage(unitImg, { x, y: y0 - 3.8, width: unitW, height: unitH });
     x -= GAP + wordsW;
-    page.drawImage(wordsImg, { x, y: y0 - 2.5 - (wordsH - 12) / 2, width: wordsW, height: wordsH });
+    page.drawImage(wordsImg, { x, y: y0 - 3.8 - (wordsH - 14.5) / 2, width: wordsW, height: wordsH });
   }
 
   await label("name", ROWS_Y[1]);
@@ -238,30 +238,29 @@ async function generateInvoicePdf(req, params) {
   // than centred, because on the issued receipt the two lines do NOT share a
   // centre - the first sits well left of the second. Setting the width also
   // fixes the type size, which measuring by height alone had got too small.
-  // Address on a single line. Split across two it left an awkward short second
-  // line and pushed the seal off the text; on one line the seal falls across
-  // its right end, where the address actually begins in Arabic.
-  //
-  // The width is of the INK, not the drawn box: the rendered image carries
-  // padding either side, so the box is widened to compensate.
-  {
-    const ADDRESS = "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر";
-    const img = await drawArabicImage(kashida(ADDRESS, 3), { size: 24, bold: true });
-    const w = 448;
-    const h = (img.height / img.width) * w;
-    page.drawImage(img, { x: 92.7, y: 97, width: w, height: h });
+  // Two lines, as the original has them. Positions are of the INK, not the
+  // drawn box: the rendered image carries padding either side, so the box is
+  // widened and shifted to compensate.
+  const addrLines = [
+    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 92.7, w: 316.4, y: 101 },
+    { text: "الحادية عشر - مدينة نصر", x: 223.4, w: 153.2, y: 90.5 },
+  ];
+  for (const ln of addrLines) {
+    const img = await drawArabicImage(kashida(ln.text, 3), { size: 24, bold: true });
+    const h = (img.height / img.width) * ln.w;
+    page.drawImage(img, { x: ln.x, y: ln.y, width: ln.w, height: h });
   }
 
   // Phone line sits lower and is centred on x=300, not on the address centre.
   {
     const digits = "15184 - 0128887187";
     const taImg = await drawArabicImage(": ت", { size: 24, bold: true });
-    const taH = 10, taW = (taImg.width / taImg.height) * taH;
+    const taH = 13.2, taW = (taImg.width / taImg.height) * taH;
     const digitsW = courier.widthOfTextAtSize(digits, VALUE_SIZE);
     const blockW = taW + 6 + digitsW;
     const startX = 300 - blockW / 2;
     page.drawText(digits, { x: startX, y: 71.8, size: VALUE_SIZE, font: courier, color: BLACK });
-    page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.8, width: taW, height: taH });
+    page.drawImage(taImg, { x: startX + digitsW + 6, y: 69.2, width: taW, height: taH });
   }
 
   // Seal. Drawn last so it sits over everything, and shifted left and down so
