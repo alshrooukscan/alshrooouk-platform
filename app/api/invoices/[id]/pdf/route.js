@@ -77,6 +77,29 @@ function renderArabicToPng(text, { size = 24, color = "#0d0d0d", bold = false, f
   return canvas.toBuffer("image/png");
 }
 
+
+// "Thu Nov 09 2023 00:00:00 GMT+0200 (Eastern European Standard Time)" - the
+// timestamp exactly as the clinic's own receipt prints it. Built for Cairo
+// rather than the server's clock, which is UTC and would print GMT+0000.
+function cairoTimestamp(dateOnly) {
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const [y, m, d] = dateOnly.split("-").map(Number);
+  const noon = new Date(Date.UTC(y, m - 1, d, 12));
+
+  // Egypt observes summer time, so the offset is read from the zone itself
+  // rather than hard-coded to +2.
+  const tzName = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", timeZoneName: "long" })
+    .formatToParts(noon).find((p) => p.type === "timeZoneName")?.value || "Eastern European Standard Time";
+  const shortOffset = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", timeZoneName: "longOffset" })
+    .formatToParts(noon).find((p) => p.type === "timeZoneName")?.value || "GMT+02:00";
+  const offset = shortOffset.replace(":", "");
+
+  const dow = DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const dd = String(d).padStart(2, "0");
+  return `${dow} ${MONTHS[m - 1]} ${dd} ${y} 00:00:00 ${offset} (${tzName})`;
+}
+
 const assetCache = {};
 async function loadAsset(req, relativePath) {
   if (assetCache[relativePath]) return assetCache[relativePath];
@@ -179,7 +202,7 @@ async function generateInvoicePdf(req, params) {
     const figure = Number(invoice.amount).toLocaleString("en-US");
     const line = kashida(`${figure} جم ${amountInArabicWords(invoice.amount)}`, 3);
     const img = await drawArabicImage(line, { size: 26 });
-    const h = 13, w = (img.width / img.height) * h;
+    const h = 16, w = (img.width / img.height) * h;
     const maxW = VALUE_RIGHT - INNER_L;
     const drawW = Math.min(w, maxW);
     const drawH = drawW === w ? h : (img.height / img.width) * drawW;
@@ -198,8 +221,7 @@ async function generateInvoicePdf(req, params) {
   // The issued receipt carries the full timestamp, wrapped when it runs long.
   await label("date");
   {
-    const d = invoice.exam_date ? new Date(`${invoice.exam_date}T00:00:00`) : null;
-    const full = d ? d.toString() : "";
+    const full = invoice.exam_date ? cairoTimestamp(invoice.exam_date) : "";
     const size = 10.5;
     const maxW = VALUE_RIGHT - INNER_L;
     const words = full.split(" ");
