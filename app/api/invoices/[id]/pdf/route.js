@@ -22,16 +22,27 @@ function ensureFontRegistered() {
   fontRegistered = true;
 }
 
-function renderArabicToPng(text, { size = 24, color = "#0d0d0d", widthPx = 900, heightPx = 60, align = "right", bold = false, family = "NaskhArabic" } = {}) {
+// The canvas is sized to the MEASURED text rather than a fixed box. A fixed
+// box left the short lines swimming in empty pixels, so when the image was
+// scaled to a target height on the page the text inside came out far smaller
+// than its neighbours - the amount line was the worst of it.
+function renderArabicToPng(text, { size = 24, color = "#0d0d0d", bold = false, family = "NaskhArabic" } = {}) {
   ensureFontRegistered();
+  const font = `${bold ? "bold " : ""}${size}px ${family}`;
+  const probe = createCanvas(8, 8).getContext("2d");
+  probe.font = font;
+  const m = probe.measureText(text);
+  const pad = Math.ceil(size * 0.25);
+  const widthPx = Math.ceil(m.width) + pad * 2;
+  const heightPx = Math.ceil(size * 1.6);
+
   const canvas = createCanvas(widthPx, heightPx);
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = color;
-  ctx.font = `${bold ? "bold " : ""}${size}px ${family}`;
-  ctx.textAlign = align;
+  ctx.font = font;
+  ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  const x = align === "right" ? widthPx - 4 : align === "center" ? widthPx / 2 : 4;
-  ctx.fillText(text, x, heightPx / 2);
+  ctx.fillText(text, widthPx - pad, heightPx / 2);
   return canvas.toBuffer("image/png");
 }
 
@@ -90,7 +101,7 @@ async function generateInvoicePdf(req, params) {
   page.drawImage(logoImage, { x: 30, y: height - 26 - logoW, width: logoW, height: logoW });
 
   // Title in the serif Arabic face, centred.
-  const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 44, widthPx: 800, heightPx: 80, align: "center", bold: false });
+  const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 44 });
   const titleW = 168, titleH = (titleImg.height / titleImg.width) * titleW;
   page.drawImage(titleImg, { x: (width - titleW) / 2, y: height - 40 - titleH / 2, width: titleW, height: titleH });
 
@@ -109,7 +120,7 @@ async function generateInvoicePdf(req, params) {
   const LABELS = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:" };
 
   async function label(key) {
-    const img = await drawArabicImage(LABELS[key], { size: 30, widthPx: 300, heightPx: 48, align: "right" });
+    const img = await drawArabicImage(LABELS[key], { size: 30 });
     const h = 13, w = (img.width / img.height) * h;
     page.drawImage(img, { x: LABEL_RIGHT - w, y: y - 3, width: w, height: h });
   }
@@ -130,10 +141,10 @@ async function generateInvoicePdf(req, params) {
     // Rendered as one right-to-left string so the figure, the unit and the
     // words sit in the correct order without positioning each piece by hand.
     const line = `${figure} جم ${words}`;
-    const img = await drawArabicImage(line, { size: 26, widthPx: 1700, heightPx: 44, align: "right" });
-    const h = 12.5, w = (img.width / img.height) * h;
+    const img = await drawArabicImage(line, { size: 26 });
+    const h = 13, w = (img.width / img.height) * h;
     // Long amounts must not run under the label, so the line shrinks to fit.
-    const maxW = VALUE_RIGHT - 40;
+    const maxW = VALUE_RIGHT - 30;
     const drawW = Math.min(w, maxW);
     const drawH = drawW === w ? h : (img.height / img.width) * drawW;
     page.drawImage(img, { x: VALUE_RIGHT - drawW, y: y - (drawH - h) / 2 - 3, width: drawW, height: drawH });
@@ -157,7 +168,7 @@ async function generateInvoicePdf(req, params) {
   let fy = dividerY - 24;
   const addrImg = await drawArabicImage(
     "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر",
-    { size: 22, widthPx: 1300, heightPx: 36, align: "center" }
+    { size: 22 }
   );
   const addrH = 11, addrW = (addrImg.width / addrImg.height) * addrH;
   page.drawImage(addrImg, { x: (width - addrW) / 2, y: fy, width: addrW, height: addrH });
@@ -165,7 +176,7 @@ async function generateInvoicePdf(req, params) {
 
   {
     const digits = "15184 - 0128887187";
-    const taImg = await drawArabicImage("ت :", { size: 22, widthPx: 120, heightPx: 36, align: "right" });
+    const taImg = await drawArabicImage("ت :", { size: 22 });
     const taH = 10.5, taW = (taImg.width / taImg.height) * taH;
     const digitsW = courier.widthOfTextAtSize(digits, 10.5);
     // "ت :" sits to the RIGHT of the digits, as the line reads right to left.
