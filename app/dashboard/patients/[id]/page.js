@@ -384,23 +384,22 @@ export default function PatientProfilePage() {
   }
 
   async function handleGenerateInvoice(visit) {
-    const { data: invoiceNumber } = await supabase.rpc("generate_invoice_number");
+    // A visit has ONE receipt. This returns the existing one if the visit
+    // already has a number, and only mints a new serial when it does not - so
+    // pressing Generate twice, or two members of staff opening the same visit,
+    // cannot hand a patient two different numbers for one payment.
     const { data: inv, error } = await supabase
-      .from("invoices")
-      .insert({
-        visit_id: visit.id,
-        invoice_number: invoiceNumber,
-        amount: visit.amount_due,
-        patient_name: patient.name,
-        exam: (visit.scan_types || []).join(", "),
-        exam_date: visit.exam_date,
+      .rpc("get_or_create_invoice", {
+        p_visit_id: visit.id,
+        p_amount: visit.amount_due,
+        p_patient_name: patient.name,
+        p_exam: (visit.scan_types || []).join(", "),
+        p_exam_date: visit.exam_date,
         // {{trans}} on the original receipt template - the payment reference
         // printed beside the amount.
-        trans: (visit.visit_payments || [])
-          .map((p) => p.payment_method)
-          .find((m) => m && m !== "Unknown") || null,
+        p_trans:
+          (visit.visit_payments || []).map((x) => x.payment_method).find((m) => m && m !== "Unknown") || null,
       })
-      .select("id")
       .single();
     if (error) {
       alert(error.message);
