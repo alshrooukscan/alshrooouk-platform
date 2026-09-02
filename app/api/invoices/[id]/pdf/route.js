@@ -238,17 +238,26 @@ async function generateInvoicePdf(req, params) {
   // than centred, because on the issued receipt the two lines do NOT share a
   // centre - the first sits well left of the second. Setting the width also
   // fixes the type size, which measuring by height alone had got too small.
-  // Two lines, as the original has them. Positions are of the INK, not the
-  // drawn box: the rendered image carries padding either side, so the box is
-  // widened and shifted to compensate.
-  const addrLines = [
-    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 92.7, w: 316.4, y: 101 },
-    { text: "الحادية عشر - مدينة نصر", x: 223.4, w: 153.2, y: 90.5 },
-  ];
-  for (const ln of addrLines) {
-    const img = await drawArabicImage(kashida(ln.text, 3), { size: 24, bold: true });
-    const h = (img.height / img.width) * ln.w;
-    page.drawImage(img, { x: ln.x, y: ln.y, width: ln.w, height: h });
+  // Two lines, as the original has them.
+  //
+  // Sizing both by width gave each line a DIFFERENT type size - the short
+  // second line has a narrower canvas, so scaling it to a target width blew it
+  // up and it collided with the first. The scale factor is taken from line one
+  // and reused, which keeps one type size across both; line two's width then
+  // follows from its own text and is centred on the measured axis.
+  {
+    const L1 = "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة";
+    const L2 = "الحادية عشر - مدينة نصر";
+    const img1 = await drawArabicImage(kashida(L1, 3), { size: 24, bold: true });
+    const img2 = await drawArabicImage(kashida(L2, 3), { size: 24, bold: true });
+    const W1 = 316.4;
+    const k = W1 / img1.width;
+    const h1 = img1.height * k;
+    const W2 = img2.width * k;
+    const h2 = img2.height * k;
+    page.drawImage(img1, { x: 92.7, y: 101, width: W1, height: h1 });
+    // Line two is centred on x=300.5, the same axis as the phone line below it.
+    page.drawImage(img2, { x: 300.5 - W2 / 2, y: 89, width: W2, height: h2 });
   }
 
   // Phone line sits lower and is centred on x=300, not on the address centre.
