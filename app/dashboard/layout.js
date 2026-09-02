@@ -7,16 +7,43 @@ import Sidebar from "../../components/Sidebar";
 import { usePermissions } from "../../lib/usePermissions";
 import Loading from "../../lib/Loading";
 
+// Keys here must match what the sidebar offers each person. Where the two
+// disagree, staff are shown a link and then refused when they follow it.
 const ROUTE_PERMISSION = {
-  "/dashboard": "dashboard",
   "/dashboard/patients": "patients",
+  "/dashboard/invoices": "patients",
   "/dashboard/doctors": "doctors",
+  "/dashboard/reports": "vendors",
+  "/dashboard/clients": "vendors",
+  "/dashboard/vendors": "vendors",
+  "/dashboard/branches": "settings",
   "/dashboard/stock": "stock",
   "/dashboard/hr": "hr",
+  "/dashboard/cash-expenses": "cash_expenses",
+  "/dashboard/expenses/scan": "expenses_scan",
+  "/dashboard/expenses/dental-stock": "expenses_dental_stock",
+  "/dashboard/expenses/el3awama-stock": "expenses_el3awama_stock",
   "/dashboard/settings": "settings",
 };
 
+// Pages everyone signed in may open, whatever their page permissions.
+const OPEN_ROUTES = ["/dashboard/action-center", "/dashboard/bug-reports"];
+
+// Admin only, and not grantable by a permission key. These are not in the table
+// above, so without this they would fall through to "no permission required".
+const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer"];
+
 function permissionForPath(pathname) {
+  if (OPEN_ROUTES.some((p) => pathname.startsWith(p))) return null;
+
+  // "/dashboard" is matched EXACTLY. It used to be in the table above and
+  // matched as a prefix, so every route not listed - invoices, reports,
+  // clients, the cash pages, the Action Center - fell through to it and
+  // demanded the dashboard permission. No staff account has that permission,
+  // so all of those pages refused everyone but an admin, while the sidebar
+  // went on offering them.
+  if (pathname === "/dashboard") return "dashboard";
+
   const match = Object.keys(ROUTE_PERMISSION)
     .sort((a, b) => b.length - a.length)
     .find((p) => pathname.startsWith(p));
@@ -44,7 +71,9 @@ export default function DashboardLayout({ children }) {
   }, [router]);
 
   const required = permissionForPath(pathname);
-  const denied = ready && !permsLoading && required && !can(required);
+  const adminOnly = ADMIN_ROUTES.some((p) => pathname.startsWith(p));
+  const denied =
+    ready && !permsLoading && ((required && !can(required)) || (adminOnly && profile?.role !== "admin"));
 
   if (!ready || permsLoading) {
     return <Loading />;
