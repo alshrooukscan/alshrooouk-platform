@@ -114,15 +114,15 @@ async function generateInvoicePdf(req, params) {
 
   page.drawLine({ start: { x: 46, y: height - 100 }, end: { x: width - 46, y: height - 100 }, thickness: 1, color: BLACK });
 
-  let y = height - 136;
+  let y = height - 142;
   const LABEL_RIGHT = width - 40;
   const VALUE_RIGHT = width - 128;
   const LABELS = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:" };
 
   async function label(key) {
     const img = await drawArabicImage(LABELS[key], { size: 30 });
-    const h = 13, w = (img.width / img.height) * h;
-    page.drawImage(img, { x: LABEL_RIGHT - w, y: y - 3, width: w, height: h });
+    const h = 17, w = (img.width / img.height) * h;
+    page.drawImage(img, { x: LABEL_RIGHT - w, y: y - 4, width: w, height: h });
   }
 
   // Latin values in Courier New, right-aligned to the value column.
@@ -142,14 +142,14 @@ async function generateInvoicePdf(req, params) {
     // words sit in the correct order without positioning each piece by hand.
     const line = `${figure} جم ${words}`;
     const img = await drawArabicImage(line, { size: 26 });
-    const h = 13, w = (img.width / img.height) * h;
+    const h = 19, w = (img.width / img.height) * h;
     // Long amounts must not run under the label, so the line shrinks to fit.
     const maxW = VALUE_RIGHT - 30;
     const drawW = Math.min(w, maxW);
     const drawH = drawW === w ? h : (img.height / img.width) * drawW;
     page.drawImage(img, { x: VALUE_RIGHT - drawW, y: y - (drawH - h) / 2 - 3, width: drawW, height: drawH });
   }
-  y -= 34;
+  y -= 44;
 
   const examDate = invoice.exam_date
     ? new Date(`${invoice.exam_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
@@ -157,27 +157,27 @@ async function generateInvoicePdf(req, params) {
   for (const [key, val] of [["name", invoice.patient_name], ["exam", invoice.exam], ["date", examDate]]) {
     await label(key);
     if (val) valueRight(val);
-    y -= 34;
+    y -= 44;
   }
 
-  y -= 2;
+  y -= 4;
   const dividerY = y;
   page.drawLine({ start: { x: 46, y: dividerY }, end: { x: width - 46, y: dividerY }, thickness: 1, color: BLACK });
 
   // Address in the serif Arabic face; the phone line in Courier New.
-  let fy = dividerY - 24;
+  let fy = dividerY - 30;
   const addrImg = await drawArabicImage(
     "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر",
     { size: 22 }
   );
-  const addrH = 11, addrW = (addrImg.width / addrImg.height) * addrH;
+  const addrH = 15, addrW = (addrImg.width / addrImg.height) * addrH;
   page.drawImage(addrImg, { x: (width - addrW) / 2, y: fy, width: addrW, height: addrH });
-  fy -= 20;
+  fy -= 26;
 
   {
     const digits = "15184 - 0128887187";
     const taImg = await drawArabicImage("ت :", { size: 22 });
-    const taH = 10.5, taW = (taImg.width / taImg.height) * taH;
+    const taH = 15, taW = (taImg.width / taImg.height) * taH;
     const digitsW = courier.widthOfTextAtSize(digits, 10.5);
     // "ت :" sits to the RIGHT of the digits, as the line reads right to left.
     const blockW = taW + 5 + digitsW;
