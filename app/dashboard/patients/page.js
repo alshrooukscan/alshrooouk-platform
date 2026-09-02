@@ -6,7 +6,7 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
-import { doctorLabel, formatVisitDate } from "../../../lib/format";
+import { doctorLabel, formatVisitDate, formatVisitDateTime } from "../../../lib/format";
 
 const PAGE_SIZE = 50;
 // Each stage filter is tri-state: null = All (no filter), true = On (must
@@ -173,7 +173,7 @@ export default function PatientsPage() {
       const ids = patientsPage.map((p) => p.id);
       const { data: recentVisits } = await supabase
         .from("visits")
-        .select("patient_id, exam_date, scan_types, payment_status, scanned, raw_data_uploaded, report_done, invoices(id), amount_paid, doctor_id, doctors(name, clinic_code), visit_payments(payment_method)")
+        .select("patient_id, exam_date, exam_time, scan_types, payment_status, scanned, raw_data_uploaded, report_done, invoices(id), amount_paid, doctor_id, doctors(name, clinic_code), visit_payments(payment_method)")
         .in("patient_id", ids)
         .order("created_at", { ascending: false });
       const statusMap = {};
@@ -181,6 +181,7 @@ export default function PatientsPage() {
         if (!statusMap[v.patient_id]) {
           statusMap[v.patient_id] = {
             exam_date: v.exam_date,
+            exam_time: v.exam_time,
             scan_types: v.scan_types,
             paid: v.payment_status === "paid",
             scanned: v.scanned,
@@ -439,7 +440,7 @@ export default function PatientsPage() {
                   {p.dob && ` · ${new Date(p.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
                 </div>
                 {status?.exam_date && (
-                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>Last visit: {formatVisitDate(status.exam_date)}</div>
+                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>Last visit: {formatVisitDateTime(status.exam_date, status.exam_time)}</div>
                 )}
                 {status?.scan_types?.length > 0 && (
                   <div style={{ fontSize: 12, color: theme.navy, fontWeight: 600, marginBottom: 2 }}>{status.scan_types.join(", ")}</div>

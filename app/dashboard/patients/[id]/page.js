@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { formatPhone } from "../../../../lib/formatPhone";
 import { theme } from "../../../../lib/theme";
-import { formatMoney, formatVisitDate, doctorLabel } from "../../../../lib/format";
+import { formatMoney, formatVisitDate, formatVisitDateTime, doctorLabel } from "../../../../lib/format";
 import {
   customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage,
   patientReportWhatsAppLink, buildPatientReportMessage,
@@ -217,7 +217,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, scan_types, exam_date, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
+      .select("id, scan_types, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle(),
@@ -695,7 +695,7 @@ export default function PatientProfilePage() {
             <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: theme.goldLight, color: theme.navy, whiteSpace: "nowrap" }}>
-                  {formatVisitDate(v.exam_date)}
+                  {formatVisitDateTime(v.exam_date, v.exam_time)}
                 </span>
                 <span style={{ fontWeight: 600, color: theme.navy }}>{(v.scan_types || []).join(", ")}</span>
               </div>
@@ -1051,7 +1051,7 @@ function ScanPickerModal({ visits, onClose, onPick }) {
           >
             <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>{(v.scan_types || []).join(", ") || "—"}</div>
             <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
-              {formatVisitDate(v.exam_date)} · {v.doctors?.name || "Walk-in"} · {v.payment_status}
+              {formatVisitDateTime(v.exam_date, v.exam_time)} · {v.doctors?.name || "Walk-in"} · {v.payment_status}
             </div>
           </button>
         ))}
@@ -1168,6 +1168,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
         branch_id: form.branch_id || null,
         scan_types: scanNames,
         exam_date: form.exam_date || null,
+        exam_time: form.exam_time || null,
         // `sumAfterDiscount || null` turned a fully-discounted visit (0) into
         // NULL, which then read as "no amount set" and stayed pending forever.
         // Zero is a real, settled amount.
@@ -1214,13 +1215,21 @@ function AddScanModal({ patient, onClose, onSaved }) {
   return (
     <Modal title={`Add New Scan — ${patient.name}`} onClose={onClose} wide>
       <form onSubmit={handleSubmit}>
-        <FieldLabel>Visit Date</FieldLabel>
-        <input
-          type="date"
-          style={inp}
-          value={form.exam_date}
-          onChange={(e) => setForm({ ...form, exam_date: e.target.value })}
-        />
+        <FieldLabel>Visit Date &amp; Time</FieldLabel>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="date"
+            style={{ ...inp, flex: 1 }}
+            value={form.exam_date}
+            onChange={(e) => setForm({ ...form, exam_date: e.target.value })}
+          />
+          <input
+            type="time"
+            style={{ ...inp, width: 130 }}
+            value={form.exam_time}
+            onChange={(e) => setForm({ ...form, exam_time: e.target.value })}
+          />
+        </div>
 
         <FieldLabel>Branch</FieldLabel>
         <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
@@ -1365,6 +1374,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
 
   const [form, setForm] = useState({
     exam_date: visit.exam_date || "",
+    exam_time: (visit.exam_time || "").slice(0, 5),
     branch_id: visit.branch_id || "",
     scan_type_ids: [],
     discount_on: Number(visit.discount_pct) > 0,
@@ -1475,6 +1485,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
 
     const requestedValues = {
       exam_date: form.exam_date || null,
+      exam_time: form.exam_time || null,
       scan_types: scanNames,
       doctor_id: walkIn ? null : selectedDoctor?.id || null,
       branch_id: form.branch_id || null,
@@ -1485,6 +1496,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
     };
     const previousValues = {
       exam_date: visit.exam_date || null,
+      exam_time: visit.exam_time || null,
       scan_types: visit.scan_types || [],
       doctor_id: visit.doctor_id || null,
       branch_id: visit.branch_id || null,
@@ -1580,13 +1592,21 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         </p>
       )}
       <form onSubmit={handleSubmit}>
-        <FieldLabel>Visit Date</FieldLabel>
-        <input
-          type="date"
-          style={inp}
-          value={form.exam_date}
-          onChange={(e) => setForm({ ...form, exam_date: e.target.value })}
-        />
+        <FieldLabel>Visit Date &amp; Time</FieldLabel>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="date"
+            style={{ ...inp, flex: 1 }}
+            value={form.exam_date}
+            onChange={(e) => setForm({ ...form, exam_date: e.target.value })}
+          />
+          <input
+            type="time"
+            style={{ ...inp, width: 130 }}
+            value={form.exam_time}
+            onChange={(e) => setForm({ ...form, exam_time: e.target.value })}
+          />
+        </div>
 
         <FieldLabel>Branch</FieldLabel>
         <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
