@@ -552,16 +552,11 @@ export default function PatientProfilePage() {
           {/* Straight into the patient's Drive folder. Staff were opening Drive
               and searching by name to find it, which is slow and lands on the
               wrong folder whenever two patients share a name. */}
-          {/* The referring doctor, taken from the most recent visit. Visits are
-              ordered newest first, so this is who last sent this patient in. */}
-          {visits.find((v) => v.doctors?.id) && (
-            <a
-              href={`/dashboard/doctors/${visits.find((v) => v.doctors?.id).doctors.id}`}
-              style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}
-            >
-              {doctorLabel(visits.find((v) => v.doctors?.id).doctors.name)}
-            </a>
-          )}
+          {/* No doctor button here. Each visit card already carries a link to
+              its OWN referring doctor, which is the accurate one - a header
+              button can only show the most recent visit's doctor, and would
+              contradict the card whenever a patient was referred by more than
+              one doctor. */}
           {patient.drive_folder_id && (
             <a
               href={`https://drive.google.com/drive/folders/${patient.drive_folder_id}`}
