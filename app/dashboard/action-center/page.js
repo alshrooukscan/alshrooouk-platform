@@ -50,6 +50,7 @@ export default function ActionCenterPage() {
   const [swaps, setSwaps] = useState([]);
   const [clockFixes, setClockFixes] = useState([]);
   const [alerts, setAlerts] = useState({ stockZero: 0, stockLow: 0, overdueReports: 0 });
+  const [attExceptions, setAttExceptions] = useState([]);
 
   useEffect(() => {
     if (!permsLoading && profile) load();
@@ -66,6 +67,19 @@ export default function ActionCenterPage() {
     });
     const result = await res.json();
     if (!res.ok) alert(result.error || "Could not update that swap.");
+    setBusyId(null);
+    load();
+  }
+
+  async function decideException(id, approve) {
+    setBusyId(id);
+    const { data: sess } = await supabase.auth.getSession();
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+      body: JSON.stringify({ action: "decide_exception", id, approve }),
+    });
+    if (!res.ok) alert((await res.json()).error || "Could not update that.");
     setBusyId(null);
     load();
   }
@@ -127,6 +141,10 @@ export default function ActionCenterPage() {
         stockLow: (stock || []).filter((i) => Number(i.qty_remaining || 0) > 0 && Number(i.qty_remaining || 0) <= Number(i.reorder_level ?? 3)).length,
         overdueReports: (rep || []).filter((r) => r.date_required && r.date_required < todayStr).length,
       });
+      const excRes = await fetch("/api/hr/payroll?exceptions=1", {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      });
+      if (excRes.ok) setAttExceptions((await excRes.json()).exceptions || []);
       const fixRes = await fetch("/api/admin/timeclock-corrections", {
         headers: { Authorization: `Bearer ${sess.session?.access_token}` },
       });
@@ -387,6 +405,37 @@ export default function ActionCenterPage() {
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {isAdmin && attExceptions.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Days Awaiting a Pay Decision</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Signed in but never signed out. Until you decide, the day is neither paid nor unpaid — so a forgotten tap
+            costs nobody a day&apos;s wage, and nobody is paid for a day they did not work.
+          </p>
+          {attExceptions.map((x) => (
+            <div key={x.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{x.employees?.name}</div>
+                <div style={{ fontSize: 11, color: theme.gray }}>
+                  {new Date(x.work_date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} &middot; {x.reason}
+                  {x.employees?.hourly_rate ? ` · paid hourly` : " · monthly salary"}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => decideException(x.id, true)} disabled={busyId === x.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Credit the day
+                </button>
+                <button onClick={() => decideException(x.id, false)} disabled={busyId === x.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Do not pay
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

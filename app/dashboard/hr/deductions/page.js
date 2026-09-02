@@ -11,7 +11,9 @@ export default function DeductionsAndExcusesPage() {
   const [deductionRules, setDeductionRules] = useState([]);
   const [excuseRules, setExcuseRules] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [newDeduction, setNewDeduction] = useState({ name: "", value: "" });
+  const [ruleForm, setRuleForm] = useState({ id: null, name: "", kind: "deduction", ruleType: "fixed", value: "", description: "" });
+  const [ruleError, setRuleError] = useState("");
+  const [savingRule, setSavingRule] = useState(false);
   const [newExcuse, setNewExcuse] = useState({ name: "" });
   const [statusFilter, setStatusFilter] = useState("pending");
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ export default function DeductionsAndExcusesPage() {
   async function loadAll() {
     setLoading(true);
     const [{ data: d }, { data: e }, { data: s }] = await Promise.all([
-      supabase.from("deduction_rules").select("*").order("created_at"),
+      supabase.from("deduction_rules").select("*").order("kind").order("name"),
       supabase.from("excuse_rules").select("*").order("created_at"),
       supabase.from("excuse_submissions").select("*, employees(name, hr_id), excuse_rules(name)").order("created_at", { ascending: false }),
     ]);
@@ -34,15 +36,49 @@ export default function DeductionsAndExcusesPage() {
     setLoading(false);
   }
 
-  async function addDeduction() {
-    if (!newDeduction.name) return;
-    await supabase.from("deduction_rules").insert({ name: newDeduction.name, value: newDeduction.value || 0, rule_type: "fixed" });
-    setNewDeduction({ name: "", value: "" });
+  async function token() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token;
+  }
+
+  async function saveRule() {
+    setRuleError("");
+    if (!ruleForm.name.trim()) return setRuleError("Give the rule a name.");
+    if (!ruleForm.value || Number(ruleForm.value) <= 0) return setRuleError("Enter a value greater than zero.");
+    setSavingRule(true);
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "save_rule", ...ruleForm }),
+    });
+    const j = await res.json();
+    setSavingRule(false);
+    if (!res.ok) return setRuleError(j.error || "Could not save that rule.");
+    setRuleForm({ id: null, name: "", kind: "deduction", ruleType: "fixed", value: "", description: "" });
     loadAll();
   }
 
-  async function updateDeductionValue(rule, value) {
-    await supabase.from("deduction_rules").update({ value }).eq("id", rule.id);
+  async function deleteRule(rule) {
+    if (!confirm(`Delete "${rule.name}"?`)) return;
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "delete_rule", id: rule.id }),
+    });
+    const j = await res.json();
+    // A rule that has already been applied is deactivated instead, so an old
+    // payslip can still explain where its figure came from.
+    if (!res.ok) return alert(j.error);
+    loadAll();
+  }
+
+  async function toggleRule(rule) {
+    await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "retire_rule", id: rule.id, active: !rule.is_active }),
+    });
+    loadAll();
   }
 
   async function addExcuse() {
@@ -87,19 +123,71 @@ export default function DeductionsAndExcusesPage() {
         <div style={cardStyle}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Deduction Rules</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>
-            Editing a rule's value here changes the next payslip generated for any employee assigned to it.
+            A rule is either a flat amount, a number of days&apos; pay, or a percentage of salary. A day is worth the
+            hourly rate times that day&apos;s scheduled hours, or the monthly salary divided by 30.
           </p>
-          {deductionRules.map((r) => (
-            <div key={r.id} style={row}>
-              <span style={{ color: theme.navy, fontWeight: 600 }}>{r.name}</span>
-              <input style={{ ...inp, width: 100, marginBottom: 0 }} defaultValue={r.value} onBlur={(e) => updateDeductionValue(r, e.target.value)} />
+
+          {ruleError && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{ruleError}</p>}
+
+          {["deduction", "bonus"].map((kindKey) => {
+            const list = deductionRules.filter((r) => (r.kind || "deduction") === kindKey);
+            return (
+              <div key={kindKey} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: kindKey === "bonus" ? "#1e7a3c" : "#ba1a1a", textTransform: "uppercase", marginBottom: 6 }}>
+                  {kindKey === "bonus" ? "Bonuses" : "Deductions"}
+                </div>
+                {list.length === 0 && <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 6px" }}>None yet.</p>}
+                {list.map((r) => (
+                  <div key={r.id} style={{ ...row, opacity: r.is_active === false ? 0.5 : 1 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ color: theme.navy, fontWeight: 600 }}>{r.name}</span>
+                      <span style={{ fontSize: 11, color: theme.gray, marginLeft: 8 }}>
+                        {r.rule_type === "fixed" && `${r.value} EGP`}
+                        {r.rule_type === "day_multiplier" && `${r.value} day${Number(r.value) === 1 ? "" : "s"} of pay`}
+                        {r.rule_type === "percentage" && `${r.value}% of salary`}
+                        {r.is_active === false && " · inactive"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => setRuleForm({ id: r.id, name: r.name, kind: r.kind || "deduction", ruleType: r.rule_type, value: r.value, description: r.description || "" })}
+                        style={tinyBtn}>Edit</button>
+                      <button onClick={() => toggleRule(r)} style={tinyBtn}>{r.is_active === false ? "Activate" : "Deactivate"}</button>
+                      <button onClick={() => deleteRule(r)} style={{ ...tinyBtn, color: "#ba1a1a" }}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <div style={{ background: "#faf9fb", borderRadius: 10, padding: 12, marginTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#48464E", marginBottom: 8 }}>
+              {ruleForm.id ? "Edit rule" : "New rule"}
             </div>
-          ))}
-          {deductionRules.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No deduction rules yet.</p>}
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <input style={inp} value={newDeduction.name} onChange={(e) => setNewDeduction({ ...newDeduction, name: e.target.value })} placeholder="Rule name (e.g., Late Arrival)" />
-            <input style={{ ...inp, width: 90 }} value={newDeduction.value} onChange={(e) => setNewDeduction({ ...newDeduction, value: e.target.value })} placeholder="EGP" />
-            <button onClick={addDeduction} style={smallPrimary}>+ Add</button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input style={{ ...inp, flex: 1, minWidth: 150, marginBottom: 0 }} value={ruleForm.name}
+                onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })} placeholder="Name (e.g. Late Arrival)" />
+              <select style={{ ...inp, width: 120, marginBottom: 0 }} value={ruleForm.kind}
+                onChange={(e) => setRuleForm({ ...ruleForm, kind: e.target.value })}>
+                <option value="deduction">Deduction</option>
+                <option value="bonus">Bonus</option>
+              </select>
+              <select style={{ ...inp, width: 150, marginBottom: 0 }} value={ruleForm.ruleType}
+                onChange={(e) => setRuleForm({ ...ruleForm, ruleType: e.target.value })}>
+                <option value="fixed">Fixed amount (EGP)</option>
+                <option value="day_multiplier">Days of pay</option>
+                <option value="percentage">% of salary</option>
+              </select>
+              <input style={{ ...inp, width: 90, marginBottom: 0 }} value={ruleForm.value}
+                onChange={(e) => setRuleForm({ ...ruleForm, value: e.target.value })}
+                placeholder={ruleForm.ruleType === "fixed" ? "EGP" : ruleForm.ruleType === "day_multiplier" ? "days" : "%"} />
+              <button onClick={saveRule} disabled={savingRule} style={smallPrimary}>
+                {savingRule ? "Saving..." : ruleForm.id ? "Save" : "+ Add"}
+              </button>
+              {ruleForm.id && (
+                <button onClick={() => setRuleForm({ id: null, name: "", kind: "deduction", ruleType: "fixed", value: "", description: "" })} style={tinyBtn}>Cancel</button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -201,3 +289,14 @@ const row = { display: "flex", justifyContent: "space-between", alignItems: "cen
 const inp = { padding: "8px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, flex: 1 };
 const smallPrimary = { padding: "8px 16px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 };
 const smallBtn = { padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600 };
+
+const tinyBtn = {
+  padding: "4px 10px",
+  borderRadius: 6,
+  border: "1px solid #ddd",
+  background: "#fff",
+  color: "#27214D",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+};
