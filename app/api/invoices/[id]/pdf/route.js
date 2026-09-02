@@ -57,7 +57,7 @@ function kashida(text, every = 3) {
 // box left the short lines swimming in empty pixels, so when the image was
 // scaled to a target height on the page the text inside came out far smaller
 // than its neighbours - the amount line was the worst of it.
-function renderArabicToPng(text, { size = 24, color = "#0d0d0d", bold = false, family = "NaskhArabic" } = {}) {
+function renderArabicToPng(text, { size = 26, color = "#0d0d0d", bold = false, family = "NaskhArabic" } = {}) {
   ensureFontRegistered();
   const font = `${bold ? "bold " : ""}${size}px ${family}`;
   const probe = createCanvas(8, 8).getContext("2d");
@@ -199,14 +199,37 @@ async function generateInvoicePdf(req, params) {
 
   await label("amount");
   {
+    // The canvas has no bidirectional layout, so a mixed line of Latin digits
+    // and Arabic came out scrambled - the figure landed correctly on the right
+    // but "جم" was thrown to the far left, away from the number it belongs to.
+    // The three pieces are therefore placed by hand, right to left, which is
+    // how the line actually reads: figure, then جم, then the words.
     const figure = Number(invoice.amount).toLocaleString("en-US");
-    const line = kashida(`${figure} جم ${amountInArabicWords(invoice.amount)}`, 3);
-    const img = await drawArabicImage(line, { size: 26 });
-    const h = 16, w = (img.width / img.height) * h;
-    const maxW = VALUE_RIGHT - INNER_L;
-    const drawW = Math.min(w, maxW);
-    const drawH = drawW === w ? h : (img.height / img.width) * drawW;
-    page.drawImage(img, { x: VALUE_RIGHT - drawW, y: y - (drawH - h) / 2 - 3, width: drawW, height: drawH });
+    const figSize = 11;
+    const figW = courier.widthOfTextAtSize(figure, figSize);
+
+    const unitImg = await drawArabicImage("جم");
+    const unitH = 13, unitW = (unitImg.width / unitImg.height) * unitH;
+
+    const wordsImg = await drawArabicImage(kashida(amountInArabicWords(invoice.amount), 3));
+    let wordsH = 13, wordsW = (wordsImg.width / wordsImg.height) * wordsH;
+
+    const GAP = 6;
+    // If the written amount is long, only that part shrinks - the figure stays
+    // legible, which is the number that matters on a receipt.
+    const available = VALUE_RIGHT - INNER_L - figW - unitW - GAP * 2;
+    if (wordsW > available) {
+      wordsW = available;
+      wordsH = (wordsImg.height / wordsImg.width) * wordsW;
+    }
+
+    let x = VALUE_RIGHT;
+    x -= figW;
+    page.drawText(figure, { x, y, size: figSize, font: courier, color: BLACK });
+    x -= GAP + unitW;
+    page.drawImage(unitImg, { x, y: y - 3, width: unitW, height: unitH });
+    x -= GAP + wordsW;
+    page.drawImage(wordsImg, { x, y: y - 3 - (wordsH - 13) / 2, width: wordsW, height: wordsH });
   }
   y -= ROW_GAP;
 
