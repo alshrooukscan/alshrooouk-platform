@@ -158,9 +158,19 @@ async function generateInvoicePdf(req, params) {
   const titleW = 232.5, titleH = (titleImg.height / titleImg.width) * titleW;
   page.drawImage(titleImg, { x: 253 - titleW / 2, y: 344.5 - titleH / 2, width: titleW, height: titleH });
 
-  // Logo to the left of the title.
-  const logoW = 80;
-  page.drawImage(logoImage, { x: 149 - logoW / 2, y: 336.6 - logoW / 2, width: logoW, height: logoW });
+  // Logo. The asset is a 400x400 square whose visible mark occupies only the
+  // middle 76.5% horizontally, so drawing it at the measured 72.1pt would have
+  // rendered the mark far too small - and at the width I had guessed it ran
+  // over the title. The draw box is scaled up from the ink, then centred on the
+  // ink rather than on the asset.
+  const LOGO_INK_W = 72.1;
+  const logoW = LOGO_INK_W / 0.765;
+  const logoH = logoW;
+  page.drawImage(logoImage, {
+    x: 145.6 - logoW * 0.519,
+    y: 334.4 - logoH * (1 - 0.520),
+    width: logoW, height: logoH,
+  });
 
   // Receipt number: Courier, red, centred on x=300 - right of the title's centre.
   const seqMatch = invoice.invoice_number.match(/(\d+)$/);
@@ -222,17 +232,18 @@ async function generateInvoicePdf(req, params) {
   await label("date", ROWS_Y[3]);
   if (invoice.exam_date) valueRight(receiptDate(invoice.exam_date), ROWS_Y[3]);
 
-  // Address: two lines, 320pt wide, centred on x=257.
-  const addrParts = [
-    "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة",
-    "الحادية عشر - مدينة نصر",
+  // Address. Each line is placed by its measured left edge and width rather
+  // than centred, because on the issued receipt the two lines do NOT share a
+  // centre - the first sits well left of the second. Setting the width also
+  // fixes the type size, which measuring by height alone had got too small.
+  const addrLines = [
+    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 97.3, w: 320.1, y: 104 },
+    { text: "الحادية عشر - مدينة نصر", x: 224.0, w: 150.3, y: 92 },
   ];
-  let fy = 113.5;
-  for (const part of addrParts) {
-    const img = await drawArabicImage(kashida(part, 3), { size: 24, bold: true });
-    const h = 10, w = (img.width / img.height) * h;
-    page.drawImage(img, { x: 257 - w / 2, y: fy, width: w, height: h });
-    fy -= 12.2;
+  for (const ln of addrLines) {
+    const img = await drawArabicImage(kashida(ln.text, 3), { size: 24, bold: true });
+    const h = (img.height / img.width) * ln.w;
+    page.drawImage(img, { x: ln.x, y: ln.y, width: ln.w, height: h });
   }
 
   // Phone line sits lower and is centred on x=300, not on the address centre.
@@ -243,8 +254,8 @@ async function generateInvoicePdf(req, params) {
     const digitsW = courier.widthOfTextAtSize(digits, VALUE_SIZE);
     const blockW = taW + 6 + digitsW;
     const startX = 300 - blockW / 2;
-    page.drawText(digits, { x: startX, y: 71.5, size: VALUE_SIZE, font: courier, color: BLACK });
-    page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.5, width: taW, height: taH });
+    page.drawText(digits, { x: startX, y: 71.9, size: VALUE_SIZE, font: courier, color: BLACK });
+    page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.9, width: taW, height: taH });
   }
 
   // Seal: 93pt across, centred at (468.3, 76) - low enough that it runs past
