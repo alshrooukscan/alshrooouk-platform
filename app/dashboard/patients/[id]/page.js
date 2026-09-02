@@ -394,6 +394,11 @@ export default function PatientProfilePage() {
         patient_name: patient.name,
         exam: (visit.scan_types || []).join(", "),
         exam_date: visit.exam_date,
+        // {{trans}} on the original receipt template - the payment reference
+        // printed beside the amount.
+        trans: (visit.visit_payments || [])
+          .map((p) => p.payment_method)
+          .find((m) => m && m !== "Unknown") || null,
       })
       .select("id")
       .single();

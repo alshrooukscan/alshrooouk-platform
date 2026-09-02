@@ -70,74 +70,92 @@ async function generateInvoicePdf(req, params) {
     return pdf.embedPng(renderArabicToPng(text, opts));
   }
 
-  // Thick black border, matching the real receipt's frame
-  page.drawRectangle({ x: 6, y: 6, width: width - 12, height: height - 12, borderColor: BLACK, borderWidth: 2.2 });
+  // Layout mirrors Copy_of_Invoice_Template.docx exactly: thin frame, logo
+  // left, title and receipt number CENTRED, values right-aligned in a middle
+  // column with the Arabic labels on the far right, and a centred bold footer.
+  page.drawRectangle({ x: 8, y: 8, width: width - 16, height: height - 16, borderColor: BLACK, borderWidth: 1 });
 
-  // Logo, top-left, real source asset
-  const logoW = 82, logoH = (logoImage.height / logoImage.width) * logoW;
-  page.drawImage(logoImage, { x: 30, y: height - 26 - logoH, width: logoW, height: logoH });
+  // Logo, top-left
+  const logoW = 88, logoH = (logoImage.height / logoImage.width) * logoW;
+  page.drawImage(logoImage, { x: 34, y: height - 30 - logoH, width: logoW, height: logoH });
 
-  // Title, bold, matching the real 14pt bold spec
-  const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 34, widthPx: 700, heightPx: 60, align: "right", bold: true });
-  const titleDrawW = 210, titleDrawH = (titleImg.height / titleImg.width) * titleDrawW;
-  page.drawImage(titleImg, { x: width - 40 - titleDrawW, y: height - 52 - titleDrawH / 2, width: titleDrawW, height: titleDrawH });
+  // Title, CENTRED on the page - not right-aligned
+  const titleImg = await drawArabicImage("إيصال استلام نقدية", { size: 40, widthPx: 760, heightPx: 70, align: "center", bold: true });
+  const titleDrawW = 176, titleDrawH = (titleImg.height / titleImg.width) * titleDrawW;
+  page.drawImage(titleImg, { x: (width - titleDrawW) / 2, y: height - 44 - titleDrawH / 2, width: titleDrawW, height: titleDrawH });
 
-  // Receipt number, red, Courier New (matching the real template's exact font choice)
+  // Receipt number, red Courier, CENTRED beneath the title
   const seqMatch = invoice.invoice_number.match(/(\d+)$/);
   const receiptStr = seqMatch ? seqMatch[1] : invoice.invoice_number;
-  const numSize = 19;
+  const numSize = 20;
   const numW = courierBold.widthOfTextAtSize(receiptStr, numSize);
-  page.drawText(receiptStr, { x: width - 40 - numW, y: height - 92, size: numSize, font: courierBold, color: RED });
+  page.drawText(receiptStr, { x: (width - numW) / 2, y: height - 96, size: numSize, font: courierBold, color: RED });
 
-  page.drawLine({ start: { x: 30, y: height - 108 }, end: { x: width - 30, y: height - 108 }, thickness: 1.5, color: BLACK });
+  page.drawLine({ start: { x: 52, y: height - 116 }, end: { x: width - 52, y: height - 116 }, thickness: 1.1, color: BLACK });
 
-  // Fields: المبلغ / الاسم / الفحص / تاريخ الفحص — labels are regular weight (not bold) per the real template
-  let y = height - 148;
-  const fieldLabels = { amount: "المبلغ", name: "الاسم", exam: "الفحص", date: "تاريخ الفحص", unit: "جم" };
+  // Fields. Labels sit at the right margin; values are RIGHT-aligned and end at
+  // a fixed column short of them, which is what the template does - the old
+  // version left-aligned the values against the opposite margin instead.
+  let y = height - 158;
+  const LABEL_RIGHT = width - 46;   // right edge of the Arabic label
+  const VALUE_RIGHT = width - 150;  // right edge of the value column
+  const fieldLabels = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:", unit: "جم" };
 
-  async function field(labelKey, value, showUnit) {
-    const img = await drawArabicImage(`${fieldLabels[labelKey]} :`, { size: 30, widthPx: 280, heightPx: 48, align: "right", bold: false });
-    const drawH = 16;
-    const realDrawW = (img.width / img.height) * drawH;
-    page.drawImage(img, { x: width - 40 - realDrawW, y: y - 4, width: realDrawW, height: drawH });
-
-    if (showUnit) {
-      const unitImg = await drawArabicImage(fieldLabels.unit, { size: 24, widthPx: 100, heightPx: 36, align: "right", bold: false });
-      const unitH = 12, unitW = (unitImg.width / unitImg.height) * unitH;
-      page.drawImage(unitImg, { x: width - 40 - realDrawW - 140, y: y - 3, width: unitW, height: unitH });
-    }
-    if (value) {
-      page.drawText(String(value), { x: 40, y, size: 13, font: helvBold, color: BLACK });
-    }
-    y -= 40;
+  async function label(key) {
+    const img = await drawArabicImage(fieldLabels[key], { size: 30, widthPx: 300, heightPx: 48, align: "right", bold: false });
+    const h = 14, w = (img.width / img.height) * h;
+    page.drawImage(img, { x: LABEL_RIGHT - w, y: y - 3, width: w, height: h });
+  }
+  function valueRight(text, size = 13) {
+    const w = helvBold.widthOfTextAtSize(String(text), size);
+    page.drawText(String(text), { x: VALUE_RIGHT - w, y, size, font: helvBold, color: BLACK });
+    return w;
   }
 
-  await field("amount", `${Number(invoice.amount).toLocaleString("en-US")}`, true);
-  await field("name", invoice.patient_name, false);
-  await field("exam", invoice.exam, false);
-  await field("date", invoice.exam_date, false);
+  // Amount row reads, right to left: المبلغ:  {{total}} جم {{trans}}
+  await label("amount");
+  {
+    const amountStr = Number(invoice.amount).toLocaleString("en-US");
+    const amountW = valueRight(amountStr);
+    const unitImg = await drawArabicImage(fieldLabels.unit, { size: 26, widthPx: 90, heightPx: 40, align: "right", bold: false });
+    const unitH = 12, unitW = (unitImg.width / unitImg.height) * unitH;
+    page.drawImage(unitImg, { x: VALUE_RIGHT - amountW - 8 - unitW, y: y - 2, width: unitW, height: unitH });
+    if (invoice.trans) {
+      const tw = helvBold.widthOfTextAtSize(String(invoice.trans), 13);
+      page.drawText(String(invoice.trans), { x: VALUE_RIGHT - amountW - 16 - unitW - tw, y, size: 13, font: helvBold, color: BLACK });
+    }
+  }
+  y -= 38;
 
-  y -= 10;
+  for (const [key, val] of [["name", invoice.patient_name], ["exam", invoice.exam], ["date", invoice.exam_date]]) {
+    await label(key);
+    if (val) valueRight(val);
+    y -= 38;
+  }
+
+  y -= 4;
   const dividerY = y;
-  page.drawLine({ start: { x: 30, y: dividerY }, end: { x: width - 30, y: dividerY }, thickness: 1.5, color: BLACK });
+  page.drawLine({ start: { x: 52, y: dividerY }, end: { x: width - 52, y: dividerY }, thickness: 1.1, color: BLACK });
 
-  // Real stamp, footer zone, bottom-right, sized to fit fully within the page
-  const stampW = 78, stampH = (stampImage.height / stampImage.width) * stampW;
-  page.drawImage(stampImage, { x: width - 40 - stampW, y: dividerY - stampH - 14, width: stampW, height: stampH });
-
-  // Footer: real address + phone, bold per the real template
-  let fy = dividerY - 26;
+  // Footer: address then phone, both CENTRED and bold, as in the template.
+  let fy = dividerY - 22;
   const addrImg = await drawArabicImage(
     "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة الحادية عشر - مدينة نصر",
-    { size: 14, widthPx: 900, heightPx: 26, align: "right", bold: true }
+    { size: 20, widthPx: 1100, heightPx: 34, align: "center", bold: true }
   );
-  const addrDrawH = 8, addrDrawW = (addrImg.width / addrImg.height) * addrDrawH;
-  page.drawImage(addrImg, { x: 30, y: fy, width: addrDrawW, height: addrDrawH });
-  fy -= 16;
+  const addrH = 10, addrW = (addrImg.width / addrImg.height) * addrH;
+  page.drawImage(addrImg, { x: (width - addrW) / 2, y: fy, width: addrW, height: addrH });
+  fy -= 20;
 
-  const phoneImg = await drawArabicImage("ت : 15184 - 0128887187", { size: 14, widthPx: 400, heightPx: 26, align: "right", bold: true });
-  const phoneDrawH = 8, phoneDrawW = (phoneImg.width / phoneImg.height) * phoneDrawH;
-  page.drawImage(phoneImg, { x: 30, y: fy, width: phoneDrawW, height: phoneDrawH });
+  const phoneImg = await drawArabicImage("ت : 15184 - 0128887187", { size: 20, widthPx: 420, heightPx: 34, align: "center", bold: true });
+  const phoneH = 10, phoneW = (phoneImg.width / phoneImg.height) * phoneH;
+  page.drawImage(phoneImg, { x: (width - phoneW) / 2, y: fy, width: phoneW, height: phoneH });
+
+  // The clinic's seal is not in the .docx - that document is stamped by hand
+  // after printing. Kept, small and clear of the text, because an issued
+  // receipt carries it; say the word and it comes off.
+  const stampW = 62, stampH = (stampImage.height / stampImage.width) * stampW;
+  page.drawImage(stampImage, { x: width - 40 - stampW, y: 20, width: stampW, height: stampH, opacity: 0.9 });
 
   const bytes = await pdf.save();
   return new NextResponse(bytes, {
