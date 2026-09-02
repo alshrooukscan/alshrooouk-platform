@@ -183,7 +183,12 @@ async function generateInvoicePdf(req, params) {
   const ROW_GAP = 27;
   const LABEL_RIGHT = INNER_R;
   const VALUE_RIGHT = INNER_R - 108;
-  const LABELS = { amount: "المبلغ:", name: "الاسم :", exam: "الفحص :", date: "تاريخ الفحص:" };
+  // The colon belongs AFTER the Arabic word, which in a right-to-left line puts
+  // it on the LEFT. Without a bidi algorithm the canvas was placing this
+  // neutral character at the visual end of the run instead, so it printed on
+  // the wrong side of every label. Leading the string with the colon puts it
+  // where it actually belongs; verified by rendering the alternatives.
+  const LABELS = { amount: ":المبلغ", name: ": الاسم", exam: ": الفحص", date: ":تاريخ الفحص" };
 
   async function label(key) {
     const img = await drawArabicImage(kashida(LABELS[key], 3), { size: 26, bold: true });
@@ -282,7 +287,7 @@ async function generateInvoicePdf(req, params) {
   fy -= 10;
   {
     const digits = "15184 - 0128887187";
-    const taImg = await drawArabicImage("ت :", { size: 24, bold: true });
+    const taImg = await drawArabicImage(": ت", { size: 24, bold: true });
     const taH = 11.5, taW = (taImg.width / taImg.height) * taH;
     const size = 10.5;
     const digitsW = courier.widthOfTextAtSize(digits, size);
