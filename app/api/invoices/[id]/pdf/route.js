@@ -152,11 +152,13 @@ async function generateInvoicePdf(req, params) {
     page.drawLine({ start: { x: FRAME_X, y: dy }, end: { x: FRAME_R, y: dy }, thickness: 1.2, color: BLACK });
   }
 
-  // Title: 232.5pt wide, centred on x=253 - noticeably left of centre, because
-  // the logo occupies the space to its left.
+  // Title: 139.3pt wide, centred on x=299.7. An earlier measurement put it at
+  // 232pt on x=253, which was wrong - the scan had picked up the logo's navy
+  // wordmark as if it were title text, and the oversized title then ran under
+  // the logo. Measured again against near-black pixels only.
   const titleImg = await drawArabicImage(kashida("إيصال استلام نقدية", 3), { size: 40, bold: true });
-  const titleW = 232.5, titleH = (titleImg.height / titleImg.width) * titleW;
-  page.drawImage(titleImg, { x: 253 - titleW / 2, y: 344.5 - titleH / 2, width: titleW, height: titleH });
+  const titleW = 139.3, titleH = (titleImg.height / titleImg.width) * titleW;
+  page.drawImage(titleImg, { x: 299.7 - titleW / 2, y: 345.5 - titleH / 2, width: titleW, height: titleH });
 
   // Logo. The asset is a 400x400 square whose visible mark occupies only the
   // middle 76.5% horizontally, so drawing it at the measured 72.1pt would have
