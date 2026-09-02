@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { createCanvas, registerFont } from "canvas";
 import fs from "fs";
 import path from "path";
@@ -240,7 +240,7 @@ async function generateInvoicePdf(req, params) {
   // fixes the type size, which measuring by height alone had got too small.
   const addrLines = [
     { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 97.3, w: 320.1, y: 104 },
-    { text: "الحادية عشر - مدينة نصر", x: 224.0, w: 150.3, y: 92 },
+    { text: "الحادية عشر - مدينة نصر", x: 224.0, w: 150.3, y: 93.8 },
   ];
   for (const ln of addrLines) {
     const img = await drawArabicImage(kashida(ln.text, 3), { size: 24, bold: true });
@@ -256,8 +256,8 @@ async function generateInvoicePdf(req, params) {
     const digitsW = courier.widthOfTextAtSize(digits, VALUE_SIZE);
     const blockW = taW + 6 + digitsW;
     const startX = 300 - blockW / 2;
-    page.drawText(digits, { x: startX, y: 71.9, size: VALUE_SIZE, font: courier, color: BLACK });
-    page.drawImage(taImg, { x: startX + digitsW + 6, y: 70.9, width: taW, height: taH });
+    page.drawText(digits, { x: startX, y: 77.2, size: VALUE_SIZE, font: courier, color: BLACK });
+    page.drawImage(taImg, { x: startX + digitsW + 6, y: 76.2, width: taW, height: taH });
   }
 
   // Seal. Drawn last so it sits over everything, and shifted left and down so
@@ -269,15 +269,15 @@ async function generateInvoicePdf(req, params) {
   // composites over the words rather than covering them. Opacity is full,
   // because the cut-out already carries the ink's own density.
   if (stamped) {
-    const stampW = 104, stampH = stampW * (138 / 139);
-    const tilt = -9;
-    const rad = (tilt * Math.PI) / 180;
-    const cx = 424, cy = 74;
-    // pdf-lib rotates about the anchor rather than the centre, so the anchor is
-    // worked back from where the seal should actually land.
-    const x = cx - ((stampW / 2) * Math.cos(rad) - (stampH / 2) * Math.sin(rad));
-    const y = cy - ((stampW / 2) * Math.sin(rad) + (stampH / 2) * Math.cos(rad));
-    page.drawImage(stampImage, { x, y, width: stampW, height: stampH, rotate: degrees(tilt) });
+    // Measured off the original: 92.8pt across, centred at (468.2, 75.8). I had
+    // moved it 44pt further left to force an overlap, but the original already
+    // catches the right end of the address and runs past the frame from here -
+    // so it is put back where it actually sits.
+    const stampW = 92.8, stampH = stampW * (138 / 139);
+    page.drawImage(stampImage, {
+      x: 468.2 - stampW / 2, y: 75.8 - stampH / 2,
+      width: stampW, height: stampH,
+    });
   }
 
   const bytes = await pdf.save();
