@@ -37,6 +37,13 @@ export default function PatientsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [withoutFolderCount, setWithoutFolderCount] = useState(0);
   const [sharedFolderCount, setSharedFolderCount] = useState(0);
+  const [grandTotal, setGrandTotal] = useState(0);
+  // Which folder problem is being looked at: "" (none), "none" (no folder
+  // linked) or "shared" (several patients on one folder). Filtering here rather
+  // than on a separate page keeps the search, paging and status badges that
+  // already work, instead of a second list that drifts out of step.
+  const [folderFilter, setFolderFilter] = useState("");
+  const [sharedIds, setSharedIds] = useState(null);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loginAsBusy, setLoginAsBusy] = useState(null);
@@ -45,6 +52,7 @@ export default function PatientsPage() {
   useEffect(() => {
     supabase.from("doctors").select("id, name, clinic_code").order("name").then(({ data }) => setDoctors(data || []));
     supabase.from("exam_types").select("name").eq("is_active", true).order("name").then(({ data }) => setExamTypes(data || []));
+    supabase.from("patients").select("id", { count: "exact", head: true }).then(({ count }) => setGrandTotal(count || 0));
     supabase.from("patients").select("id", { count: "exact", head: true }).is("drive_folder_id", null).then(({ count }) => setWithoutFolderCount(count || 0));
     // A folder pointer can exist and still be wrong. Several patients sharing
     // one folder means duplicate records, or two real people whose scans land
@@ -63,7 +71,7 @@ export default function PatientsPage() {
 
   useEffect(() => {
     search();
-  }, [page, mobileQuery, dateFrom, dateTo, doctorId, scanType, stageFilters]);
+  }, [page, mobileQuery, dateFrom, dateTo, doctorId, scanType, stageFilters, folderFilter]);
 
   const anyStageFilter = Object.values(stageFilters).some((v) => v !== null);
 
@@ -124,6 +132,29 @@ export default function PatientsPage() {
     } else {
       let pq = supabase.from("patients").select("id, name, mobile, dob, created_at, last_visit_date, drive_folder_id", { count: "exact" });
       if (mobileQuery) pq = pq.or(`mobile.ilike.%${mobileQuery}%,name.ilike.%${mobileQuery}%`);
+      if (folderFilter === "none") pq = pq.is("drive_folder_id", null);
+      if (folderFilter === "shared") {
+        // Sharing is a property of the group, not of one row, so the ids are
+        // worked out once and reused while the filter stays on.
+        let ids = sharedIds;
+        if (ids === null) {
+          const { data: all } = await supabase
+            .from("patients")
+            .select("id, drive_folder_id")
+            .not("drive_folder_id", "is", null);
+          const counts = {};
+          for (const r of all || []) counts[r.drive_folder_id] = (counts[r.drive_folder_id] || 0) + 1;
+          ids = (all || []).filter((r) => counts[r.drive_folder_id] > 1).map((r) => r.id);
+          setSharedIds(ids);
+        }
+        if (ids.length === 0) {
+          setResults([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+        pq = pq.in("id", ids);
+      }
       // Newest-visit-first, not newest-record-first - a patient registered
       // long ago who was just scanned today should surface at the top, the
       // same way the filtered view (which sorts by exam_date) already does.
@@ -216,20 +247,45 @@ export default function PatientsPage() {
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Patient Directory</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        {totalCount.toLocaleString()} patients on record. Search by name or mobile number, or filter by visit details below.
+        {folderFilter === "none"
+          ? `${totalCount.toLocaleString()} patients with no Drive folder linked. Their scans have nowhere to be filed.`
+          : folderFilter === "shared"
+          ? `${totalCount.toLocaleString()} patients sharing a folder with someone else — duplicate records, or different people whose scans land together.`
+          : `${totalCount.toLocaleString()} patients on record. Search by name or mobile number, or filter by visit details below.`}
       </p>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 20px", boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>NO DRIVE FOLDER LINKED</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: withoutFolderCount > 0 ? "#a97c00" : theme.navy }}>{withoutFolderCount.toLocaleString()}</div>
-          <div style={{ fontSize: 10, color: theme.gray }}>of {totalCount.toLocaleString()} patients</div>
-        </div>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 20px", boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>SHARING A FOLDER</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: sharedFolderCount > 0 ? "#ba1a1a" : theme.navy }}>{sharedFolderCount.toLocaleString()}</div>
-          <div style={{ fontSize: 10, color: theme.gray }}>linked, but not to their own folder</div>
-        </div>
+        {[
+          { key: "none", label: "NO DRIVE FOLDER LINKED", value: withoutFolderCount, sub: `of ${grandTotal.toLocaleString()} patients`, colour: "#a97c00" },
+          { key: "shared", label: "SHARING A FOLDER", value: sharedFolderCount, sub: "linked, but not to their own", colour: "#ba1a1a" },
+        ].map((t) => {
+          const on = folderFilter === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => { setPage(0); setFolderFilter(on ? "" : t.key); }}
+              title={on ? "Click to clear this filter" : "Click to see these patients"}
+              style={{
+                background: on ? theme.navy : "#fff",
+                borderRadius: 12,
+                padding: "12px 20px",
+                boxShadow: "0 2px 10px rgba(39,33,77,0.05)",
+                border: on ? `2px solid ${theme.navy}` : "2px solid transparent",
+                textAlign: "left",
+                cursor: "pointer",
+                font: "inherit",
+              }}
+            >
+              <div style={{ fontSize: 11, color: on ? "rgba(255,255,255,0.75)" : theme.gray, fontWeight: 600 }}>{t.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: on ? "#fff" : t.value > 0 ? t.colour : theme.navy }}>
+                {t.value.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 10, color: on ? "rgba(255,255,255,0.7)" : theme.gray }}>
+                {on ? "Showing these — click to clear" : t.sub}
+              </div>
+            </button>
+          );
+        })}
         <button onClick={handleExportMissingFolders} disabled={exporting} style={{ ...pageBtn, alignSelf: "center" }}>
           {exporting ? "Preparing..." : "Export List (No Folder)"}
         </button>
