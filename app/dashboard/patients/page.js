@@ -75,6 +75,18 @@ export default function PatientsPage() {
 
   const anyStageFilter = Object.values(stageFilters).some((v) => v !== null);
 
+  // Sharing a folder is a property of the GROUP, not of any one row, so it
+  // cannot be expressed as a column filter. Worked out once and reused.
+  async function resolveSharedIds() {
+    if (sharedIds !== null) return sharedIds;
+    const { data: all } = await supabase.from("patients").select("id, drive_folder_id").not("drive_folder_id", "is", null);
+    const counts = {};
+    for (const r of all || []) counts[r.drive_folder_id] = (counts[r.drive_folder_id] || 0) + 1;
+    const ids = (all || []).filter((r) => counts[r.drive_folder_id] > 1).map((r) => r.id);
+    setSharedIds(ids);
+    return ids;
+  }
+
   async function search() {
     setLoading(true);
     const from = page * PAGE_SIZE;
@@ -99,7 +111,23 @@ export default function PatientsPage() {
         excludeVisitIds = [...new Set((invoicedRows || []).map((r) => r.visit_id))];
       }
 
+      // The folder filter has to apply on BOTH paths. It used to be added only
+      // to the patient query, so the moment a date, doctor, scan type or stage
+      // filter was set the search switched to this visit query and the folder
+      // filter silently vanished - the list appeared to ignore the tile.
+      let folderIds = null;
+      if (folderFilter === "shared") {
+        folderIds = await resolveSharedIds();
+      }
+
       let vq = supabase.from("visits").select(`id, patient_id, patients!inner(id, name, mobile, dob, created_at, drive_folder_id), ${invoiceJoin}`, { count: "exact" });
+      if (folderFilter === "none") vq = vq.is("patients.drive_folder_id", null);
+      if (folderFilter === "shared") {
+        if (folderIds.length === 0) {
+          setResults([]); setTotalCount(0); setLoading(false); return;
+        }
+        vq = vq.in("patient_id", folderIds);
+      }
       if (dateFrom) vq = vq.gte("exam_date", dateFrom);
       if (dateTo) vq = vq.lte("exam_date", dateTo);
       if (doctorId) vq = vq.eq("doctor_id", doctorId);
@@ -134,19 +162,7 @@ export default function PatientsPage() {
       if (mobileQuery) pq = pq.or(`mobile.ilike.%${mobileQuery}%,name.ilike.%${mobileQuery}%`);
       if (folderFilter === "none") pq = pq.is("drive_folder_id", null);
       if (folderFilter === "shared") {
-        // Sharing is a property of the group, not of one row, so the ids are
-        // worked out once and reused while the filter stays on.
-        let ids = sharedIds;
-        if (ids === null) {
-          const { data: all } = await supabase
-            .from("patients")
-            .select("id, drive_folder_id")
-            .not("drive_folder_id", "is", null);
-          const counts = {};
-          for (const r of all || []) counts[r.drive_folder_id] = (counts[r.drive_folder_id] || 0) + 1;
-          ids = (all || []).filter((r) => counts[r.drive_folder_id] > 1).map((r) => r.id);
-          setSharedIds(ids);
-        }
+        const ids = await resolveSharedIds();
         if (ids.length === 0) {
           setResults([]);
           setTotalCount(0);
@@ -349,7 +365,7 @@ export default function PatientsPage() {
             </select>
           </div>
         </div>
-        {(dateFrom || dateTo || doctorId || scanType || mobileQuery || anyStageFilter) && (
+        {(dateFrom || dateTo || doctorId || scanType || mobileQuery || anyStageFilter || folderFilter) && (
           <button
             onClick={() => {
               setMobileQuery(""); setDateFrom(""); setDateTo(""); setDoctorId(""); setScanType("");
