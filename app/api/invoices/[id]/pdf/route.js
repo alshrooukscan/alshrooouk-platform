@@ -242,7 +242,7 @@ async function generateInvoicePdf(req, params) {
   // padding either side, so setting the box to the measured width left the text
   // a few points narrow and inset. The box is widened and shifted to compensate.
   const addrLines = [
-    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 82.3, w: 326.8, y: 101 },
+    { text: "عيادة 353 - المركز الطبي 3 - شارع ابو داوود الظاهرى - المنطقة", x: 92.7, w: 316.4, y: 101 },
     { text: "الحادية عشر - مدينة نصر", x: 223.4, w: 153.2, y: 90.5 },
   ];
   for (const ln of addrLines) {
@@ -280,7 +280,7 @@ async function generateInvoicePdf(req, params) {
     // seal noticeably smaller than the original's. Sized from the ink instead.
     const stampW = 106.7, stampH = stampW * (138 / 139);
     page.drawImage(stampImage, {
-      x: 467.4 - stampW / 2, y: 76.4 - stampH / 2,
+      x: 467.4 - stampW / 2, y: 74.5 - stampH / 2,
       width: stampW, height: stampH,
     });
   }
