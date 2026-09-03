@@ -1,237 +1,557 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { useAutoRefresh } from "../lib/useAutoRefresh";
 
-const DAYS = [
-  { key: 0, label: "Sun" },
-  { key: 1, label: "Mon" },
-  { key: 2, label: "Tue" },
-  { key: 3, label: "Wed" },
-  { key: 4, label: "Thu" },
-  { key: 5, label: "Fri" },
-  { key: 6, label: "Sat" },
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_LABELS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
-// Weekly recurring shifts for one branch's staff, read from employee_shifts
-// (one row per employee per day_of_week). employees itself is never queried
-// live here beyond id/name - the only fields the authenticated role can read -
-// so this stays clear of the salary/national_id lockdown entirely.
-export default function WorkforceCalendar({ branchId }) {
-  const [employees, setEmployees] = useState([]);
-  const [shifts, setShifts] = useState([]);
-  const [loading, setLoading] = useState(true);
+function toISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function startOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function daysInMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+function todayISO() {
+  return toISODate(new Date());
+}
 
-  // Editor state: a simple dropdown-driven form rather than a drag calendar,
-  // per the client's own request for "the simplest UI as a drop down menu".
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
-  const [selectedDays, setSelectedDays] = useState([]);
+// Backed by employee_schedule_days - real dated rows, the same table payroll
+// and shift-swap requests already read - not employee_shifts, which is a
+// separate weekly-pattern editor that lives on each employee's HR page and
+// isn't touched here. A month calendar is inherently about specific dates,
+// so shifts entered here actually count toward hours worked, not just look
+// like they do.
+export default function WorkforceCalendar({ branchId }) {
+  const [monthCursor, setMonthCursor] = useState(() =>
+    startOfMonth(new Date()),
+  );
+  const [employees, setEmployees] = useState([]);
+  const [days, setDays] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openDate, setOpenDate] = useState(null);
+
+  const [addEmployeeIds, setAddEmployeeIds] = useState([]);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
   const [dayOff, setDayOff] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const monthStartISO = toISODate(monthCursor);
+  const monthEndISO = toISODate(
+    new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0),
+  );
 
   async function load() {
     if (!branchId) {
       setEmployees([]);
-      setShifts([]);
+      setDays([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [{ data: emps }, { data: sh }] = await Promise.all([
-      // name/id are the only columns this role can read on employees - see
-      // the grant lockdown - which is exactly all a calendar needs.
-      supabase.from("employees").select("id, name").eq("branch_id", branchId).eq("is_active", true).order("name"),
-      supabase.from("employee_shifts").select("id, employee_id, day_of_week, start_time, end_time, is_day_off"),
-    ]);
-    const empIds = new Set((emps || []).map((e) => e.id));
+    const { data: emps } = await supabase
+      .from("employees")
+      .select("id, name")
+      .eq("branch_id", branchId)
+      .eq("is_active", true)
+      .order("name");
     setEmployees(emps || []);
-    setShifts((sh || []).filter((s) => empIds.has(s.employee_id)));
+
+    const empIds = (emps || []).map((e) => e.id);
+    if (!empIds.length) {
+      setDays([]);
+      setLoading(false);
+      return;
+    }
+    const { data: sd } = await supabase
+      .from("employee_schedule_days")
+      .select("id, employee_id, work_date, start_time, end_time, is_day_off")
+      .in("employee_id", empIds)
+      .gte("work_date", monthStartISO)
+      .lte("work_date", monthEndISO);
+    setDays(sd || []);
     setLoading(false);
   }
 
   useEffect(() => {
     load();
+    setOpenDate(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId]);
+  }, [branchId, monthStartISO]);
 
-  useAutoRefresh(["employee_shifts", "employees_change_ping"], () => load());
+  useAutoRefresh(["employee_schedule_days", "employees_change_ping"], () =>
+    load(),
+  );
 
-  function shiftFor(employeeId, dayKey) {
-    return shifts.find((s) => s.employee_id === employeeId && s.day_of_week === dayKey);
+  const cells = useMemo(() => {
+    const firstWeekday = monthCursor.getDay();
+    const total = daysInMonth(monthCursor);
+    const out = [];
+    for (let i = 0; i < firstWeekday; i++) out.push(null);
+    for (let d = 1; d <= total; d++)
+      out.push(new Date(monthCursor.getFullYear(), monthCursor.getMonth(), d));
+    while (out.length % 7 !== 0) out.push(null);
+    return out;
+  }, [monthCursor]);
+
+  function entriesFor(dateISO) {
+    return days.filter((d) => d.work_date === dateISO);
   }
 
-  function toggleIn(list, setList, value) {
-    setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  function employeeName(id) {
+    return employees.find((e) => e.id === id)?.name || "Unknown";
   }
 
-  async function applyShift() {
-    if (!selectedEmployeeIds.length || !selectedDays.length) {
-      setSaveMsg("Pick at least one employee and one day.");
+  function toggleAddEmployee(id) {
+    setAddEmployeeIds((prev) =>
+      prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id],
+    );
+  }
+
+  function openCard(dateISO) {
+    setOpenDate(openDate === dateISO ? null : dateISO);
+    setAddEmployeeIds([]);
+    setDayOff(false);
+    setStartTime("09:00");
+    setEndTime("17:00");
+    setErr("");
+  }
+
+  // Applies to every employee ticked in the card at once - each is resolved
+  // as an update if that employee already has a row for this date (editing
+  // an existing shift), or an insert otherwise. work_date + employee_id is a
+  // unique pair in the table, so there is never more than one row to resolve
+  // per employee per date.
+  async function applyToDate(dateISO) {
+    if (!addEmployeeIds.length) {
+      setErr("Pick at least one employee.");
       return;
     }
     if (!dayOff && startTime >= endTime) {
-      setSaveMsg("End time must be after start time.");
+      setErr("End time must be after start time.");
       return;
     }
     setSaving(true);
-    setSaveMsg("");
-
-    // One upsert per (employee, day) pair. employee_shifts has no natural
-    // single-row-per-pair unique constraint to upsert against, so each cell is
-    // resolved by hand: update the existing row for that pair if one exists,
-    // otherwise insert a new one. A handful of employees times a handful of
-    // days is at most a few dozen rows - simplicity over a batched query here.
-    const rows = [];
-    for (const employeeId of selectedEmployeeIds) {
-      for (const day of selectedDays) {
-        rows.push({ employeeId, day });
-      }
-    }
-
+    setErr("");
     let failed = 0;
-    for (const { employeeId, day } of rows) {
-      const existing = shiftFor(employeeId, day);
+    for (const employeeId of addEmployeeIds) {
+      const existing = days.find(
+        (d) => d.employee_id === employeeId && d.work_date === dateISO,
+      );
       const payload = {
         employee_id: employeeId,
-        day_of_week: day,
+        work_date: dateISO,
         is_day_off: dayOff,
         start_time: dayOff ? null : startTime,
         end_time: dayOff ? null : endTime,
       };
       const { error } = existing
-        ? await supabase.from("employee_shifts").update(payload).eq("id", existing.id)
-        : await supabase.from("employee_shifts").insert(payload);
+        ? await supabase
+            .from("employee_schedule_days")
+            .update(payload)
+            .eq("id", existing.id)
+        : await supabase.from("employee_schedule_days").insert(payload);
       if (error) failed += 1;
     }
-
     setSaving(false);
-    setSaveMsg(failed ? `${failed} of ${rows.length} could not be saved.` : "Saved.");
+    setAddEmployeeIds([]);
+    if (failed)
+      setErr(`${failed} of ${addEmployeeIds.length} could not be saved.`);
+    load();
+  }
+
+  async function removeEntry(rowId) {
+    await supabase.from("employee_schedule_days").delete().eq("id", rowId);
     load();
   }
 
   if (!branchId) {
-    return <p style={{ color: theme.gray, fontSize: 13 }}>Select a branch above to manage its schedule.</p>;
+    return (
+      <p style={{ color: theme.gray, fontSize: 13 }}>
+        Select a branch above to manage its schedule.
+      </p>
+    );
   }
 
   return (
     <div>
-      {/* --- weekly grid: read-only view of what's currently set --- */}
-      <div style={{ overflowX: "auto", marginBottom: 20 }}>
-        {loading ? (
-          <p style={{ color: theme.gray, fontSize: 13 }}>Loading schedule...</p>
-        ) : employees.length === 0 ? (
-          <p style={{ color: theme.gray, fontSize: 13 }}>No active employees assigned to this branch.</p>
-        ) : (
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
-            <thead>
-              <tr>
-                <th style={gridHeadCell}>Employee</th>
-                {DAYS.map((d) => (
-                  <th key={d.key} style={gridHeadCell}>{d.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((emp) => (
-                <tr key={emp.id}>
-                  <td style={{ ...gridCell, fontWeight: 700, color: theme.navy, textAlign: "left" }}>{emp.name}</td>
-                  {DAYS.map((d) => {
-                    const s = shiftFor(emp.id, d.key);
-                    return (
-                      <td key={d.key} style={gridCell}>
-                        {!s ? (
-                          <span style={{ color: "#ccc" }}>—</span>
-                        ) : s.is_day_off ? (
-                          <span style={{ color: "#b45309", fontWeight: 600 }}>Off</span>
-                        ) : (
-                          <span style={{ color: theme.gray }}>
-                            {s.start_time?.slice(0, 5)}–{s.end_time?.slice(0, 5)}
-                          </span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 14,
+        }}
+      >
+        <button
+          onClick={() =>
+            setMonthCursor(
+              new Date(
+                monthCursor.getFullYear(),
+                monthCursor.getMonth() - 1,
+                1,
+              ),
+            )
+          }
+          style={navBtn}
+        >
+          {"\u2039"}
+        </button>
+        <div style={{ fontWeight: 700, color: theme.navy, fontSize: 15 }}>
+          {MONTH_LABELS[monthCursor.getMonth()]} {monthCursor.getFullYear()}
+        </div>
+        <button
+          onClick={() =>
+            setMonthCursor(
+              new Date(
+                monthCursor.getFullYear(),
+                monthCursor.getMonth() + 1,
+                1,
+              ),
+            )
+          }
+          style={navBtn}
+        >
+          {"\u203A"}
+        </button>
+      </div>
+
+      {loading ? (
+        <p style={{ color: theme.gray, fontSize: 13 }}>Loading schedule...</p>
+      ) : employees.length === 0 ? (
+        <p style={{ color: theme.gray, fontSize: 13 }}>
+          No active employees assigned to this branch.
+        </p>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, 1fr)",
+            gap: 6,
+          }}
+        >
+          {WEEKDAY_LABELS.map((w) => (
+            <div key={w} style={weekdayHead}>
+              {w}
+            </div>
+          ))}
+          {cells.map((date, i) => {
+            if (!date) return <div key={`blank-${i}`} />;
+            const dateISO = toISODate(date);
+            const entries = entriesFor(dateISO);
+            const isOpen = openDate === dateISO;
+            const isToday = dateISO === todayISO();
+            return (
+              <div
+                key={dateISO}
+                onClick={() => openCard(dateISO)}
+                style={{
+                  border: `1px solid ${isOpen ? theme.gold : isToday ? theme.navy : "#ececf0"}`,
+                  borderRadius: 8,
+                  padding: 8,
+                  minHeight: 74,
+                  cursor: "pointer",
+                  background: isOpen ? "#fffaf0" : "#fff",
+                  gridColumn: isOpen ? "span 7" : undefined,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: isToday ? theme.navy : "#8A8694",
+                    }}
+                  >
+                    {date.getDate()}
+                  </span>
+                  {entries.length > 0 && (
+                    <span style={{ fontSize: 9, color: theme.gray }}>
+                      {entries.length}
+                    </span>
+                  )}
+                </div>
+
+                {!isOpen && (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                    }}
+                  >
+                    {entries.slice(0, 3).map((e) => (
+                      <div
+                        key={e.id}
+                        style={{
+                          fontSize: 10,
+                          color: e.is_day_off ? "#b45309" : theme.gray,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {employeeName(e.employee_id)}
+                        {e.is_day_off
+                          ? " — Off"
+                          : ` ${e.start_time?.slice(0, 5)}-${e.end_time?.slice(0, 5)}`}
+                      </div>
+                    ))}
+                    {entries.length > 3 && (
+                      <div style={{ fontSize: 10, color: "#bbb" }}>
+                        +{entries.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isOpen && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ marginTop: 8 }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: theme.navy,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {date.toLocaleDateString("en-GB", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      })}
+                    </div>
+
+                    {entries.length > 0 && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 6,
+                          marginBottom: 10,
+                        }}
+                      >
+                        {entries.map((e) => (
+                          <div key={e.id} style={entryChip}>
+                            <span style={{ fontWeight: 600 }}>
+                              {employeeName(e.employee_id)}
+                            </span>
+                            <span>
+                              {e.is_day_off
+                                ? "Off"
+                                : `${e.start_time?.slice(0, 5)}\u2013${e.end_time?.slice(0, 5)}`}
+                            </span>
+                            <button
+                              onClick={() => removeEntry(e.id)}
+                              style={removeChipBtn}
+                              title="Remove"
+                            >
+                              {"\u00d7"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        background: "#fbfbfc",
+                        border: "1px solid #ececf0",
+                        borderRadius: 8,
+                        padding: 12,
+                      }}
+                    >
+                      <div style={miniLabel}>
+                        Add / update employee(s) for this day
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 6,
+                          marginBottom: 10,
+                        }}
+                      >
+                        {employees.map((emp) => (
+                          <label
+                            key={emp.id}
+                            style={chipLabel(addEmployeeIds.includes(emp.id))}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={addEmployeeIds.includes(emp.id)}
+                              onChange={() => toggleAddEmployee(emp.id)}
+                              style={{ display: "none" }}
+                            />
+                            {emp.name}
+                          </label>
+                        ))}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          alignItems: "flex-end",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            color: theme.gray,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={dayOff}
+                            onChange={(e) => setDayOff(e.target.checked)}
+                          />
+                          Day off
+                        </label>
+                        {!dayOff && (
+                          <>
+                            <div>
+                              <div style={miniLabel}>Start</div>
+                              <input
+                                type="time"
+                                value={startTime}
+                                onChange={(e) => setStartTime(e.target.value)}
+                                style={timeInp}
+                              />
+                            </div>
+                            <div>
+                              <div style={miniLabel}>End</div>
+                              <input
+                                type="time"
+                                value={endTime}
+                                onChange={(e) => setEndTime(e.target.value)}
+                                style={timeInp}
+                              />
+                            </div>
+                          </>
                         )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* --- editor: dropdown-driven, applies to one or many employees / days at once --- */}
-      <div style={{ background: "#fbfbfc", border: "1px solid #ececf0", borderRadius: 10, padding: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: theme.navy, marginBottom: 10 }}>Set or adjust shifts</div>
-
-        <div style={{ marginBottom: 10 }}>
-          <div style={miniLabel}>Employee(s)</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {employees.map((emp) => (
-              <label key={emp.id} style={chipLabel(selectedEmployeeIds.includes(emp.id))}>
-                <input
-                  type="checkbox"
-                  checked={selectedEmployeeIds.includes(emp.id)}
-                  onChange={() => toggleIn(selectedEmployeeIds, setSelectedEmployeeIds, emp.id)}
-                  style={{ display: "none" }}
-                />
-                {emp.name}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 10 }}>
-          <div style={miniLabel}>Day(s)</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {DAYS.map((d) => (
-              <label key={d.key} style={chipLabel(selectedDays.includes(d.key))}>
-                <input
-                  type="checkbox"
-                  checked={selectedDays.includes(d.key)}
-                  onChange={() => toggleIn(selectedDays, setSelectedDays, d.key)}
-                  style={{ display: "none" }}
-                />
-                {d.label}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: theme.gray }}>
-            <input type="checkbox" checked={dayOff} onChange={(e) => setDayOff(e.target.checked)} />
-            Mark as day off
-          </label>
-          {!dayOff && (
-            <>
-              <div>
-                <div style={miniLabel}>Start</div>
-                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={timeInp} />
+                        <button
+                          onClick={() => applyToDate(dateISO)}
+                          disabled={saving}
+                          style={applyBtn}
+                        >
+                          {saving ? "Saving..." : "Apply"}
+                        </button>
+                        <button
+                          onClick={() => setOpenDate(null)}
+                          style={closeBtn}
+                        >
+                          Close
+                        </button>
+                      </div>
+                      {err && (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: "#ba1a1a",
+                            marginTop: 8,
+                          }}
+                        >
+                          {err}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <div style={miniLabel}>End</div>
-                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={timeInp} />
-              </div>
-            </>
-          )}
-          <button onClick={applyShift} disabled={saving} style={applyBtn}>
-            {saving ? "Saving..." : "Apply"}
-          </button>
+            );
+          })}
         </div>
-        {saveMsg && <p style={{ fontSize: 12, color: saveMsg === "Saved." ? "#2e7d32" : "#ba1a1a", marginTop: 8 }}>{saveMsg}</p>}
-      </div>
+      )}
     </div>
   );
 }
 
-const gridHeadCell = { padding: "8px 10px", fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4, borderBottom: "1px solid #ececf0", textAlign: "center" };
-const gridCell = { padding: "8px 10px", fontSize: 12, textAlign: "center", borderBottom: "1px solid #f5f5f7", whiteSpace: "nowrap" };
-const miniLabel = { fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 };
-const timeInp = { padding: "7px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 };
-const applyBtn = { padding: "9px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" };
+const navBtn = {
+  width: 30,
+  height: 30,
+  borderRadius: 8,
+  border: "1px solid #ddd",
+  background: "#fff",
+  color: theme.navy,
+  fontSize: 16,
+  cursor: "pointer",
+};
+const weekdayHead = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#8A8694",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+  textAlign: "center",
+  padding: "4px 0",
+};
+const miniLabel = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#8A8694",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+  marginBottom: 6,
+};
+const timeInp = {
+  padding: "7px 10px",
+  borderRadius: 6,
+  border: "1px solid #ddd",
+  fontSize: 13,
+};
+const applyBtn = {
+  padding: "9px 20px",
+  borderRadius: 8,
+  border: "none",
+  background: theme.navy,
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: "pointer",
+};
+const closeBtn = {
+  padding: "9px 16px",
+  borderRadius: 8,
+  border: "1px solid #ddd",
+  background: "#fff",
+  color: theme.gray,
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: "pointer",
+};
 const chipLabel = (active) => ({
   padding: "5px 12px",
   borderRadius: 999,
@@ -242,3 +562,23 @@ const chipLabel = (active) => ({
   background: active ? theme.goldLight : "#fff",
   color: theme.navy,
 });
+const entryChip = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "5px 10px",
+  borderRadius: 999,
+  background: "#f0f0f4",
+  fontSize: 11,
+  color: theme.navy,
+};
+const removeChipBtn = {
+  border: "none",
+  background: "none",
+  color: "#ba1a1a",
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1,
+  padding: 0,
+};
