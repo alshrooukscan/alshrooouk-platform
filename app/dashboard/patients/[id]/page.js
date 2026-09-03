@@ -13,6 +13,8 @@ import {
   patientInvoiceWhatsAppLink, buildPatientInvoiceMessage,
   patientRawDataWhatsAppLink, buildPatientRawDataMessage,
   directWhatsAppLink,
+  doctorReportWhatsAppLink, buildDoctorReportMessage,
+  doctorRawDataWhatsAppLink, buildDoctorRawDataMessage,
 } from "../../../../lib/whatsapp";
 import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
 import { usePermissions } from "../../../../lib/usePermissions";
@@ -46,6 +48,9 @@ export default function PatientProfilePage() {
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [whatsAppPicker, setWhatsAppPicker] = useState(false);
+  // Which scan types require a report, so a visit whose scans need no report
+  // never shows a "Report Done" row that can never legitimately be ticked.
+  const [examTypes, setExamTypes] = useState([]);
   const [employees, setEmployees] = useState([]);
   const { profile, isAdmin, can } = usePermissions();
   const [fileBusy, setFileBusy] = useState(null);
@@ -61,6 +66,36 @@ export default function PatientProfilePage() {
     load();
     loadFiles();
     loadEmployees();
+  }, [id]);
+
+  // Live refresh. Two people work the same patient at once - reception logs the
+  // payment while the technician uploads the scan - and each was seeing a stale
+  // page until they reloaded by hand.
+  //
+  // Scoped to THIS patient's rows, and debounced: a 10-file batch upload fires
+  // 10 inserts in a few seconds, and refetching per event would hammer the
+  // database for no benefit.
+  useEffect(() => {
+    if (!id) return;
+    let timer = null;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        load();
+        loadFiles();
+      }, 600);
+    };
+
+    const channel = supabase
+      .channel(`patient-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "visits", filter: `patient_id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "patient_files", filter: `patient_id=eq.${id}` }, refresh)
+      .subscribe();
+
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
   }, [id]);
 
   function startEditInfo() {
@@ -143,19 +178,37 @@ export default function PatientProfilePage() {
     setFiles(data.files || []);
   }
 
-  const [pendingFile, setPendingFile] = useState(null);
+  // A batch, not a single file: staff routinely have 10+ images off one scan
+  // and were picking them one at a time, choosing the type again each time.
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [batchStatus, setBatchStatus] = useState("");
+  // Visit History filter. A long-standing patient can have a dozen visits, and
+  // finding the one scan a doctor is asking about meant scrolling all of them.
+  const [visitFilter, setVisitFilter] = useState({ from: "", to: "", scanType: "" });
 
   function handleFilePicked(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setPendingFile(file);
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setPendingFiles(picked);
     e.target.value = ""; // allow picking the same file again later
   }
 
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragActive(false);
+    if (uploading) return;
+    const dropped = Array.from(e.dataTransfer?.files || []);
+    // Type is chosen AFTER the drop, in the same modal the button flow uses,
+    // so a drag-and-drop upload can never be filed under the wrong type by
+    // skipping that step.
+    if (dropped.length) setPendingFiles(dropped);
+  }
+
   async function handleFileUpload(fileType, visitId) {
-    const file = pendingFile;
-    if (!file) return;
-    setPendingFile(null);
+    const batch = pendingFiles;
+    if (!batch.length) return;
+    setPendingFiles([]);
     setUploading(true);
     setUploadProgress(0);
     const { data: session } = await supabase.auth.getSession();
@@ -164,64 +217,92 @@ export default function PatientProfilePage() {
       ? await supabase.from("staff_profiles").select("name").eq("email", uploaderEmail).maybeSingle()
       : { data: null };
 
-    try {
-      const fileId = await uploadFileToDrive({
-        file,
-        initEndpoint: "/api/drive/upload-session",
-        initBody: { patientId: id, filename: file.name, mimeType: file.type, fileType, visitId },
-        onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
-        authToken: session.session?.access_token,
-      });
-
-      const res = await fetch("/api/drive/upload-complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileId,
-          patientId: id,
-          filename: file.name,
-          fileType,
-          visitId,
-          uploaderEmail,
-          uploaderName: profile?.name || uploaderEmail,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        alert(data.error);
-      } else {
-        logActivity({
-          actorId: profile?.id,
-          actorName: profile?.name,
-          actorType: profile?.role === "admin" ? "admin" : "employee",
-          action: `uploaded_${fileType}`,
-          entityType: "patient_file",
-          entityId: data.id || null,
-          details: { patientId: id, patientName: patient?.name, fileName: file.name },
+    // Sequential, not parallel: the file numbering is derived per file from how
+    // many already exist, and firing them together would hand several files the
+    // same number. It also keeps the progress bar meaningful.
+    const failures = [];
+    for (let i = 0; i < batch.length; i++) {
+      const file = batch[i];
+      setBatchStatus(batch.length > 1 ? `File ${i + 1} of ${batch.length} - ${file.name}` : file.name);
+      setUploadProgress(0);
+      try {
+        const fileId = await uploadFileToDrive({
+          file,
+          initEndpoint: "/api/drive/upload-session",
+          initBody: {
+            patientId: id,
+            filename: file.name,
+            mimeType: file.type,
+            fileType,
+            visitId,
+            batchOffset: i,
+          },
+          onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+          authToken: session.session?.access_token,
         });
-        await loadFiles();
-        await load();
+
+        const res = await fetch("/api/drive/upload-complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileId,
+            patientId: id,
+            filename: file.name,
+            fileType,
+            visitId,
+            uploaderEmail,
+            uploaderName: profile?.name || uploaderEmail,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          failures.push(`${file.name}: ${data.error}`);
+        } else {
+          logActivity({
+            actorId: profile?.id,
+            actorName: profile?.name,
+            actorType: profile?.role === "admin" ? "admin" : "employee",
+            action: `uploaded_${fileType}`,
+            entityType: "patient_file",
+            entityId: data.id || null,
+            details: { patientId: id, patientName: patient?.name, fileName: file.name },
+          });
+        }
+      } catch (e) {
+        // One bad file does not abandon the other nine - collect and carry on,
+        // then report the whole set at the end.
+        failures.push(`${file.name}: ${e.message || "upload failed"}`);
       }
-    } catch (e) {
-      alert(e.message || "Upload failed");
     }
+
+    await loadFiles();
+    await load();
     setUploading(false);
     setUploadProgress(0);
+    setBatchStatus("");
+    if (failures.length) {
+      alert(`${failures.length} of ${batch.length} file(s) failed:\n\n${failures.join("\n")}`);
+    }
   }
 
   async function load() {
     setLoading(true);
     // The patient, their visits and their login do not depend on each other, so
     // they are fetched together rather than in a chain of round trips.
-    const [{ data: p }, { data: v }, { data: auth }] = await Promise.all([
+    const [{ data: p }, { data: v }, { data: auth }, { data: et }] = await Promise.all([
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, scan_types, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method)")
+      .select("id, scan_types, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method, created_by_name, created_at)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle(),
+      // Fetched in this first wave, not after render: visitNeedsReport defaults
+      // to true while unknown, so loading it later made the "Report Done" row
+      // flash in and then vanish on every no-report visit.
+      supabase.from("exam_types").select("name, requires_report, branch_id"),
     ]);
+    setExamTypes(et || []);
 
     // Per-visit Drive folders, so staff can jump straight to the folder for one
     // scan instead of opening the patient folder and hunting through visits.
@@ -250,6 +331,22 @@ export default function PatientProfilePage() {
     setVisits(v || []);
     setCredentials(auth);
     setLoading(false);
+  }
+
+  // A visit needs a report if ANY of its scan types is flagged requires_report
+  // for that visit's own branch. Branch is matched loosely: rows with no branch
+  // set (legacy) still count, so nothing silently stops requiring a report.
+  function visitNeedsReport(v) {
+    const names = v.scan_types || [];
+    if (!names.length || !examTypes.length) return true;
+    return names.some((n) =>
+      examTypes.some(
+        (e) =>
+          e.name === n &&
+          e.requires_report &&
+          (!e.branch_id || !v.branch_id || e.branch_id === v.branch_id)
+      )
+    );
   }
 
   async function generateNewPassword() {
@@ -313,6 +410,39 @@ export default function PatientProfilePage() {
       sent_at: new Date().toISOString(),
       sent_by: session?.user?.id || null,
     });
+    window.open(link, "_blank");
+  }
+
+  // Doctor-side equivalent of sendPatientWhatsApp. Reuses the exact message
+  // builders the doctor profile page already uses, so a doctor receives the
+  // same wording no matter which screen it was sent from.
+  async function sendDoctorWhatsApp(visit, type) {
+    const doc = visit.doctors;
+    if (!doc?.phone) return;
+    const { data: session } = await supabase.auth.getUser();
+    const scanTypes = (visit.scan_types || []).join(", ");
+    const args = { doctorName: doc.name, patientName: patient.name, scanTypes, examDate: visit.exam_date };
+    let text, link;
+
+    if (type === "report") {
+      text = buildDoctorReportMessage(args);
+      link = doctorReportWhatsAppLink({ mobile: doc.phone, ...args });
+    } else if (type === "raw_data") {
+      text = buildDoctorRawDataMessage(args);
+      link = doctorRawDataWhatsAppLink({ mobile: doc.phone, ...args });
+    } else {
+      link = directWhatsAppLink(doc.phone);
+    }
+
+    if (text) {
+      await supabase.from("whatsapp_log").insert({
+        visit_id: visit.id,
+        message_type: `doctor_${type}`,
+        rendered_text: text,
+        sent_at: new Date().toISOString(),
+        sent_by: session?.user?.id || null,
+      });
+    }
     window.open(link, "_blank");
   }
 
@@ -532,6 +662,19 @@ export default function PatientProfilePage() {
     });
   }
 
+  // Only the scan types this patient has actually had, so the dropdown is a
+  // handful of relevant options rather than the whole 28-row price list.
+  const patientScanTypes = Array.from(
+    new Set(visits.flatMap((v) => v.scan_types || []))
+  ).sort();
+
+  const filteredVisits = visits.filter((v) => {
+    if (visitFilter.from && (!v.exam_date || v.exam_date < visitFilter.from)) return false;
+    if (visitFilter.to && (!v.exam_date || v.exam_date > visitFilter.to)) return false;
+    if (visitFilter.scanType && !(v.scan_types || []).includes(visitFilter.scanType)) return false;
+    return true;
+  });
+
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
   if (!patient) return <p style={{ color: theme.gray }}>Patient not found.</p>;
 
@@ -689,9 +832,44 @@ export default function PatientProfilePage() {
               + Add New Scan
             </button>
           </div>
-          <p style={{ fontSize: 11, color: theme.gray, marginTop: 0, marginBottom: 12 }}>{visits.length} scan{visits.length === 1 ? "" : "s"} on record for this patient</p>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: 0, marginBottom: 12 }}>
+            {filteredVisits.length === visits.length
+              ? `${visits.length} scan${visits.length === 1 ? "" : "s"} on record for this patient`
+              : `Showing ${filteredVisits.length} of ${visits.length} scans`}
+          </p>
+
+          {visits.length > 1 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", background: "#fbfbfc", border: "1px solid #f0f0f3", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+              <div>
+                <div style={filterLabel}>From</div>
+                <input type="date" value={visitFilter.from} onChange={(e) => setVisitFilter({ ...visitFilter, from: e.target.value })} style={filterInp} />
+              </div>
+              <div>
+                <div style={filterLabel}>To</div>
+                <input type="date" value={visitFilter.to} onChange={(e) => setVisitFilter({ ...visitFilter, to: e.target.value })} style={filterInp} />
+              </div>
+              <div>
+                <div style={filterLabel}>Scan type</div>
+                <select value={visitFilter.scanType} onChange={(e) => setVisitFilter({ ...visitFilter, scanType: e.target.value })} style={filterInp}>
+                  <option value="">All scan types</option>
+                  {patientScanTypes.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+              {(visitFilter.from || visitFilter.to || visitFilter.scanType) && (
+                <button onClick={() => setVisitFilter({ from: "", to: "", scanType: "" })} style={{ ...smallBtn, height: 32 }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+
           {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No visits yet.</p>}
-          {visits.map((v) => (
+          {visits.length > 0 && filteredVisits.length === 0 && (
+            <p style={{ color: theme.gray, fontSize: 14 }}>No scans match this filter.</p>
+          )}
+          {filteredVisits.map((v) => (
             <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: theme.goldLight, color: theme.navy, whiteSpace: "nowrap" }}>
@@ -740,29 +918,50 @@ export default function PatientProfilePage() {
                 </a>
               )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                <StageChip label="Paid" active={v.payment_status === "paid"} timestamp={v.paid_at} />
-                <StageChip
-                  label="Scanned"
-                  active={v.scanned}
-                  timestamp={v.scanned_at}
-                  byName={v.scanned_by_name}
-                  onClick={() => toggleStage(v, "scanned")}
+                <StageTable
+                  rows={[
+                    {
+                      label: "Paid",
+                      active: v.payment_status === "paid",
+                      // Paid was never given its own owner column - the payment
+                      // record already carries who took the money, so it is read
+                      // from there rather than duplicated onto the visit.
+                      timestamp: v.paid_at || v.visit_payments?.[0]?.created_at,
+                      byName: v.visit_payments?.[0]?.created_by_name,
+                    },
+                    {
+                      label: "Scanned",
+                      active: v.scanned,
+                      timestamp: v.scanned_at,
+                      byName: v.scanned_by_name,
+                      onClick: () => toggleStage(v, "scanned"),
+                    },
+                    {
+                      label: "Raw Data Uploaded",
+                      active: v.raw_data_uploaded,
+                      timestamp: v.raw_data_uploaded_at,
+                      byName: v.raw_data_uploaded_by_name,
+                      onClick: () => toggleStage(v, "raw_data_uploaded"),
+                    },
+                    ...(visitNeedsReport(v)
+                      ? [
+                          {
+                            label: "Report Done",
+                            active: v.report_done,
+                            timestamp: v.report_done_at,
+                            byName: v.report_done_by_name,
+                            onClick: () => toggleStage(v, "report_done"),
+                          },
+                        ]
+                      : []),
+                    {
+                      label: "Invoice Generated",
+                      active: (v.invoices || []).length > 0,
+                      timestamp: v.invoices?.[0]?.created_at,
+                      byName: v.invoices?.[0]?.created_by_name,
+                    },
+                  ]}
                 />
-                <StageChip
-                  label="Raw Data Uploaded"
-                  active={v.raw_data_uploaded}
-                  timestamp={v.raw_data_uploaded_at}
-                  byName={v.raw_data_uploaded_by_name}
-                  onClick={() => toggleStage(v, "raw_data_uploaded")}
-                />
-                <StageChip
-                  label="Report Done"
-                  active={v.report_done}
-                  timestamp={v.report_done_at}
-                  byName={v.report_done_by_name}
-                  onClick={() => toggleStage(v, "report_done")}
-                />
-                <StageChip label="Invoice Generated" active={(v.invoices || []).length > 0} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
                 <span style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>Assigned to:</span>
@@ -791,6 +990,7 @@ export default function PatientProfilePage() {
                   </button>
                 )}
                 <WhatsAppDropdown
+                  label="Send WhatsApp Patient"
                   buttonStyle={smallBtn}
                   options={[
                     { label: "Greeting", onClick: () => sendPatientWhatsApp(v, "greeting") },
@@ -800,6 +1000,20 @@ export default function PatientProfilePage() {
                     { label: "Direct (empty)", onClick: () => sendPatientWhatsApp(v, "direct") },
                   ]}
                 />
+                {/* Messages the referring doctor ON THIS VISIT - not the patient's
+                    most recent doctor - so a patient referred by two clinics can
+                    never have one clinic's case sent to the other. */}
+                {v.doctors?.phone && (
+                  <WhatsAppDropdown
+                    label="Send WhatsApp Doctor"
+                    buttonStyle={smallBtn}
+                    options={[
+                      { label: "Report", onClick: () => sendDoctorWhatsApp(v, "report") },
+                      { label: "Raw Data", onClick: () => sendDoctorWhatsApp(v, "raw_data") },
+                      { label: "Direct (empty)", onClick: () => sendDoctorWhatsApp(v, "direct") },
+                    ]}
+                  />
+                )}
                 {v.payment_status !== "paid" && (
                   <button
                     onClick={() => {
@@ -847,19 +1061,37 @@ export default function PatientProfilePage() {
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Quick Actions</h3>
-          <button onClick={handleCustomerWhatsApp} style={actionBtn}>Send Customer WhatsApp</button>
-          {visits.length > 0 && (
-            <button onClick={() => setWhatsAppPicker(true)} style={{ ...actionBtn, background: "#fff", color: theme.navy, border: `1px solid ${theme.navy}` }}>
-              Send Scan WhatsApp{visits.length > 1 ? " (choose scan)" : ""}
-            </button>
-          )}
+          <div
+            onDragOver={(e) => { e.preventDefault(); if (!uploading) setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={handleDrop}
+            style={{
+              border: `2px dashed ${dragActive ? theme.gold : "#dcdce3"}`,
+              background: dragActive ? "#fffaf0" : "#fbfbfc",
+              borderRadius: 10,
+              padding: "22px 14px",
+              textAlign: "center",
+              marginBottom: 10,
+              transition: "background 0.15s, border-color 0.15s",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>
+              {dragActive ? "Drop to upload" : "Drag & drop files here"}
+            </div>
+            <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
+              One file or many - you pick the upload type next
+            </div>
+          </div>
           <label style={{ ...actionBtn, display: "block", textAlign: "center", opacity: uploading ? 0.6 : 1, background: theme.gold, color: theme.navy, position: "relative", overflow: "hidden" }}>
             {uploading && (
               <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
             )}
             <span style={{ position: "relative" }}>{uploading ? `Uploading... ${uploadProgress}%` : "Upload Scan Files"}</span>
-            <input type="file" onChange={handleFilePicked} disabled={uploading} style={{ display: "none" }} />
+            <input type="file" multiple onChange={handleFilePicked} disabled={uploading} style={{ display: "none" }} />
           </label>
+          {uploading && batchStatus && (
+            <p style={{ fontSize: 11, color: theme.gray, margin: "0 0 10px", textAlign: "center" }}>{batchStatus}</p>
+          )}
           <p style={{ fontSize: 12, color: theme.gray, marginTop: 12 }}>
             Files upload directly into this patient's Drive folder, nested under their referring doctor automatically if one is assigned.
           </p>
@@ -900,11 +1132,15 @@ export default function PatientProfilePage() {
         />
       )}
 
-      {pendingFile && (
+      {pendingFiles.length > 0 && (
         <FileTypeModal
-          fileName={pendingFile.name}
+          fileName={
+            pendingFiles.length === 1
+              ? pendingFiles[0].name
+              : `${pendingFiles.length} files`
+          }
           visits={visits}
-          onClose={() => setPendingFile(null)}
+          onClose={() => setPendingFiles([])}
           onPick={(type, visitId) => handleFileUpload(type, visitId)}
         />
       )}
@@ -1805,6 +2041,65 @@ function TotalRow({ label, value, bold, negative }) {
   );
 }
 
+// The five stage flags used to be pill chips whose date/owner was only visible
+// on hover, which meant the audit trail was effectively invisible on a touch
+// screen. Same data, same toggles, laid out as a table so Status / when / who
+// are all readable at a glance.
+function StageTable({ rows }) {
+  const cell = { padding: "6px 10px", fontSize: 11, textAlign: "left", verticalAlign: "middle" };
+  const head = { ...cell, fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4 };
+  return (
+    <div style={{ overflowX: "auto", marginTop: 4 }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 380 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid #ececf0" }}>
+            <th style={head}>Status</th>
+            <th style={head}>Date &amp; Time</th>
+            <th style={head}>By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} style={{ borderBottom: "1px solid #f5f5f7" }}>
+              <td style={cell}>
+                <button
+                  type="button"
+                  onClick={r.onClick}
+                  disabled={!r.onClick}
+                  title={r.onClick ? "Click to toggle" : undefined}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    fontWeight: 700,
+                    border: "none",
+                    background: r.active ? "#e8f5e9" : "#f5f5f5",
+                    color: r.active ? "#2e7d32" : "#aaa",
+                    cursor: r.onClick ? "pointer" : "default",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {r.active ? "\u2713" : "\u25cb"} {r.label}
+                </button>
+              </td>
+              <td style={{ ...cell, color: r.active && r.timestamp ? "#27214D" : "#bbb", whiteSpace: "nowrap" }}>
+                {r.active && r.timestamp
+                  ? new Date(r.timestamp).toLocaleString("en-GB", {
+                      day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+                    })
+                  : "\u2014"}
+              </td>
+              <td style={{ ...cell, color: r.active && r.byName ? "#27214D" : "#bbb" }}>
+                {r.active && r.byName ? r.byName : "\u2014"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function StageChip({ label, active, onClick, timestamp, byName }) {
   const tooltip = active && timestamp
     ? `${label} on ${new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}${byName ? ` by ${byName}` : ""}`
@@ -1846,6 +2141,8 @@ const actionBtn = {
   cursor: "pointer",
   fontSize: 13,
 };
+const filterLabel = { fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 };
+const filterInp = { padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 12, fontFamily: "inherit", color: "#27214D" };
 const smallBtn = {
   padding: "6px 12px",
   borderRadius: 6,

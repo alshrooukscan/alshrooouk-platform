@@ -125,7 +125,7 @@ export default function BranchesPage() {
               <span style={{ color: theme.navy, fontWeight: 700, fontSize: 15 }}>{b.name}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <button onClick={() => openBranchEditor(b)} style={{ fontSize: 12, color: theme.gold, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
-                  {expandedBranch === b.id ? "Close" : "Drive & Location"}
+                  {expandedBranch === b.id ? "Close" : "Show Details"}
                 </button>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                   {b.is_active ? "Active" : "Inactive"}

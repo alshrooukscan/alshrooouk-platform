@@ -15,6 +15,10 @@ export default function ReportsPage() {
   const { profile } = usePermissions();
   const [reports, setReports] = useState([]);
   const [filter, setFilter] = useState("pending");
+  // Internal rows are auto-created when a scan requires a report; client rows
+  // come from an external client's own request. Same lifecycle, but the two
+  // queues are worked by different people, so they get their own tab.
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingId, setUploadingId] = useState(null);
@@ -23,16 +27,23 @@ export default function ReportsPage() {
 
   useEffect(() => {
     load();
-  }, [filter]);
+  }, [filter, sourceFilter]);
 
   async function load() {
     setLoading(true);
     const [{ data: r }, { data: s }] = await Promise.all([
-      supabase
-        .from("reports")
-        .select("*, clients(name, is_pseudo, contact_phone), patients(id, name)")
-        .eq("status", filter)
-        .order("created_at", { ascending: false }),
+      (sourceFilter === "all"
+        ? supabase
+            .from("reports")
+            .select("*, clients(name, is_pseudo, contact_phone), patients(id, name)")
+            .eq("status", filter)
+            .order("created_at", { ascending: false })
+        : supabase
+            .from("reports")
+            .select("*, clients(name, is_pseudo, contact_phone), patients(id, name)")
+            .eq("status", filter)
+            .eq("source_type", sourceFilter)
+            .order("created_at", { ascending: false })),
       supabase.from("staff_profiles").select("id, name").order("name"),
     ]);
     setReports(r || []);
@@ -100,6 +111,23 @@ export default function ReportsPage() {
               }}
             >
               {s}
+            </button>
+          ))}
+          <span style={{ width: 1, background: "#e6e6ea", margin: "2px 6px" }} />
+          {[
+            { key: "all", label: "All sources" },
+            { key: "internal", label: "Internal" },
+            { key: "client", label: "Client" },
+          ].map((o) => (
+            <button
+              key={o.key}
+              onClick={() => setSourceFilter(o.key)}
+              style={{
+                padding: "6px 16px", borderRadius: 999, border: `1px solid ${sourceFilter === o.key ? theme.gold : "#ddd"}`,
+                background: sourceFilter === o.key ? theme.goldLight : "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              {o.label}
             </button>
           ))}
         </div>
