@@ -7,6 +7,7 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
 import { doctorLabel, formatVisitDate, formatVisitDateTime } from "../../../lib/format";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 const PAGE_SIZE = 50;
 // Each stage filter is tri-state: null = All (no filter), true = On (must
@@ -24,6 +25,7 @@ const EMPTY_STAGE_FILTERS = { paid: null, scanned: null, raw_data_uploaded: null
 
 export default function PatientsPage() {
   const { isAdmin } = usePermissions();
+  useAutoRefresh(["patients", "visits"], () => { search(); });
   const [mobileQuery, setMobileQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

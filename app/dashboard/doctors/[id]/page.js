@@ -17,11 +17,13 @@ import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
+import { useAutoRefresh } from "../../../../lib/useAutoRefresh";
 
 export default function DoctorProfilePage() {
   const { id } = useParams();
   const router = useRouter();
   const { isAdmin, profile } = usePermissions();
+  useAutoRefresh(["doctors", "visits", "invoices"], () => { load(); });
   const [doctor, setDoctor] = useState(null);
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);

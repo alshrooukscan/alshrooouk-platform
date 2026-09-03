@@ -6,6 +6,7 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { logActivity } from "../../../lib/activityLog";
 import { vendorWhatsAppLink } from "../../../lib/whatsapp";
 import { formatPhone } from "../../../lib/formatPhone";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 const STATUS_LABEL = { assigned: "Assigned", in_progress: "In Progress", done: "Done" };
 const STATUS_COLOR = {
@@ -16,6 +17,7 @@ const STATUS_COLOR = {
 
 export default function VendorsPage() {
   const { profile } = usePermissions();
+  useAutoRefresh(["vendors", "dental_orders"], () => { load(); });
   const [requests, setRequests] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [employees, setEmployees] = useState([]);

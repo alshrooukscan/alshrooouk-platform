@@ -4,18 +4,22 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import DocumentsUploader from "../../../components/DocumentsUploader";
+import WorkforceCalendar from "../../../components/WorkforceCalendar";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
 
 export default function BranchesPage() {
   const { profile, isAdmin } = usePermissions();
+  useAutoRefresh(["branches", "exam_types"], () => { load(); });
   const [branches, setBranches] = useState([]);
   const [newBranch, setNewBranch] = useState("");
   const [expandedBranch, setExpandedBranch] = useState(null);
   const [branchDraft, setBranchDraft] = useState({});
   const [loading, setLoading] = useState(true);
   const [examTypes, setExamTypes] = useState([]);
+  const [scheduleBranchId, setScheduleBranchId] = useState("");
   const [editingExamId, setEditingExamId] = useState(null);
   const [examDraft, setExamDraft] = useState({});
   const [newExam, setNewExam] = useState({ name: "", price: "", category: "misc", requires_report: true });
@@ -116,6 +120,29 @@ export default function BranchesPage() {
       <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>Scan Center Management</p>
       <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Branch Management</h1>
       <p style={{ color: theme.gray, margin: "0 0 24px" }}>Add branches, mark them active or inactive, and set each one's Drive folder and location.</p>
+
+      {isAdmin && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 24 }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Workforce Schedule</h3>
+          <p style={{ color: theme.gray, fontSize: 13, margin: "0 0 16px" }}>
+            Weekly shift times per branch. Select one or more employees and one or more days, then apply a time or mark a day off.
+          </p>
+          <div style={{ marginBottom: 16 }}>
+            <select
+              value={scheduleBranchId}
+              onChange={(e) => setScheduleBranchId(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, minWidth: 220 }}
+            >
+              <option value="">Select a branch...</option>
+              {branches.filter((b) => b.is_active).map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+          <WorkforceCalendar branchId={scheduleBranchId} />
+        </div>
+      )}
+
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         {!loading && branches.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No branches yet.</p>}

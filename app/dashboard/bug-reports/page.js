@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 const ERROR_TYPES = [
   { key: "application_error", label: "Application error / page crashed" },
@@ -24,6 +25,7 @@ const STATUS_STYLE = {
 
 export default function BugReportsPage() {
   const [reports, setReports] = useState([]);
+  useAutoRefresh(["bug_reports"], () => { load(); });
   const [canTriage, setCanTriage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

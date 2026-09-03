@@ -22,6 +22,7 @@ const StockAnalytics = dynamic(() => import("../../components/analytics/StockAna
 import DrillDownModal from "../../components/analytics/DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "../../components/analytics/PeriodFilterBar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Cell as PieCell, Legend } from "recharts";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
 
 const PAYMENT_COLORS = ["#27214D", "#A98B4D", "#6D5A3A", "#8a7ba0", "#c9a86a", "#48464E", "#3d3564"];
 
@@ -96,6 +97,7 @@ function DashboardTabs() {
 
 function Overview() {
   const { isAdmin, profile } = usePermissions();
+  useAutoRefresh(["visits", "invoices", "reports", "cash_expenses", "expense_transactions"], () => { load(); loadReconciliation(); });
   const [allLedger, setAllLedger] = useState([]);
   const [allPaymentRows, setAllPaymentRows] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);

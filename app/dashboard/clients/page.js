@@ -4,12 +4,14 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { resolveUniqueUsername } from "../../../lib/uniqueUsername";
 import LoginAsButton from "../../../components/LoginAsButton";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 // Real, external clients only - the branch-named pseudo-clients used to
 // attribute internal report requests are deliberately hidden here, since
 // there's nothing for an admin to manage about them.
 export default function ClientsPage() {
   const [clients, setClients] = useState([]);
+  useAutoRefresh(["clients", "reports"], () => { load(); });
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");

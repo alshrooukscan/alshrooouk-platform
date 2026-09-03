@@ -6,9 +6,11 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 export default function DoctorsPage() {
   const { isAdmin } = usePermissions();
+  useAutoRefresh(["doctors", "visits"], () => { load(); });
   const [doctors, setDoctors] = useState([]);
   const [engagement, setEngagement] = useState({});
   const [query, setQuery] = useState("");

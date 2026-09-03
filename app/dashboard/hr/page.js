@@ -6,9 +6,11 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { logActivity } from "../../../lib/activityLog";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 export default function HRPage() {
   const { isAdmin, profile } = usePermissions();
+  useAutoRefresh(["employees_change_ping", "employee_shifts", "employee_schedule_days"], () => { loadAll(); });
   const [employees, setEmployees] = useState([]);
   const [deductionRules, setDeductionRules] = useState([]);
   const [query, setQuery] = useState("");

@@ -5,6 +5,7 @@ import { theme } from "../../../lib/theme";
 import { formatMoney } from "../../../lib/format";
 import { usePermissions } from "../../../lib/usePermissions";
 import { logActivity } from "../../../lib/activityLog";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 const CATEGORIES = [
   { key: "utilities", label: "Utilities (\u0643\u0647\u0631\u0628\u0627\u0621)" },
@@ -25,6 +26,7 @@ const PAYMENT_METHOD_LABEL = Object.fromEntries(PAYMENT_METHODS.map((p) => [p.ke
 
 export default function CashExpensesPage() {
   const { profile, isAdmin } = usePermissions();
+  useAutoRefresh(["cash_expenses", "expense_transactions"], () => { load(); });
   const [expenses, setExpenses] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);

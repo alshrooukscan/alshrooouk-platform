@@ -6,6 +6,7 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney } from "../../../lib/format";
 import { logActivity } from "../../../lib/activityLog";
 import { syncPatientLastVisitDate } from "../../../lib/syncPatientLastVisitDate";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 const BRAND_LABEL = { scan: "Scan", dental_stock: "Dental Stock", el3awama_stock: "El3awama Stock" };
 const TYPE_LABEL = {
@@ -36,6 +37,7 @@ const FIELD_LABELS = {
 // mechanism, since nothing like that existed anywhere on the platform.
 export default function ActionCenterPage() {
   const { isAdmin, loading: permsLoading, profile } = usePermissions();
+  useAutoRefresh(["visits", "reports"], () => { load(); });
   const [myTasks, setMyTasks] = useState([]);
   const [approvals, setApprovals] = useState([]);
   const [approvalFilter, setApprovalFilter] = useState("pending");

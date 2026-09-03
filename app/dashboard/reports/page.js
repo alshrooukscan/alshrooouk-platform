@@ -6,6 +6,7 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { clientInvoiceWhatsAppLink, clientReportWhatsAppLink, directWhatsAppLink } from "../../../lib/whatsapp";
 import WhatsAppDropdown from "../../../components/WhatsAppDropdown";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
+import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
 // Every report request lives here regardless of source - an internal one
 // auto-created because a scan's flagged as requiring a report, or a real
@@ -13,6 +14,7 @@ import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 // lifecycle and the same client_id attribution underneath.
 export default function ReportsPage() {
   const { profile } = usePermissions();
+  useAutoRefresh(["reports"], () => { load(); });
   const [reports, setReports] = useState([]);
   const [filter, setFilter] = useState("pending");
   // Internal rows are auto-created when a scan requires a report; client rows
