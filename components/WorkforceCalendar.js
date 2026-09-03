@@ -266,7 +266,6 @@ export default function WorkforceCalendar({ branchId }) {
           {cells.map((date, i) => {
             if (!date) return <div key={`blank-${i}`} />;
             const dateISO = toISODate(date);
-            const entries = entriesFor(dateISO);
             const shifts = shiftsFor(dateISO);
             const isOpen = openDate === dateISO;
             const isToday = dateISO === todayISO();
@@ -300,9 +299,9 @@ export default function WorkforceCalendar({ branchId }) {
                   >
                     {date.getDate()}
                   </span>
-                  {entries.length > 0 && (
+                  {shifts.length > 0 && (
                     <span style={{ fontSize: 9, color: theme.gray }}>
-                      {entries.length}
+                      {shifts.length}
                     </span>
                   )}
                 </div>
@@ -316,26 +315,24 @@ export default function WorkforceCalendar({ branchId }) {
                       gap: 2,
                     }}
                   >
-                    {entries.slice(0, 3).map((e) => (
+                    {shifts.slice(0, 3).map((e) => (
                       <div
                         key={e.id}
                         style={{
                           fontSize: 10,
-                          color: e.is_day_off ? "#b45309" : theme.gray,
+                          color: theme.gray,
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                         }}
                       >
                         {employeeName(e.employee_id)}
-                        {e.is_day_off
-                          ? " — Off"
-                          : ` ${e.start_time?.slice(0, 5)}-${e.end_time?.slice(0, 5)}`}
+                        {` ${e.start_time?.slice(0, 5)}-${e.end_time?.slice(0, 5)}`}
                       </div>
                     ))}
-                    {entries.length > 3 && (
+                    {shifts.length > 3 && (
                       <div style={{ fontSize: 10, color: "#bbb" }}>
-                        +{entries.length - 3} more
+                        +{shifts.length - 3} more
                       </div>
                     )}
                   </div>
@@ -361,7 +358,7 @@ export default function WorkforceCalendar({ branchId }) {
                       })}
                     </div>
 
-                    {entries.length > 0 && (
+                    {shifts.length > 0 && (
                       <div
                         style={{
                           display: "flex",
@@ -370,15 +367,13 @@ export default function WorkforceCalendar({ branchId }) {
                           marginBottom: 10,
                         }}
                       >
-                        {entries.map((e) => (
+                        {shifts.map((e) => (
                           <div key={e.id} style={entryChip}>
                             <span style={{ fontWeight: 600 }}>
                               {employeeName(e.employee_id)}
                             </span>
                             <span>
-                              {e.is_day_off
-                                ? "Off"
-                                : `${e.start_time?.slice(0, 5)}\u2013${e.end_time?.slice(0, 5)}`}
+                              {`${e.start_time?.slice(0, 5)}\u2013${e.end_time?.slice(0, 5)}`}
                             </span>
                             <button
                               onClick={() => removeEntry(e.id)}
