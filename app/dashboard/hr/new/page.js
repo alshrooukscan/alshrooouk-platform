@@ -86,12 +86,17 @@ export default function NewEmployeePage() {
     }
     setSaving(true);
 
-    const { data: hrId } = await supabase.rpc("generate_hr_id");
-
-    const { data: emp, error: err } = await supabase
-      .from("employees")
-      .insert({
-        hr_id: hrId,
+    // Creating the employee goes through the server route: salary and national
+    // ID are written with the service role there, so signed-in staff no longer
+    // need write access to the employees table itself.
+    const { data: sess } = await supabase.auth.getSession();
+    const createRes = await fetch("/api/hr/employee", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sess.session?.access_token}`,
+      },
+      body: JSON.stringify({
         name: form.name,
         national_id: form.national_id || null,
         phone: formatPhone(form.phone),
@@ -99,15 +104,16 @@ export default function NewEmployeePage() {
         fixed_salary: form.fixed_salary || 0,
         variable_salary: form.variable_salary || 0,
         hourly_rate: form.hourly_rate || null,
-      })
-      .select("id")
-      .single();
-
-    if (err) {
-      setError(err.code === "23505" ? "National ID already exists." : err.message);
+      }),
+    });
+    const createJson = await createRes.json();
+    if (!createRes.ok) {
+      setError(createJson.error || "Could not create employee.");
       setSaving(false);
       return;
     }
+    const emp = createJson.employee;
+    const hrId = emp.hr_id;
 
     const baseUsername = formatPhone(form.phone).replace(/\D/g, "") || hrId.toLowerCase().replace(/-/g, "");
     const username = await resolveUniqueUsername(supabase, "employees", baseUsername);

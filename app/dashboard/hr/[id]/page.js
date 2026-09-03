@@ -160,9 +160,15 @@ export default function EmployeeProfilePage() {
       return;
     }
     setSavingInfo(true);
-    const { error } = await supabase
-      .from("employees")
-      .update({
+    const { data: sess } = await supabase.auth.getSession();
+    const res = await fetch("/api/hr/employee", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sess.session?.access_token}`,
+      },
+      body: JSON.stringify({
+        id,
         name: infoDraft.name,
         phone: formatPhone(infoDraft.phone),
         national_id: infoDraft.national_id || null,
@@ -170,11 +176,11 @@ export default function EmployeeProfilePage() {
         fixed_salary: infoDraft.fixed_salary === "" ? null : Number(infoDraft.fixed_salary),
         variable_salary: infoDraft.variable_salary === "" ? null : Number(infoDraft.variable_salary),
         hourly_rate: infoDraft.hourly_rate === "" ? null : Number(infoDraft.hourly_rate),
-      })
-      .eq("id", id);
+      }),
+    });
     setSavingInfo(false);
-    if (error) {
-      setInfoError(error.message);
+    if (!res.ok) {
+      setInfoError((await res.json()).error || "Could not save.");
       return;
     }
     setEditingInfo(false);
@@ -275,8 +281,12 @@ export default function EmployeeProfilePage() {
                   entityLabel="employee"
                   entityName={employee.name}
                   onDelete={async () => {
-                    const { error } = await supabase.from("employees").delete().eq("id", id);
-                    if (error) throw error;
+                    const { data: sess } = await supabase.auth.getSession();
+                    const res = await fetch(`/api/hr/employee?id=${id}`, {
+                      method: "DELETE",
+                      headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+                    });
+                    if (!res.ok) throw new Error((await res.json()).error || "Could not delete employee.");
                     logActivity({
                       actorId: profile?.id,
                       actorName: profile?.name,
