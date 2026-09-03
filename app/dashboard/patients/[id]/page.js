@@ -529,6 +529,11 @@ export default function PatientProfilePage() {
         // printed beside the amount.
         p_trans:
           (visit.visit_payments || []).map((x) => x.payment_method).find((m) => m && m !== "Unknown") || null,
+        // Who actually pressed the button - the RPC's insert had no way to
+        // know this before, so every invoice's "By" was blank regardless of
+        // who generated it.
+        p_created_by_id: profile?.id || null,
+        p_created_by_name: profile?.name || null,
       })
       .single();
     if (error) {
