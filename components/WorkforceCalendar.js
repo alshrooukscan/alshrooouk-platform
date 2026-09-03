@@ -117,6 +117,15 @@ export default function WorkforceCalendar({ branchId }) {
     return days.filter((d) => d.work_date === dateISO);
   }
 
+  // The client only wants to see who is actually working on the calendar -
+  // day-off rows are still written (payroll filters on is_day_off to know who
+  // was off), just not surfaced here. entriesFor stays unfiltered so the Apply
+  // form below can still find and update an existing day-off row for someone
+  // whose shift is being set for that date.
+  function shiftsFor(dateISO) {
+    return entriesFor(dateISO).filter((d) => !d.is_day_off);
+  }
+
   function employeeName(id) {
     return employees.find((e) => e.id === id)?.name || "Unknown";
   }
@@ -258,6 +267,7 @@ export default function WorkforceCalendar({ branchId }) {
             if (!date) return <div key={`blank-${i}`} />;
             const dateISO = toISODate(date);
             const entries = entriesFor(dateISO);
+            const shifts = shiftsFor(dateISO);
             const isOpen = openDate === dateISO;
             const isToday = dateISO === todayISO();
             return (
