@@ -42,11 +42,16 @@ export async function GET(req) {
     const { data: owned } = driveIds.length
       ? await supabaseAdmin
           .from("patient_files")
-          .select("drive_file_id, patient_id")
+          .select("drive_file_id, patient_id, visit_id")
           .in("drive_file_id", driveIds)
       : { data: [] };
 
     const ownerOf = new Map((owned || []).map((r) => [r.drive_file_id, r.patient_id]));
+    // groupLabel (the Drive folder name) is a display heuristic, not a real
+    // link - visit_id from patient_files is the actual foreign key, so this is
+    // what the frontend uses to reliably show "this visit's files" rather than
+    // string-matching a folder name against a visit's date and scan types.
+    const visitOf = new Map((owned || []).map((r) => [r.drive_file_id, r.visit_id]));
     const visible = files.filter((f) => {
       const owner = ownerOf.get(f.id);
       return !owner || owner === patientId;
@@ -61,7 +66,7 @@ export async function GET(req) {
     const seen = new Set(visible.map((f) => f.id));
     const { data: recorded } = await supabaseAdmin
       .from("patient_files")
-      .select("drive_file_id, file_name, created_at, file_type")
+      .select("drive_file_id, file_name, created_at, file_type, visit_id")
       .eq("patient_id", patientId);
 
     const missing = (recorded || []).filter((r) => r.drive_file_id && !seen.has(r.drive_file_id));
@@ -71,6 +76,7 @@ export async function GET(req) {
       createdTime: r.created_at,
       webViewLink: `https://drive.google.com/file/d/${r.drive_file_id}/view`,
       groupLabel: null,
+      visitId: r.visit_id || null,
     }));
 
     // Old files keep the name they were given in Drive - a camera filename like
@@ -89,6 +95,10 @@ export async function GET(req) {
       return {
         ...f,
         fileType: type,
+        // Recovered files already carry their own visitId (set above from
+        // patient_files directly); files from the Drive listing get it from
+        // the same ownership lookup used for patient ownership.
+        visitId: f.visitId ?? visitOf.get(f.id) ?? null,
         // Falls back to the real filename rather than inventing a label when
         // there is genuinely no way to tell what the file is.
         displayName: type && pat?.name ? `${pat.name} - ${LABEL[type]}` : f.name,

@@ -843,7 +843,7 @@ export default function PatientProfilePage() {
               : `Showing ${filteredVisits.length} of ${visits.length} scans`}
           </p>
 
-          {visits.length > 1 && (
+          {visits.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", background: "#fbfbfc", border: "1px solid #f0f0f3", borderRadius: 10, padding: 12, marginBottom: 14 }}>
               <div>
                 <div style={filterLabel}>From</div>
@@ -1060,6 +1060,47 @@ export default function PatientProfilePage() {
                   {paymentError && <p style={{ color: "#ba1a1a", fontSize: 12, width: "100%", margin: 0 }}>{paymentError}</p>}
                 </div>
               )}
+
+              {/* Files belonging to THIS visit specifically, right after its
+                  card - the patient's files are no longer only in one long
+                  list further down the page. Matched on the real visit_id
+                  the API now returns per file, not a Drive folder-name guess. */}
+              {(() => {
+                const visitFiles = files.filter((f) => f.visitId === v.id);
+                if (!visitFiles.length) return null;
+                return (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0f0f3" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Files for this visit ({visitFiles.length})
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
+                      {visitFiles.map((f) => (
+                        <div key={f.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
+                          <a href={f.webViewLink} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: theme.navy }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>
+                              {f.displayName || f.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
+                              {new Date(f.createdTime).toLocaleDateString()}
+                              {f.typeLabel ? ` \u00b7 ${f.typeLabel}` : ""}
+                            </div>
+                          </a>
+                          {canManageFiles && (
+                            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                              <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>
+                                {fileBusy === f.id ? "..." : "Replace"}
+                              </button>
+                              <button onClick={() => deleteFile(f)} disabled={fileBusy === f.id} style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9" }}>
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
