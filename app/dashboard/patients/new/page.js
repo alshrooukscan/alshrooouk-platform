@@ -156,18 +156,48 @@ export default function NewPatientPage() {
     items: branchExamTypes.filter((e) => (e.category || "misc") === cat),
   })).filter((c) => c.items.length > 0);
 
+  // One definition of "complete", used by the per-field flags, the summary
+  // banner and the submit check alike, so they can never disagree about what
+  // is missing. Keyed by field so each input can flag itself in place rather
+  // than staff hunting for one error line at the bottom of a long form.
+  const missingFields = {};
+  if (!form.name.trim()) missingFields.name = "Enter the patient's full name.";
+  if (!form.mobile.trim()) missingFields.mobile = "Enter a mobile number.";
+  if (!form.branch_id) missingFields.branch_id = "Choose which branch this visit is at.";
+  if (form.scan_type_ids.length === 0) missingFields.scan_types = "Select at least one scan type.";
+  if (!walkIn && !selectedDoctor)
+    missingFields.doctor = 'Select a referring doctor, or tick "Walk-in, no referring doctor."';
+  if (form.discount_on) {
+    if (!form.discount_reason) missingFields.discount_reason = "Choose a reason for the discount.";
+    else if (form.discount_reason === "Other" && !form.discount_reason_other.trim())
+      missingFields.discount_reason = "Describe the discount reason.";
+    if (!(Number(form.discount_pct) > 0)) missingFields.discount_pct = "Enter a discount percentage above 0.";
+  }
+  const missingList = Object.values(missingFields);
+  // Only shown after a save attempt. Flagging empty fields the moment the page
+  // opens would mark a blank form as wrong before anyone has typed anything.
+  const [attempted, setAttempted] = useState(false);
+  const flag = (key) => (attempted ? missingFields[key] : null);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
-    if (!form.name || !form.mobile) {
-      setError("Name and mobile number are required.");
-      return;
-    }
-    if (!walkIn && !selectedDoctor) {
-      setError('Select a referring doctor, or check "Walk-in, no referring doctor."');
+    setAttempted(true);
+    if (missingList.length > 0) {
+      setError(
+        missingList.length === 1
+          ? missingList[0]
+          : `${missingList.length} fields still need to be filled in - they are marked in red below.`
+      );
       return;
     }
     setSaving(true);
+    // Everything past this point is wrapped so the button can never be left
+    // stuck on "Registering...". Previously there was no try/catch here: any
+    // thrown error or stalled network call skipped every setSaving(false) and
+    // froze the form permanently, while the patient and visit rows it had
+    // already written stayed behind as a half-created record.
+    try {
     const normalizedMobile = formatPhone(form.mobile);
 
     // Match on phone AND name, not phone alone. The warning above tells staff
@@ -223,7 +253,7 @@ export default function NewPatientPage() {
         // by id rather than by string match. Renaming a scan type in Settings
         // must never retroactively break a saved visit again.
         exam_type_ids: selectedExams.map((e) => e.id),
-        amount_due: sumAfterDiscount || null,
+        amount_due: sumAfterDiscount,
         discount_pct: discountPct,
         discount_reason: form.discount_on ? finalReason : null,
         notes: form.notes || null,
@@ -265,17 +295,47 @@ export default function NewPatientPage() {
     }
 
     if (!existing) {
-      const baseUsername = normalizedMobile.replace(/\D/g, "");
-      const username = await resolvePatientUsername(baseUsername);
-      const { data: pwd } = await supabase.rpc("create_patient_credentials", { p_patient_id: patientId, p_username: username });
-      setSaving(false);
-      setNewPatientId(patientId);
-      setCreatedAccount({ username, password: pwd });
-      return;
+      // The patient and their visit are already saved at this point. Portal
+      // credentials are a convenience on top of that, so a failure here must
+      // not discard the registration or strand the form - it hands over to
+      // the profile with a note instead, and the account can be created from
+      // there.
+      try {
+        const baseUsername = normalizedMobile.replace(/\D/g, "");
+        const username = await resolvePatientUsername(baseUsername);
+        const { data: pwd, error: cErr } = await supabase.rpc("create_patient_credentials", {
+          p_patient_id: patientId,
+          p_username: username,
+        });
+        if (cErr) throw new Error(cErr.message);
+        setNewPatientId(patientId);
+        setCreatedAccount({ username, password: pwd });
+        return;
+      } catch (credErr) {
+        console.error("Portal credential creation failed", credErr);
+        setError(
+          "The patient and visit were saved, but the portal account could not be created (" +
+            (credErr?.message || "unknown error") +
+            "). You can create it from the patient's profile."
+        );
+        router.push(`/dashboard/patients/${patientId}`);
+        return;
+      }
     }
 
-    setSaving(false);
     router.push(`/dashboard/patients/${patientId}`);
+    } catch (err) {
+      // Anything unexpected surfaces as a message rather than a frozen button.
+      console.error("Patient registration failed", err);
+      setError(
+        (err?.message || "Something went wrong while saving.") +
+          " Search for the patient before trying again - part of the registration may already have been saved."
+      );
+    } finally {
+      // Runs on every path, including the ones that return early, so the
+      // button always comes back.
+      setSaving(false);
+    }
   }
 
   return (
@@ -306,10 +366,10 @@ export default function NewPatientPage() {
       <form onSubmit={handleSubmit}>
         <Section title="Patient Details">
           <Row>
-            <Field label="Full Name">
+            <Field label="Full Name" required missing={flag("name")}>
               <input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., Sarah Johnson" />
             </Field>
-            <Field label="Mobile Number">
+            <Field label="Mobile Number" required missing={flag("mobile")}>
               <input style={inp} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} placeholder="+20 10 123 4567" />
               {existingPatients.length > 0 && (
                 <div style={{ background: "#fff8e1", border: "1px solid #ffe0b2", borderRadius: 8, padding: 10, marginTop: -8, marginBottom: 16, fontSize: 12 }}>
@@ -352,7 +412,7 @@ export default function NewPatientPage() {
         </Section>
 
         <Section title="Visit Details">
-          <Field label="Branch">
+          <Field label="Branch" required missing={flag("branch_id")}>
             <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
               <option value="">Select branch</option>
               {branches.map((b) => (
@@ -361,9 +421,12 @@ export default function NewPatientPage() {
             </select>
           </Field>
 
-          <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", margin: "12px 0 6px" }}>
-            Scan Type (select multiple)
+          <label style={{ fontSize: 12, fontWeight: 600, color: flag("scan_types") ? "#ba1a1a" : theme.navy, display: "block", margin: "12px 0 6px" }}>
+            Scan Type (select multiple)<span style={{ color: "#ba1a1a", marginLeft: 3 }}>*</span>
           </label>
+          {flag("scan_types") && (
+            <p style={{ color: "#ba1a1a", fontSize: 11, margin: "0 0 8px", fontWeight: 600 }}>{flag("scan_types")}</p>
+          )}
           {examsByCategory.map((cat) => (
             <div key={cat.key} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: theme.gold, marginBottom: 6, letterSpacing: 0.5 }}>{cat.label}</div>
@@ -393,7 +456,12 @@ export default function NewPatientPage() {
             </div>
           ))}
 
-          <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, marginTop: 8, display: "block" }}>Referring Doctor</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: flag("doctor") ? "#ba1a1a" : theme.navy, marginTop: 8, display: "block" }}>
+            Referring Doctor<span style={{ color: "#ba1a1a", marginLeft: 3 }}>*</span>
+          </label>
+          {flag("doctor") && (
+            <p style={{ color: "#ba1a1a", fontSize: 11, margin: "4px 0 0", fontWeight: 600 }}>{flag("doctor")}</p>
+          )}
           <input
             style={inp}
             disabled={walkIn}
@@ -441,7 +509,7 @@ export default function NewPatientPage() {
           {form.discount_on && (
             <>
               <Row>
-                <Field label="Discount %">
+                <Field label="Discount %" required missing={flag("discount_pct")}>
                   <input
                     type="number"
                     style={inp}
@@ -453,7 +521,7 @@ export default function NewPatientPage() {
                     }}
                   />
                 </Field>
-                <Field label="Reason">
+                <Field label="Reason" required missing={flag("discount_reason")}>
                   <select style={inp} value={form.discount_reason} onChange={(e) => setForm({ ...form, discount_reason: e.target.value })}>
                     <option value="">Select reason...</option>
                     {DISCOUNT_REASONS.map((r) => (
@@ -522,11 +590,17 @@ function Section({ title, children }) {
 function Row({ children }) {
   return <div style={{ display: "flex", gap: 16 }}>{children}</div>;
 }
-function Field({ label, children }) {
+function Field({ label, children, required, missing }) {
   return (
     <div style={{ flex: 1, marginBottom: 4 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 6 }}>{label}</label>
+      <label style={{ fontSize: 12, fontWeight: 600, color: missing ? "#ba1a1a" : theme.navy, display: "block", marginBottom: 6 }}>
+        {label}
+        {required && <span style={{ color: "#ba1a1a", marginLeft: 3 }}>*</span>}
+      </label>
       {children}
+      {missing && (
+        <p style={{ color: "#ba1a1a", fontSize: 11, margin: "4px 0 0", fontWeight: 600 }}>{missing}</p>
+      )}
     </div>
   );
 }
