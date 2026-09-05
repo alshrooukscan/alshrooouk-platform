@@ -39,7 +39,8 @@ export async function POST(req) {
     return NextResponse.json({ error: "You don't have access to dental stock orders." }, { status: 403 });
   }
 
-  const { orderId, action, amount, paymentMethod, note } = await req.json();
+  const body = await req.json();
+  const { orderId, action, amount, paymentMethod, note } = body;
   if (!orderId || !action) {
     return NextResponse.json({ error: "orderId and action are required" }, { status: 400 });
   }
@@ -65,15 +66,71 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, status: "reviewed" });
   }
 
-  if (action === "deliver") {
-    if (!["placed", "reviewed"].includes(order.status)) {
-      return NextResponse.json({ error: `This order is ${order.status} and can't be delivered.` }, { status: 409 });
+  // Stage 4. Delivery is no longer a single button. The order is assigned,
+  // goes in transit with a 4-digit code sent to the customer, and only a
+  // verified code (or an explicit manager override) closes it. Cash cannot
+  // be recorded until that has happened - enforced in the database too.
+  if (action === "assign") {
+    const { data, error } = await supabaseAdmin.rpc("assign_delivery", {
+      p_order_id: orderId,
+      p_employee_id: body.employeeId || null,
+      p_staff_id: staff.id,
+      p_staff_name: staff.name,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    await supabaseAdmin.from("activity_log").insert({
+      actor_id: staff.id, actor_name: staff.name,
+      actor_type: staff.role === "admin" ? "admin" : "employee",
+      action: "dental_delivery_assigned", entity_type: "dental_order", entity_id: orderId,
+      details: { doctor: order.doctors?.name, assignedTo: data?.assigned_to, source: data?.source },
+    });
+
+    // The code is returned so it can be sent to the customer over WhatsApp.
+    return NextResponse.json({ ok: true, result: data });
+  }
+
+  if (action === "verify") {
+    const { data, error } = await supabaseAdmin.rpc("verify_delivery_otp", {
+      p_order_id: orderId,
+      p_code: String(body.code || "").trim(),
+      p_staff_id: staff.id,
+      p_staff_name: staff.name,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    await supabaseAdmin.from("activity_log").insert({
+      actor_id: staff.id, actor_name: staff.name,
+      actor_type: staff.role === "admin" ? "admin" : "employee",
+      action: "dental_delivery_verified", entity_type: "dental_order", entity_id: orderId,
+      details: { doctor: order.doctors?.name },
+    });
+    return NextResponse.json({ ok: true, result: data });
+  }
+
+  if (action === "override") {
+    // A14: closing a delivery without the customer's code is a manager act.
+    if (staff.role !== "admin" && staff.permissions?.stock !== true) {
+      return NextResponse.json(
+        { error: "Only a manager can close a delivery without the customer's code." },
+        { status: 403 }
+      );
     }
-    await supabaseAdmin
-      .from("dental_orders")
-      .update({ status: "delivered", delivered_by_id: staff.id, delivered_by_name: staff.name, delivered_at: now })
-      .eq("id", orderId);
-    return NextResponse.json({ ok: true, status: "delivered" });
+    const { data, error } = await supabaseAdmin.rpc("override_delivery", {
+      p_order_id: orderId,
+      p_reason: body.reason || "",
+      p_staff_id: staff.id,
+      p_staff_name: staff.name,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    await supabaseAdmin.from("activity_log").insert({
+      actor_id: staff.id, actor_name: staff.name,
+      actor_type: staff.role === "admin" ? "admin" : "employee",
+      action: "dental_delivery_overridden", entity_type: "dental_order", entity_id: orderId,
+      details: { doctor: order.doctors?.name, reason: body.reason },
+    });
+    return NextResponse.json({ ok: true, result: data });
   }
 
   if (action === "cancel") {
