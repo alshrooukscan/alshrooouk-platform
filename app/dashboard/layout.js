@@ -31,7 +31,7 @@ const OPEN_ROUTES = ["/dashboard/action-center", "/dashboard/bug-reports"];
 
 // Admin only, and not grantable by a permission key. These are not in the table
 // above, so without this they would fall through to "no permission required".
-const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer"];
+const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer", "/dashboard/cash-monitor"];
 
 function permissionForPath(pathname) {
   if (OPEN_ROUTES.some((p) => pathname.startsWith(p))) return null;
