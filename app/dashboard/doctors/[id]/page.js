@@ -18,6 +18,7 @@ import { usePermissions } from "../../../../lib/usePermissions";
 import { logActivity } from "../../../../lib/activityLog";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { useAutoRefresh } from "../../../../lib/useAutoRefresh";
+import { APP_URL } from "../../../../lib/appUrl";
 
 export default function DoctorProfilePage() {
   const { id } = useParams();
@@ -232,7 +233,7 @@ export default function DoctorProfilePage() {
           doctorPortalWhatsAppLink({
             mobile: doctor.phone,
             doctorName: doctor.name,
-            portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+            portalUrl: `${APP_URL}/portal`,
             username,
             password,
           })
@@ -281,7 +282,7 @@ export default function DoctorProfilePage() {
                         ? baseUsername
                         : await resolveUniqueUsername(supabase, "doctors", baseUsername, { excludeId: doctor.id });
                       const { data: pwd } = await supabase.rpc("create_doctor_credentials", { p_doctor_id: doctor.id, p_username: username });
-                      const portalUrl = `${window.location.origin.replace("/dashboard", "")}/portal`;
+                      const portalUrl = `${APP_URL}/portal`;
                       window.open(doctorPortalWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, portalUrl, username, password: pwd }), "_blank");
                     },
                   },

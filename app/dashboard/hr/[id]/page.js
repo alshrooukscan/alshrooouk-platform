@@ -15,6 +15,7 @@ import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { logActivity } from "../../../../lib/activityLog";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import DocumentsUploader from "../../../../components/DocumentsUploader";
+import { APP_URL } from "../../../../lib/appUrl";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 export default function EmployeeProfilePage() {
@@ -364,7 +365,7 @@ export default function EmployeeProfilePage() {
           employeePortalWhatsAppLink({
             mobile: employee.phone,
             employeeName: employee.name,
-            portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+            portalUrl: `${APP_URL}/portal`,
             username,
             password,
           })

@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { formatMoney, formatVisitDate } from "../../../../lib/format";
+import { APP_URL } from "../../../../lib/appUrl";
 
 // One button definition for all four actions. They previously each carried
 // their own inline styles and had drifted into four different widths, weights
@@ -84,7 +85,7 @@ export default function InvoiceViewPage() {
 
   function sendWhatsApp(stamped) {
     if (!patientMobile) return;
-    const pdfUrl = `${window.location.origin}/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`;
+    const pdfUrl = `${APP_URL}/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`;
     const text =
       `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number}\n` +
       `Amount: ${formatMoney(invoice.amount)} EGP\n` +

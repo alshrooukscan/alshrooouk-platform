@@ -23,6 +23,7 @@ import PortalAccessCard from "../../../../components/PortalAccessCard";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { resolveUniqueUsername, resolvePatientUsername } from "../../../../lib/uniqueUsername";
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
+import { APP_URL } from "../../../../lib/appUrl";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -369,7 +370,7 @@ export default function PatientProfilePage() {
 
   async function handleCustomerWhatsApp() {
     const pwd = await generateNewPassword();
-    const portalUrl = `${window.location.origin.replace("/dashboard", "")}/portal`;
+    const portalUrl = `${APP_URL}/portal`;
     const username = credentials?.username || patient.mobile.replace(/\D/g, "");
     const link = customerWhatsAppLink({
       mobile: patient.mobile,
@@ -792,7 +793,7 @@ export default function PatientProfilePage() {
           customerWhatsAppLink({
             mobile: patient.mobile,
             patientName: patient.name,
-            portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+            portalUrl: `${APP_URL}/portal`,
             username,
             password,
           })

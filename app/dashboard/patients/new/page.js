@@ -10,6 +10,7 @@ import { customerWhatsAppLink } from "../../../../lib/whatsapp";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
+import { APP_URL } from "../../../../lib/appUrl";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -69,8 +70,17 @@ export default function NewPatientPage() {
 
   useEffect(() => {
     supabase.from("branches").select("id, name").eq("is_active", true).then(({ data }) => setBranches(data || []));
-    supabase.from("exam_types").select("id, name, price, category").eq("is_active", true).order("name").then(({ data }) => setExamTypes(data || []));
+    supabase.from("exam_types").select("id, name, price, category, branch_id").eq("is_active", true).order("name").then(({ data }) => setExamTypes(data || []));
   }, []);
+
+  // Staff work out of one branch, so the branch is prefilled from their own
+  // profile rather than picked every time. Still editable - a manager covering
+  // two sites needs to be able to change it.
+  useEffect(() => {
+    if (profile?.branch_id) {
+      setForm((f) => (f.branch_id ? f : { ...f, branch_id: profile.branch_id }));
+    }
+  }, [profile?.branch_id]);
 
   useEffect(() => {
     if (!doctorQuery) {
@@ -120,10 +130,30 @@ export default function NewPatientPage() {
   const discountAmount = sumBeforeDiscount * (discountPct / 100);
   const sumAfterDiscount = sumBeforeDiscount - discountAmount;
 
+  // Each branch owns its own scan list and prices. Rows with no branch set are
+  // legacy/global and stay visible everywhere, so nothing disappears from the
+  // form for a branch that hasn't had its list built out yet.
+  const branchExamTypes = examTypes.filter(
+    (e) => !form.branch_id || !e.branch_id || e.branch_id === form.branch_id
+  );
+
+  // Switching branch must drop any scan already ticked that the new branch does
+  // not offer - otherwise the visit saves with a scan name that branch has no
+  // price for, and the report trigger cannot resolve it either.
+  useEffect(() => {
+    if (!form.branch_id || !examTypes.length) return;
+    const allowed = new Set(branchExamTypes.map((e) => e.id));
+    setForm((f) =>
+      f.scan_type_ids.every((sid) => allowed.has(sid))
+        ? f
+        : { ...f, scan_type_ids: f.scan_type_ids.filter((sid) => allowed.has(sid)) }
+    );
+  }, [form.branch_id, examTypes.length]);
+
   const examsByCategory = CATEGORY_ORDER.map((cat) => ({
     key: cat,
     label: CATEGORY_LABELS[cat],
-    items: examTypes.filter((e) => (e.category || "misc") === cat),
+    items: branchExamTypes.filter((e) => (e.category || "misc") === cat),
   })).filter((c) => c.items.length > 0);
 
   async function handleSubmit(e) {
@@ -255,7 +285,7 @@ export default function NewPatientPage() {
               ? customerWhatsAppLink({
                   mobile: form.mobile,
                   patientName: form.name,
-                  portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+                  portalUrl: `${APP_URL}/portal`,
                   username: createdAccount.username,
                   password: createdAccount.password,
                 })

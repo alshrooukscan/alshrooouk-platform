@@ -8,6 +8,7 @@ import { formatPhone } from "../../../../lib/formatPhone";
 import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
+import { APP_URL } from "../../../../lib/appUrl";
 
 export default function NewEmployeePage() {
   const router = useRouter();
@@ -152,7 +153,7 @@ export default function NewEmployeePage() {
               ? employeePortalWhatsAppLink({
                   mobile: form.phone,
                   employeeName: form.name,
-                  portalUrl: `${window.location.origin.replace("/dashboard", "")}/portal`,
+                  portalUrl: `${APP_URL}/portal`,
                   username: createdAccount.username,
                   password: createdAccount.password,
                 })
