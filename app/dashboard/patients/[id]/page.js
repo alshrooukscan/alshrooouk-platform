@@ -30,6 +30,19 @@ const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
 const DISCOUNT_REASONS = ["Referred Patient", "Doctor / Doctor Relative", "Approved by Management", "Workers / Workers Relatives", "People in Need", "Insurance", "Other"];
 const PAYMENT_METHODS = ["Cash", "Visa", "InstaPay", "Wallet"];
 
+// Visits store scan types as plain name strings, not exam_type ids, so the edit
+// form has to match those names back to the current exam_types list. Exact
+// string matching silently failed on ~17% of visits over trivial differences -
+// "Endo one tooth" vs "Endo One Tooth", "+Ceph" vs "+ Ceph" - leaving the scan
+// checkboxes blank and the amount recalculating from zero. Normalizing case,
+// whitespace and punctuation before comparing recovers those.
+function normalizeScanName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export default function PatientProfilePage() {
   const { id } = useParams();
   const router = useRouter();
@@ -1654,6 +1667,11 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  // Scan type names on this visit that match no exam_type at all (renamed or
+  // removed since). Carried through the save untouched so editing an unrelated
+  // field can't erase them from the record.
+  const [legacyScanNames, setLegacyScanNames] = useState([]);
+  const [recalcAmount, setRecalcAmount] = useState(true);
 
   const [form, setForm] = useState({
     exam_date: visit.exam_date || "",
@@ -1678,15 +1696,43 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
     async function init() {
       const [{ data: b }, { data: e }] = await Promise.all([
         supabase.from("branches").select("id, name").eq("is_active", true),
-        supabase.from("exam_types").select("id, name, price, category").eq("is_active", true).order("name"),
+        // Deliberately NOT filtered to is_active here: a scan type that was
+        // deactivated after this visit was recorded still needs to show as
+        // ticked, otherwise editing the visit would quietly drop it. Inactive
+        // ones are filtered out of the pick-list below, so they can be kept
+        // but not newly added.
+        supabase.from("exam_types").select("id, name, price, category, is_active").order("name"),
       ]);
       setBranches(b || []);
-      setExamTypes(e || []);
       // Match the visit's existing scan_types (stored as name strings) back to
       // exam_type ids, so the same checkboxes used at creation time can show
-      // which ones are currently selected on this visit.
-      const currentNames = new Set(visit.scan_types || []);
-      const matchedIds = (e || []).filter((ex) => currentNames.has(ex.name)).map((ex) => ex.id);
+      // which ones are currently selected on this visit. Matched on the
+      // normalized name, not the raw string - see normalizeScanName.
+      const all = e || [];
+      const byNorm = new Map();
+      all.forEach((ex) => {
+        const k = normalizeScanName(ex.name);
+        // Prefer an active type when two rows normalize to the same name.
+        if (!byNorm.has(k) || (ex.is_active && !byNorm.get(k).is_active)) byNorm.set(k, ex);
+      });
+      const matched = [];
+      const unmatched = [];
+      (visit.scan_types || []).forEach((n) => {
+        const hit = byNorm.get(normalizeScanName(n));
+        if (hit) matched.push(hit);
+        else unmatched.push(n);
+      });
+      const matchedIds = matched.map((ex) => ex.id);
+      // Pick-list = everything currently active, plus any inactive type this
+      // visit already uses so it stays visible and ticked.
+      const visible = all.filter((ex) => ex.is_active || matchedIds.includes(ex.id));
+      setExamTypes(visible);
+      setLegacyScanNames(unmatched);
+      // A visit carrying a scan type that no longer exists at all has no price
+      // to recompute from, so recalculation is off by default there - the
+      // stored amount stays authoritative until someone deliberately overrides
+      // it. Never silently replace a correct figure with an incomplete one.
+      setRecalcAmount(unmatched.length === 0);
       setForm((f) => ({ ...f, scan_type_ids: matchedIds }));
 
       if (visit.doctor_id) {
@@ -1729,7 +1775,16 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   function selectDoctor(d) {
     setSelectedDoctor(d);
     setDoctorResults([]);
-    setForm((f) => ({ ...f, discount_on: true, discount_pct: 20, discount_reason: "Referred Patient" }));
+    // On a NEW visit, picking a doctor applies the standard 20% referral
+    // discount. On an edit it must not: re-picking the doctor to correct a
+    // typo would otherwise wipe whatever discount the visit actually carries
+    // and replace it with 20% "Referred Patient". Only default it in when the
+    // visit genuinely has no discount yet.
+    setForm((f) =>
+      Number(f.discount_pct) > 0 || f.discount_on
+        ? f
+        : { ...f, discount_on: true, discount_pct: 20, discount_reason: "Referred Patient" }
+    );
   }
 
   const selectedExams = examTypes.filter((e) => form.scan_type_ids.includes(e.id));
@@ -1737,13 +1792,19 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   const discountPct = form.discount_on ? Number(form.discount_pct) || 0 : 0;
   const discountAmount = sumBeforeDiscount * (discountPct / 100);
   const sumAfterDiscount = sumBeforeDiscount - discountAmount;
+  const storedAmountDue = Number(visit.amount_due) || 0;
+  // What this edit will actually write. Recomputing from the ticked scan types
+  // is right in the normal case, but wrong when the visit carries a scan type
+  // that no longer exists - there the stored figure is the only correct one.
+  const finalAmountDue = recalcAmount ? sumAfterDiscount : storedAmountDue;
+  const amountDiffers = Math.abs(finalAmountDue - storedAmountDue) > 0.01;
   const alreadyPaid = Number(visit.amount_paid) || 0;
   // Reflects the amount due as it stands with whatever's currently selected
   // in this form (scan types, discount), not the visit's stored amount_due -
   // if those are being changed in this same edit, "remaining" should answer
   // "remaining after this edit goes through", not the pre-edit number.
   const projectedNewPayment = Number(form.new_payment_amount) || 0;
-  const remainingForSettlement = sumAfterDiscount - alreadyPaid - projectedNewPayment;
+  const remainingForSettlement = finalAmountDue - alreadyPaid - projectedNewPayment;
 
   const examsByCategory = CATEGORY_ORDER.map((cat) => ({
     key: cat,
@@ -1758,12 +1819,16 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       setError('Select a referring doctor, or check "Walk-in, no referring doctor."');
       return;
     }
-    if (form.scan_type_ids.length === 0) {
+    if (form.scan_type_ids.length === 0 && legacyScanNames.length === 0) {
       setError("Select at least one scan type.");
       return;
     }
     setSaving(true);
-    const scanNames = selectedExams.map((ex) => ex.name);
+    // Legacy names are appended back verbatim. They match no current exam_type,
+    // so there is nothing to tick and nothing to price - but they are what the
+    // visit actually was, and dropping them on an unrelated edit would corrupt
+    // the record.
+    const scanNames = [...selectedExams.map((ex) => ex.name), ...legacyScanNames];
     const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
 
     const requestedValues = {
@@ -1772,7 +1837,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       scan_types: scanNames,
       doctor_id: walkIn ? null : selectedDoctor?.id || null,
       branch_id: form.branch_id || null,
-      amount_due: sumAfterDiscount || null,
+      amount_due: finalAmountDue || null,
       discount_pct: discountPct,
       discount_reason: form.discount_on ? finalReason : null,
       notes: form.notes || null,
@@ -1899,6 +1964,28 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
           ))}
         </select>
 
+        {legacyScanNames.length > 0 && (
+          <div style={{ background: "#fff8e1", border: "1px solid #f0d58c", borderRadius: 8, padding: "10px 12px", margin: "12px 0" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#8a6d00", marginBottom: 6 }}>
+              Scan types kept from the original record
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {legacyScanNames.map((n) => (
+                <span key={n} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, background: "#fff", border: "1px solid #e0cf9a", color: theme.navy }}>
+                  {n}
+                </span>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: "#8a6d00", margin: "0 0 8px" }}>
+              These are no longer in the scan type list, so they have no price to recalculate from. They stay on the visit either way.
+            </p>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#8a6d00" }}>
+              <input type="checkbox" checked={recalcAmount} onChange={(e) => setRecalcAmount(e.target.checked)} />
+              Recalculate the amount due from the ticked scan types only
+            </label>
+          </div>
+        )}
+
         <FieldLabel>Scan Type (select multiple)</FieldLabel>
         {examsByCategory.map((cat) => (
           <div key={cat.key} style={{ marginBottom: 8 }}>
@@ -1956,7 +2043,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         <div style={{ background: "#faf9fb", borderRadius: 8, padding: 12, margin: "10px 0" }}>
           <TotalRow label="Sum Before Discount" value={sumBeforeDiscount} />
           {discountPct > 0 && <TotalRow label={`Discount (${discountPct}%)`} value={-discountAmount} negative />}
-          <TotalRow label="Amount Due" value={sumAfterDiscount} bold />
+          <TotalRow label="Amount Due" value={finalAmountDue} bold />
         </div>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 10 }}>
@@ -2004,7 +2091,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
               </>
             )}
             <span style={{ color: theme.gray, fontWeight: 700 }}>Amount due:</span>
-            <span style={{ textAlign: "right", color: theme.navy, fontWeight: 700 }}>{sumAfterDiscount.toFixed(2)} EGP</span>
+            <span style={{ textAlign: "right", color: theme.navy, fontWeight: 700 }}>{finalAmountDue.toFixed(2)} EGP</span>
             <span style={{ color: theme.gray }}>Already paid:</span>
             <span style={{ textAlign: "right", color: theme.navy }}>{alreadyPaid.toFixed(2)} EGP</span>
             {projectedNewPayment > 0 && (
@@ -2048,6 +2135,12 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         <FieldLabel>Notes</FieldLabel>
         <input style={inp} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
+        {amountDiffers && (
+          <p style={{ fontSize: 12, background: "#fdecea", color: "#8c1d18", padding: "10px 12px", borderRadius: 8, margin: "12px 0 4px" }}>
+            Heads up: this visit is stored at {storedAmountDue.toFixed(2)} EGP, and saving now will change it to {finalAmountDue.toFixed(2)} EGP.
+            {!recalcAmount && " Tick the recalculate box above if that is what you want."}
+          </p>
+        )}
         {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
         <button type="submit" disabled={saving} style={{ ...actionBtn, marginTop: 6 }}>
           {saving ? "Saving..." : isAdmin ? "Save Changes" : "Submit for Approval"}
