@@ -307,7 +307,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, scan_types, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method, created_by_name, created_at)")
+      .select("id, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method, created_by_name, created_at)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle(),
@@ -1463,6 +1463,10 @@ function AddScanModal({ patient, onClose, onSaved }) {
         doctor_id: walkIn ? null : selectedDoctor?.id,
         branch_id: form.branch_id || null,
         scan_types: scanNames,
+        // Written alongside the names so the edit form can re-open this visit
+        // by id rather than by string match. Renaming a scan type in Settings
+        // must never retroactively break a saved visit again.
+        exam_type_ids: selectedExams.map((e) => e.id),
         exam_date: form.exam_date || null,
         exam_time: form.exam_time || null,
         // `sumAfterDiscount || null` turned a fully-discounted visit (0) into
@@ -1715,10 +1719,18 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         // Prefer an active type when two rows normalize to the same name.
         if (!byNorm.has(k) || (ex.is_active && !byNorm.get(k).is_active)) byNorm.set(k, ex);
       });
+      // Prefer the durable exam_type_ids link where the visit has one. It is
+      // positionally aligned with scan_types, so index N of one describes the
+      // same scan as index N of the other, and a null slot means that name
+      // matched no exam type at backfill time. Falling back to the name match
+      // covers visits saved before the column existed.
+      const byId = new Map(all.map((ex) => [ex.id, ex]));
+      const ids = visit.exam_type_ids;
       const matched = [];
       const unmatched = [];
-      (visit.scan_types || []).forEach((n) => {
-        const hit = byNorm.get(normalizeScanName(n));
+      (visit.scan_types || []).forEach((n, i) => {
+        const linked = Array.isArray(ids) && ids.length === (visit.scan_types || []).length ? byId.get(ids[i]) : null;
+        const hit = linked || byNorm.get(normalizeScanName(n));
         if (hit) matched.push(hit);
         else unmatched.push(n);
       });
@@ -1835,6 +1847,10 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       exam_date: form.exam_date || null,
       exam_time: form.exam_time || null,
       scan_types: scanNames,
+      // Positionally aligned with scan_types: a null tail entry marks a legacy
+      // name that still maps to no exam type, so the two arrays stay the same
+      // length and index N keeps describing the same scan.
+      exam_type_ids: [...selectedExams.map((ex) => ex.id), ...legacyScanNames.map(() => null)],
       doctor_id: walkIn ? null : selectedDoctor?.id || null,
       branch_id: form.branch_id || null,
       amount_due: finalAmountDue || null,

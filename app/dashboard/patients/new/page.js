@@ -219,6 +219,10 @@ export default function NewPatientPage() {
         doctor_id: walkIn ? null : selectedDoctor?.id,
         branch_id: form.branch_id || null,
         scan_types: scanNames,
+        // Written alongside the names so the edit form can re-open this visit
+        // by id rather than by string match. Renaming a scan type in Settings
+        // must never retroactively break a saved visit again.
+        exam_type_ids: selectedExams.map((e) => e.id),
         amount_due: sumAfterDiscount || null,
         discount_pct: discountPct,
         discount_reason: form.discount_on ? finalReason : null,
