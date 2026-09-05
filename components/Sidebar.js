@@ -102,6 +102,7 @@ const NAV = [
       // business), so it is gated on the reception/stock permissions the API
       // route already checks rather than a per-brand key.
       { href: "/dashboard/cash-monitor", label: "Cash Monitor", icon: Banknote, adminOnly: true },
+      { href: "/dashboard/internal-purchases", label: "Internal Purchases", icon: ArrowLeftRight, adminOnly: true },
       { href: "/dashboard/counter-sale", label: "Counter Sale", icon: Banknote, key: "reception" },
       { href: "/dashboard/debt-collection", label: "Debt Collection", icon: Banknote, key: "reception" },
     ],
