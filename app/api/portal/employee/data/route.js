@@ -3,6 +3,21 @@ import { cookies } from "next/headers";
 import { verifyEmployeeSession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
+
+// Records are withheld until the account is off its staff-issued temporary
+// password. The redirect on the portal page is only a client-side courtesy;
+// on its own it left this data reachable by calling the route directly with a
+// temporary password that had travelled over WhatsApp and may be sitting in
+// someone else's chat history.
+//
+// Returns 200 with mustChangePassword set rather than an error status, because
+// the portal page reads exactly this response to decide to redirect - failing
+// the request would strand the person on a broken screen instead of sending
+// them to the form that fixes it.
+function passwordChangeRequired() {
+  return NextResponse.json({ mustChangePassword: true, gated: true });
+}
+
 export async function GET() {
   const token = cookies().get("portal_session")?.value;
   const session = await verifyEmployeeSession(token);
@@ -52,6 +67,10 @@ export async function GET() {
 
   // Checked fresh here, not read from the session token - see the identical
   // note in the client data route for why.
+  // Impersonating admins are exempt: they are inspecting the account, not
+  // using it, and cannot set someone else's password.
+  if (!session.impersonated && employee?.must_change_password) return passwordChangeRequired();
+
   return NextResponse.json({
     employee,
     payslips: payslips || [],

@@ -48,8 +48,16 @@ export default function ChangePasswordPage() {
     <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 28, maxWidth: 400, width: "100%", boxShadow: "0 4px 20px rgba(39,33,77,0.08)" }}>
         <h2 style={{ color: theme.navy, marginTop: 0 }}>Set Your Own Password</h2>
-        <p style={{ color: theme.gray, fontSize: 13, marginBottom: 20 }}>
+        <p style={{ color: theme.gray, fontSize: 13, marginBottom: 12 }}>
           For your security, please choose a new password before continuing. At least 8 characters, including a number.
+        </p>
+        {/* Stated before they type, not after. The clinic stores only a one-way
+            hash, so once this password is set nobody here can look it up - if
+            it is lost the only remedy is issuing a new temporary one. People
+            should know that while they are choosing it. */}
+        <p style={{ background: "#fff8e1", border: "1px solid #f0d58c", color: "#8a6d00", fontSize: 12.5, lineHeight: 1.5, borderRadius: 8, padding: "10px 12px", marginBottom: 20 }}>
+          <strong>Please write this password down and keep it somewhere safe.</strong> We do not keep a copy of it,
+          so nobody at the clinic can look it up for you. If it is lost, we can only issue you a new temporary one.
         </p>
         <form onSubmit={handleSubmit}>
           <label style={lbl}>New Password</label>

@@ -9,6 +9,7 @@ import { theme } from "../../../../lib/theme";
 import { formatMoney, formatVisitDate, formatVisitDateTime, doctorLabel } from "../../../../lib/format";
 import {
   customerWhatsAppLink, scanWhatsAppLink, buildCustomerMessage, buildScanMessage,
+  portalLinkWhatsAppLink, buildPortalLinkMessage, redactPasswords,
   patientReportWhatsAppLink, buildPatientReportMessage,
   patientInvoiceWhatsAppLink, buildPatientInvoiceMessage,
   patientRawDataWhatsAppLink, buildPatientRawDataMessage,
@@ -310,7 +311,18 @@ export default function PatientProfilePage() {
       .select("id, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method, created_by_name, created_at)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
-      supabase.from("patient_auth").select("username").eq("patient_id", id).maybeSingle(),
+      // Goes through a service-role route rather than querying patient_auth
+      // directly: that table is RLS-locked with no policies, so a staff
+      // client always read back nothing and the page believed every patient
+      // was account-less.
+      fetch("/api/patients/credential-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId: id }),
+      })
+        .then((r) => r.json())
+        .then((d) => ({ data: d?.hasAccount ? d : null }))
+        .catch(() => ({ data: null })),
       // Fetched in this first wave, not after render: visitNeedsReport defaults
       // to true while unknown, so loading it later made the "Report Done" row
       // flash in and then vanish on every no-report visit.
@@ -377,13 +389,37 @@ export default function PatientProfilePage() {
       ? baseUsername
       : await resolvePatientUsername(baseUsername, id);
     const { data: pwd } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: username });
-    setCredentials({ username });
+    // Whatever they had before, they are now back on a staff-issued temporary
+    // password and will be forced to set their own at next login.
+    setCredentials({ hasAccount: true, username, hasOwnPassword: false });
     return pwd;
   }
 
   async function handleCustomerWhatsApp() {
-    const pwd = await generateNewPassword();
     const portalUrl = `${APP_URL}/portal`;
+
+    // Once the patient has set their own password, this message carries the
+    // link and their username only. It used to call generateNewPassword()
+    // unconditionally, so every routine send silently replaced the password
+    // they had chosen and locked them out of their own portal without any
+    // warning - on a button staff press as a matter of routine.
+    if (credentials?.hasOwnPassword) {
+      const username = credentials.username;
+      const link = portalLinkWhatsAppLink({ mobile: patient.mobile, patientName: patient.name, portalUrl, username });
+      const { data: session } = await supabase.auth.getUser();
+      await supabase.from("whatsapp_log").insert({
+        message_type: "customer",
+        rendered_text: buildPortalLinkMessage({ patientName: patient.name, portalUrl, username }),
+        sent_at: new Date().toISOString(),
+        sent_by: session?.user?.id || null,
+      });
+      window.open(link, "_blank");
+      return;
+    }
+
+    // No account yet, or still on a staff-issued temporary password nobody can
+    // look up - a fresh one is the only thing we can actually send.
+    const pwd = await generateNewPassword();
     const username = credentials?.username || patient.mobile.replace(/\D/g, "");
     const link = customerWhatsAppLink({
       mobile: patient.mobile,
@@ -395,7 +431,9 @@ export default function PatientProfilePage() {
     const { data: session } = await supabase.auth.getUser();
     await supabase.from("whatsapp_log").insert({
       message_type: "customer",
-      rendered_text: buildCustomerMessage({ patientName: patient.name, portalUrl, username, password: pwd }),
+      // Redacted before it is stored. The customer is told we keep no copy of
+      // their password, so the message archive must not quietly hold one.
+      rendered_text: redactPasswords(buildCustomerMessage({ patientName: patient.name, portalUrl, username, password: pwd })),
       sent_at: new Date().toISOString(),
       sent_by: session?.user?.id || null,
     });
@@ -799,7 +837,7 @@ export default function PatientProfilePage() {
         onGenerate={async (username) => {
           const unique = await resolvePatientUsername(username, id);
           const { data } = await supabase.rpc("create_patient_credentials", { p_patient_id: id, p_username: unique });
-          setCredentials({ username: unique });
+          setCredentials({ hasAccount: true, username: unique, hasOwnPassword: false });
           return data;
         }}
         buildWhatsAppLink={(username, password) =>
