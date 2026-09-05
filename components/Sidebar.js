@@ -98,6 +98,10 @@ const NAV = [
       // adminOnly, not grantable via a permission key, same pattern as the
       // Confirmation Queue right below it.
       { href: "/dashboard/expenses/brand-transfer", label: "Brand Transfer", icon: ArrowLeftRight, adminOnly: true },
+      // Debt collection spans every brand (one customer can owe more than one
+      // business), so it is gated on the reception/stock permissions the API
+      // route already checks rather than a per-brand key.
+      { href: "/dashboard/debt-collection", label: "Debt Collection", icon: Banknote, key: "reception" },
     ],
   },
   { type: "link", href: "/dashboard/exports", label: "Export Centre", icon: Download, adminOnly: true },
