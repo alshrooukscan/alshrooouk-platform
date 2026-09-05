@@ -132,7 +132,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       </div>
 
       {modal === "cash_out" && (
-        <CashOutModal brand={brand} profile={profile} onClose={() => setModal(null)} onSaved={load} />
+        <CashOutModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
       )}
       {modal === "transfer" && (
         <TransferModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
@@ -144,7 +144,8 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
   );
 }
 
-function CashOutModal({ brand, profile, onClose, onSaved }) {
+function CashOutModal({ brand, employees, profile, onClose, onSaved }) {
+  const [spentById, setSpentById] = useState("");
   const [category, setCategory] = useState("utilities");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [amount, setAmount] = useState("");
@@ -155,6 +156,13 @@ function CashOutModal({ brand, profile, onClose, onSaved }) {
   async function handleSave() {
     if (!amount || Number(amount) <= 0) {
       setError("Enter a valid amount.");
+      return;
+    }
+    // Cash physically leaves someone's custody, so we must know whose. Without
+    // from_employee_id the row cannot debit employee_cash_balances and the
+    // spend would silently leave that employee's balance overstated.
+    if (paymentMethod === "cash" && !spentById) {
+      setError("Select who the cash came from.");
       return;
     }
     setSaving(true);
@@ -168,6 +176,7 @@ function CashOutModal({ brand, profile, onClose, onSaved }) {
         brand,
         amount: Number(amount),
         payment_method: paymentMethod,
+        from_employee_id: paymentMethod === "cash" ? spentById : null,
         category,
         note: note || null,
         status,
@@ -191,7 +200,7 @@ function CashOutModal({ brand, profile, onClose, onSaved }) {
       action: "logged_cash_out",
       entityType: "expense_transaction",
       entityId: data.id,
-      details: { brand, category, paymentMethod, amount: Number(amount) },
+      details: { brand, category, paymentMethod, spentById: spentById || null, amount: Number(amount) },
     });
     onSaved();
     onClose();
@@ -214,6 +223,20 @@ function CashOutModal({ brand, profile, onClose, onSaved }) {
           <option key={p.key} value={p.key}>{p.label}</option>
         ))}
       </select>
+      {paymentMethod === "cash" && (
+        <>
+          <FieldLabel>Cash Came From</FieldLabel>
+          <select value={spentById} onChange={(e) => setSpentById(e.target.value)} style={inp}>
+            <option value="">Select employee...</option>
+            {(employees || []).map((emp) => (
+              <option key={emp.id} value={emp.id}>{emp.name}</option>
+            ))}
+          </select>
+          <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+            This amount is deducted from that employee&apos;s cash balance.
+          </p>
+        </>
+      )}
       <FieldLabel>Amount (EGP)</FieldLabel>
       <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
       <FieldLabel>Note (optional)</FieldLabel>
