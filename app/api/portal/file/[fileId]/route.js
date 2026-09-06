@@ -29,6 +29,15 @@ import { getAccessToken, getFileParents, getFileMeta } from "../../../../../lib/
 //
 // inline rather than attachment so images and PDFs open in the phone browser
 // instead of silently landing in Downloads.
+// This handler reads only params - no cookies, headers or search params - so
+// Next treats it as statically optimisable and caches the fetch that
+// supabase-js makes underneath. That cached row is the access check: a
+// renamed file kept serving its old name, and by the same mechanism a file
+// whose patient_files record had been DELETED would have kept serving too.
+// Revocability is the whole reason this proxy exists instead of a public
+// Drive link, so the lookup has to hit the database on every request.
+export const dynamic = "force-dynamic";
+
 export async function GET(req, { params }) {
   const fileId = params?.fileId;
   if (!fileId) {
