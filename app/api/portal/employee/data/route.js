@@ -71,8 +71,19 @@ export async function GET() {
   // using it, and cannot set someone else's password.
   if (!session.impersonated && employee?.must_change_password) return passwordChangeRequired();
 
+  // A29: an employee sees their own cash and tab position, and nobody
+  // else's. Both are scoped to this session's employee id.
+  const [{ data: myCash }, { data: myTab }, { data: myCapacity }] = await Promise.all([
+    supabaseAdmin.from("employee_cash_balances").select("brand, balance").eq("employee_id", session.id),
+    supabaseAdmin.from("employee_tab_balances").select("balance").eq("employee_id", session.id).maybeSingle(),
+    supabaseAdmin.rpc("employee_spend_capacity", { p_employee_id: session.id }),
+  ]);
+
   return NextResponse.json({
     employee,
+    cashBalances: myCash || [],
+    tabBalance: Number(myTab?.balance || 0),
+    spendCapacity: myCapacity || null,
     payslips: payslips || [],
     events: events || [],
     leaveRequests: leaveRequests || [],

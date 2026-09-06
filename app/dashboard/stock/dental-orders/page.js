@@ -29,6 +29,9 @@ export default function DentalOrdersPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("open");
   const [payFor, setPayFor] = useState(null);
+  const [verifyFor, setVerifyFor] = useState(null);
+  const [code, setCode] = useState("");
+  const [issuedCode, setIssuedCode] = useState(null);
   const [pay, setPay] = useState({ amount: "", method: "cash" });
 
   useEffect(() => { load(); }, []);
@@ -58,6 +61,9 @@ export default function DentalOrdersPage() {
     const j = await res.json();
     setBusy(null);
     if (!res.ok) return setError(j.error || "Could not update that order.");
+    // A13: the code goes to the customer over WhatsApp. Showing it here is
+    // what lets the delivery person read it out or paste it into the chat.
+    if (action === "assign" && j.result?.otp) setIssuedCode({ orderId, otp: j.result.otp, source: j.result.source });
     setPayFor(null);
     setPay({ amount: "", method: "cash" });
     load();
@@ -212,23 +218,84 @@ export default function DentalOrdersPage() {
               </div>
             )}
 
+            {issuedCode?.orderId === o.id && (
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 8, background: "#eef4f6", border: "1px solid #cfe0e6" }}>
+                <div style={{ fontSize: 11, color: "#48464E", fontWeight: 700 }}>
+                  Delivery code for the customer{issuedCode.source === "manual" ? "" : ` \u00b7 auto-assigned (${issuedCode.source})`}
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 6, color: theme.navy }}>{issuedCode.otp}</div>
+                <div style={{ fontSize: 11, color: "#48464E" }}>
+                  Send this to the customer on WhatsApp. They read it back on delivery.
+                </div>
+                <button onClick={() => setIssuedCode(null)} style={{ ...btn("#fff", theme.gray), marginTop: 6 }}>Hide</button>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
               {o.status === "placed" && (
                 <button onClick={() => act(o.id, "review")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>Mark Reviewed</button>
               )}
               {["placed", "reviewed"].includes(o.status) && (
-                <button onClick={() => act(o.id, "deliver")} disabled={busy === o.id} style={btn("#1e7a3c", "#fff")}>Confirm Delivery</button>
+                <button onClick={() => act(o.id, "assign")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>
+                  Assign &amp; Send Code
+                </button>
               )}
-              {o.status !== "cancelled" && owed > 0 && (
+              {o.status === "in_transit" && (
+                <>
+                  <button onClick={() => setVerifyFor(verifyFor === o.id ? null : o.id)} disabled={busy === o.id} style={btn("#1e7a3c", "#fff")}>
+                    Enter Customer Code
+                  </button>
+                  <button
+                    onClick={() => {
+                      const reason = prompt("Closing without the customer's code. Why? (recorded and flagged for review)");
+                      if (reason && reason.trim().length >= 5) act(o.id, "override", { reason });
+                      else if (reason !== null) alert("Please give a fuller reason.");
+                    }}
+                    disabled={busy === o.id}
+                    style={{ ...btn("#fff", "#8a6d00"), border: "1px solid #e6d08a" }}
+                  >
+                    Manager Override
+                  </button>
+                </>
+              )}
+              {o.status !== "cancelled" && owed > 0 && (o.status === "delivered" || o.is_on_behalf) && (
                 <button
                   onClick={() => { setPayFor(payFor === o.id ? null : o.id); setPay({ amount: String(owed), method: o.payment_method || "cash" }); }}
                   disabled={busy === o.id} style={btn(theme.gold, theme.navy)}>Record Payment</button>
+              )}
+              {o.status === "in_transit" && owed > 0 && (
+                <span style={{ fontSize: 11, color: "#8a6d00", alignSelf: "center" }}>
+                  Payment unlocks once the delivery is verified.
+                </span>
               )}
               {o.status !== "delivered" && o.status !== "cancelled" && Number(o.amount_paid) === 0 && (
                 <button onClick={() => { if (confirm("Cancel this order? The items go back into stock.")) act(o.id, "cancel"); }}
                   disabled={busy === o.id} style={{ ...btn("#fff", "#ba1a1a"), border: "1px solid #f0c9c9" }}>Cancel</button>
               )}
             </div>
+
+            {verifyFor === o.id && (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, background: "#f2f8f4", padding: 12, borderRadius: 8, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>4-digit code from the customer</div>
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    inputMode="numeric"
+                    placeholder="0000"
+                    style={{ width: 90, padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 15, letterSpacing: 3, textAlign: "center" }}
+                  />
+                </div>
+                <button
+                  onClick={() => { act(o.id, "verify", { code }); setCode(""); }}
+                  disabled={busy === o.id || code.length !== 4}
+                  style={btn("#1e7a3c", "#fff")}
+                >
+                  Verify Delivery
+                </button>
+                <button onClick={() => { setVerifyFor(null); setCode(""); }} style={btn("#fff", theme.gray)}>Cancel</button>
+              </div>
+            )}
 
             {payFor === o.id && (
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, background: "#faf9fb", padding: 12, borderRadius: 8, flexWrap: "wrap" }}>
