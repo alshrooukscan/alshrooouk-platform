@@ -51,5 +51,10 @@ export async function GET(req) {
   }
 
   const files = await listFilesGrouped(folder.drive_folder_id);
-  return NextResponse.json({ files });
+  // Drive hands back its own webViewLink, which only opens for someone signed
+  // into a Google account with access to the clinic's shared drive. No
+  // referring doctor has that, so every link answered with a sign-in page.
+  // Rewritten to the proxy, which streams the file as the service account.
+  const proxied = (files || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}` }));
+  return NextResponse.json({ files: proxied });
 }

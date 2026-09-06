@@ -93,8 +93,14 @@ export async function GET() {
   const visitsWithFiles = (visits || []).map((v) => {
     const exact = (linkedFiles || [])
       .filter((f) => f.visit_id === v.id)
-      .map((f) => ({ id: f.drive_file_id, name: f.file_name, createdTime: f.created_at, webViewLink: `https://drive.google.com/file/d/${f.drive_file_id}/view`, exact: true }));
-    const guessed = (bestEffortByVisit[v.id] || []).map((f) => ({ ...f, exact: false }));
+      .map((f) => ({ id: f.drive_file_id, name: f.file_name, createdTime: f.created_at, // Served through our own proxy, not drive.google.com: those links
+      // demanded a Google account with access to the clinic's shared drive,
+      // which no patient has, so every one of them answered with a sign-in
+      // page instead of the file.
+      webViewLink: `/api/portal/file/${f.drive_file_id}`, exact: true }));
+    // These come straight from a Drive listing, so they still carry Drive's
+    // own webViewLink - which no patient can open. Same proxy treatment.
+    const guessed = (bestEffortByVisit[v.id] || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}`, exact: false }));
     return { ...v, files: [...exact, ...guessed] };
   });
 
@@ -103,5 +109,6 @@ export async function GET() {
     // Impersonating admins are exempt: they are inspecting the account, not
   // using it, and cannot set someone else's password.
   if (!session.impersonated && auth?.must_change_password) return passwordChangeRequired();
-  return NextResponse.json({ patient, visits: visitsWithFiles, files: stillUnmatched, mustChangePassword: session.impersonated ? false : !!auth?.must_change_password, impersonatedBy: session.impersonatedBy || null });
+  const proxiedUnmatched = (stillUnmatched || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}` }));
+  return NextResponse.json({ patient, visits: visitsWithFiles, files: proxiedUnmatched, mustChangePassword: session.impersonated ? false : !!auth?.must_change_password, impersonatedBy: session.impersonatedBy || null });
 }

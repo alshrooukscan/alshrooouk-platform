@@ -74,7 +74,10 @@ export async function GET(req) {
       id: r.drive_file_id,
       name: r.file_name,
       createdTime: r.created_at,
-      webViewLink: `https://drive.google.com/file/d/${r.drive_file_id}/view`,
+      // Proxy link rather than a raw Drive URL - a raw one only opens for
+      // someone signed into a Google account with shared-drive access, which
+      // rules out every patient and every referring doctor.
+      webViewLink: `/api/portal/file/${r.drive_file_id}`,
       groupLabel: null,
       visitId: r.visit_id || null,
     }));

@@ -150,3 +150,58 @@ export async function PATCH(req) {
 
   return NextResponse.json({ ok: true });
 }
+
+// PUT - rename a file in Drive and keep the database label in step.
+//
+// Needed because a file's name is often typed before the patient's own name is
+// confirmed: one patient's images went out as MALEKA.jpg and 22222222-3.jpg,
+// which is both unhelpful to her and a small privacy problem, since a file
+// named after one patient can end up read as belonging to them.
+//
+// Drive and patient_files are updated together. Drive first: if it refuses,
+// nothing has changed anywhere, whereas writing our label first would leave
+// the two disagreeing about what the file is called.
+export async function PUT(req) {
+  const staff = await requireStaff(req);
+  if (!canManageFiles(staff)) {
+    return NextResponse.json({ error: "You don't have permission to rename patient files." }, { status: 403 });
+  }
+
+  const { fileId, newName } = await req.json();
+  if (!fileId || !newName?.trim()) {
+    return NextResponse.json({ error: "fileId and newName are required" }, { status: 400 });
+  }
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${await getAccessToken()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: newName.trim() }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    return NextResponse.json({ error: `Drive refused the rename: ${body.slice(0, 200)}` }, { status: 500 });
+  }
+
+  const { data: record } = await supabaseAdmin
+    .from("patient_files")
+    .select("id, patient_id, file_name")
+    .eq("drive_file_id", fileId)
+    .maybeSingle();
+
+  // A folder, or a file listed from Drive that was never registered, has no
+  // row to update - the Drive rename above is the whole job in that case.
+  if (record) {
+    await supabaseAdmin.from("patient_files").update({ file_name: newName.trim() }).eq("id", record.id);
+    await supabaseAdmin.from("activity_log").insert({
+      actor_id: staff.id,
+      actor_name: staff.name,
+      actor_type: staff.role === "admin" ? "admin" : "employee",
+      action: "renamed_patient_file",
+      entity_type: "patient",
+      entity_id: record.patient_id,
+      details: { driveFileId: fileId, from: record.file_name, to: newName.trim() },
+    });
+  }
+
+  return NextResponse.json({ ok: true, fileId, name: newName.trim() });
+}
