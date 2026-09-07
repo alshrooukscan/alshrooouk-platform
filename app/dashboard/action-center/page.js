@@ -42,6 +42,7 @@ export default function ActionCenterPage() {
   const [approvals, setApprovals] = useState([]);
   const [approvalFilter, setApprovalFilter] = useState("pending");
   const [visitEdits, setVisitEdits] = useState([]);
+  const [excuses, setExcuses] = useState([]);
   const [visitEditFilter, setVisitEditFilter] = useState("pending");
   const [staffList, setStaffList] = useState([]);
   const [branchMap, setBranchMap] = useState({});
@@ -116,6 +117,13 @@ export default function ActionCenterPage() {
       promises.push(supabase.from("staff_profiles").select("id, name").order("name"));
       promises.push(
         supabase
+          .from("excuse_submissions")
+          .select("*, employees(name), excuse_rules(name)")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+      );
+      promises.push(
+        supabase
           .from("visit_edit_requests")
           .select("*, visits(patient_id, patients(name))")
           .eq("status", visitEditFilter)
@@ -153,11 +161,16 @@ export default function ActionCenterPage() {
       if (fixRes.ok) setClockFixes((await fixRes.json()).requests || []);
     }
     if (isAdmin) {
-      setApprovals(results[1].data || []);
-      setStaffList(results[2].data || []);
-      setVisitEdits(results[3].data || []);
-      setBranchMap(Object.fromEntries((results[4].data || []).map((b) => [b.id, b.name])));
-      setDoctorMap(Object.fromEntries((results[5].data || []).map((d) => [d.id, `${d.name} - ${d.clinic_name}`])));
+      // Unpacked by position in the order the promises were pushed above.
+      // Adding one in the middle previously silently shifted every setter
+      // after it onto the wrong query, so keep this list next to that one.
+      const [, approvalsRes, staffRes, excusesRes, visitEditsRes, branchesRes, doctorsRes] = results;
+      setApprovals(approvalsRes.data || []);
+      setStaffList(staffRes.data || []);
+      setExcuses(excusesRes.data || []);
+      setVisitEdits(visitEditsRes.data || []);
+      setBranchMap(Object.fromEntries((branchesRes.data || []).map((b) => [b.id, b.name])));
+      setDoctorMap(Object.fromEntries((doctorsRes.data || []).map((d) => [d.id, `${d.name} - ${d.clinic_name}`])));
     }
     setLoading(false);
   }
@@ -170,6 +183,9 @@ export default function ActionCenterPage() {
   }
 
   async function reviewApproval(item, newStatus) {
+    // Guarded here as well as in the markup: the buttons are hidden for
+    // transfers, but nothing else stops this function being reached.
+    if (item.type === "cash_transfer") return;
     setBusyId(item.id);
     const { data: session } = await supabase.auth.getSession();
     await supabase
@@ -189,6 +205,25 @@ export default function ActionCenterPage() {
       entityType: "expense_transaction",
       entityId: item.id,
       details: { type: item.type, brand: item.brand, amount: item.amount },
+    });
+    setBusyId(null);
+    load();
+  }
+
+  async function reviewExcuse(item, newStatus) {
+    setBusyId(item.id);
+    await supabase
+      .from("excuse_submissions")
+      .update({ status: newStatus, reviewed_by: profile?.id || null, reviewed_at: new Date().toISOString() })
+      .eq("id", item.id);
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: "admin",
+      action: `excuse_${newStatus}`,
+      entityType: "excuse_submission",
+      entityId: item.id,
+      details: { employee: item.employees?.name, rule: item.excuse_rules?.name },
     });
     setBusyId(null);
     load();
@@ -368,7 +403,17 @@ export default function ActionCenterPage() {
                     {tx.confirmed_by_name && ` \u00b7 reviewed by ${tx.confirmed_by_name}`}
                   </div>
                 </div>
-                {tx.status === "pending" && (
+                {tx.status === "pending" && tx.type === "cash_transfer" && (
+                  // A cash transfer says one person handed notes to another.
+                  // Only the person who received them can honestly say so, and
+                  // they confirm it in their own portal. An admin confirming
+                  // here would record someone as holding money they may never
+                  // have been given - which is exactly what happened once.
+                  <div style={{ fontSize: 11, color: "#8a6d00", background: "#fff8e1", border: "1px solid #f0d58c", borderRadius: 8, padding: "8px 12px", maxWidth: 260 }}>
+                    Waiting for {tx.to_employee?.name || "the recipient"} to confirm they received this in their portal.
+                  </div>
+                )}
+                {tx.status === "pending" && tx.type !== "cash_transfer" && (
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => reviewApproval(tx, "confirmed")} disabled={busyId === tx.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
                       Confirm
@@ -407,6 +452,38 @@ export default function ActionCenterPage() {
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {isAdmin && excuses.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Excuse Requests</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Late arrivals, early leaves and absences staff have asked you to excuse.
+          </p>
+          {excuses.map((x) => (
+            <div key={x.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>
+                {x.employees?.name}{x.excuse_rules?.name ? ` \u00b7 ${x.excuse_rules.name}` : ""}
+              </div>
+              {x.note && (
+                <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", margin: "4px 0 6px" }} dir="auto">
+                  &ldquo;{x.note}&rdquo;
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: theme.gray, marginBottom: 8 }}>
+                Submitted {new Date(x.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => reviewExcuse(x, "approved")} disabled={busyId === x.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                  Approve
+                </button>
+                <button onClick={() => reviewExcuse(x, "rejected")} disabled={busyId === x.id} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer", fontSize: 12 }}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

@@ -57,7 +57,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       // looked exactly like a permissions problem. Names are joined below from
       // the employees list this same load() already fetches.
       supabase.from("employee_cash_balances").select("*").eq("brand", brand),
-      supabase.from("employees").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("employees").select("id, name, staff_account_email").eq("is_active", true).order("name"),
       supabase
         .from("expense_transactions")
         .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
@@ -251,7 +251,15 @@ function CashOutModal({ brand, employees, profile, onClose, onSaved }) {
 }
 
 function TransferModal({ brand, employees, profile, onClose, onSaved }) {
-  const [fromId, setFromId] = useState("");
+  // A transfer is a statement that THIS person handed their own cash to
+  // someone else. Letting the form pick both sides meant anyone could record a
+  // handover between two other people who knew nothing about it, and the
+  // receiver ended up carrying cash on the books that nobody had given them.
+  // The sender is therefore always whoever is signed in.
+  const me = (employees || []).find(
+    (e) => e.staff_account_email && profile?.email && e.staff_account_email.toLowerCase() === profile.email.toLowerCase()
+  );
+  const [fromId, setFromId] = useState(me?.id || "");
   const [toId, setToId] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -259,8 +267,12 @@ function TransferModal({ brand, employees, profile, onClose, onSaved }) {
   const [error, setError] = useState("");
 
   async function handleSave() {
-    if (!fromId || !toId || fromId === toId) {
-      setError("Select two different employees.");
+    if (!me) {
+      setError("Your login is not linked to an employee record, so cash cannot be transferred from it.");
+      return;
+    }
+    if (!toId || me.id === toId) {
+      setError("Choose a different employee to hand the cash to.");
       return;
     }
     if (!amount || Number(amount) <= 0) {
@@ -275,7 +287,8 @@ function TransferModal({ brand, employees, profile, onClose, onSaved }) {
         brand,
         amount: Number(amount),
         payment_method: "cash",
-        from_employee_id: fromId,
+        // Taken from the signed-in employee, never from the form.
+        from_employee_id: me.id,
         to_employee_id: toId,
         note: note || null,
         status: "pending",
@@ -306,16 +319,13 @@ function TransferModal({ brand, employees, profile, onClose, onSaved }) {
     <Modal title="Log Cash Transfer" onClose={onClose}>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>Always cash - confirmed by the employee receiving it, from their own portal.</p>
       <FieldLabel>Handing Over</FieldLabel>
-      <select value={fromId} onChange={(e) => setFromId(e.target.value)} style={inp}>
-        <option value="">Select employee...</option>
-        {employees.map((e) => (
-          <option key={e.id} value={e.id}>{e.name}</option>
-        ))}
-      </select>
+      <div style={{ ...inp, background: "#f6f6f9", color: theme.navy, display: "flex", alignItems: "center" }}>
+        {me ? `${me.name} (you)` : "Your login is not linked to an employee record"}
+      </div>
       <FieldLabel>Receiving</FieldLabel>
-      <select value={toId} onChange={(e) => setToId(e.target.value)} style={inp}>
+      <select value={toId} onChange={(e) => setToId(e.target.value)} style={inp} disabled={!me}>
         <option value="">Select employee...</option>
-        {employees.map((e) => (
+        {employees.filter((e) => e.id !== me?.id).map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </select>
