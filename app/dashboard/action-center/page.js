@@ -43,6 +43,10 @@ export default function ActionCenterPage() {
   const [approvalFilter, setApprovalFilter] = useState("pending");
   const [visitEdits, setVisitEdits] = useState([]);
   const [excuses, setExcuses] = useState([]);
+  // Cash transfers addressed to whoever is signed in. Everyone sees these,
+  // admin or not: the person receiving the money is the only one who can say
+  // it actually reached them.
+  const [myTransfers, setMyTransfers] = useState([]);
   const [visitEditFilter, setVisitEditFilter] = useState("pending");
   const [staffList, setStaffList] = useState([]);
   const [branchMap, setBranchMap] = useState({});
@@ -134,6 +138,29 @@ export default function ActionCenterPage() {
     }
     const results = await Promise.all(promises);
     setMyTasks(results[0].data || []);
+
+    // The cash ledger is keyed on employees while the login is a staff profile;
+    // staff_account_email is the link between the two, the same join the visit
+    // payment trigger uses.
+    if (profile?.email) {
+      const { data: meEmp } = await supabase
+        .from("employees")
+        .select("id")
+        .ilike("staff_account_email", profile.email)
+        .maybeSingle();
+      if (meEmp?.id) {
+        const { data: incoming } = await supabase
+          .from("expense_transactions")
+          .select("*, from_employee:from_employee_id(name)")
+          .eq("type", "cash_transfer")
+          .eq("to_employee_id", meEmp.id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: false });
+        setMyTransfers(incoming || []);
+      } else {
+        setMyTransfers([]);
+      }
+    }
     if (isAdmin) {
       const { data: sess } = await supabase.auth.getSession();
       const swapRes = await fetch("/api/admin/shift-swaps", {
@@ -224,6 +251,33 @@ export default function ActionCenterPage() {
       entityType: "excuse_submission",
       entityId: item.id,
       details: { employee: item.employees?.name, rule: item.excuse_rules?.name },
+    });
+    setBusyId(null);
+    load();
+  }
+
+  // Confirming here is the recipient saying the notes reached them, so it is
+  // deliberately the only path that sets a transfer to confirmed.
+  async function reviewMyTransfer(item, newStatus) {
+    setBusyId(item.id);
+    const { data: session } = await supabase.auth.getSession();
+    await supabase
+      .from("expense_transactions")
+      .update({
+        status: newStatus,
+        confirmed_by_id: session.session?.user?.id || null,
+        confirmed_by_name: profile?.name || null,
+        confirmed_at: new Date().toISOString(),
+      })
+      .eq("id", item.id);
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: "employee",
+      action: `cash_transfer_${newStatus}`,
+      entityType: "expense_transaction",
+      entityId: item.id,
+      details: { amount: item.amount, from: item.from_employee?.name },
     });
     setBusyId(null);
     load();
@@ -452,6 +506,35 @@ export default function ActionCenterPage() {
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {myTransfers.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Cash Handed To You</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Confirm only once the money is actually in your hands &mdash; it is added to your balance and settled
+            against your salary if you still hold it at payroll.
+          </p>
+          {myTransfers.map((t) => (
+            <div key={t.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: theme.navy }}>
+                {Number(t.amount).toLocaleString()} EGP from {t.from_employee?.name || "unknown"}
+              </div>
+              {t.note && <div style={{ fontSize: 12, color: theme.gray, fontStyle: "italic" }}>{t.note}</div>}
+              <div style={{ fontSize: 11, color: theme.gray, marginBottom: 8 }}>
+                {t.entry_date}{" \u00b7 "}logged by {t.created_by_name || "unknown"}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => reviewMyTransfer(t, "confirmed")} disabled={busyId === t.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                  I received this
+                </button>
+                <button onClick={() => reviewMyTransfer(t, "rejected")} disabled={busyId === t.id} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer", fontSize: 12 }}>
+                  I did not
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

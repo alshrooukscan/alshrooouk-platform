@@ -33,7 +33,7 @@ const CASH_OUT_CATEGORIES = [
 // confirmed by the receiving employee from their own portal) or a Cash
 // Collection (to the owner, cash or electronic, always confirmed by admin).
 export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
-  const { can, loading: permsLoading, profile } = usePermissions();
+  const { can, isAdmin, loading: permsLoading, profile } = usePermissions();
   const [balances, setBalances] = useState([]);
   const [recent, setRecent] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -135,7 +135,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         <CashOutModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
       )}
       {modal === "transfer" && (
-        <TransferModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
+        <TransferModal brand={brand} employees={employees} profile={profile} isAdmin={isAdmin} onClose={() => setModal(null)} onSaved={load} />
       )}
       {modal === "collection" && (
         <CollectionModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
@@ -250,12 +250,15 @@ function CashOutModal({ brand, employees, profile, onClose, onSaved }) {
   );
 }
 
-function TransferModal({ brand, employees, profile, onClose, onSaved }) {
-  // A transfer is a statement that THIS person handed their own cash to
-  // someone else. Letting the form pick both sides meant anyone could record a
-  // handover between two other people who knew nothing about it, and the
-  // receiver ended up carrying cash on the books that nobody had given them.
-  // The sender is therefore always whoever is signed in.
+function TransferModal({ brand, employees, profile, isAdmin, onClose, onSaved }) {
+  // An employee recording a transfer is stating that THEY handed their own
+  // cash to someone else, so the sender is fixed to whoever is signed in.
+  // Letting an employee pick both sides meant one could record a handover
+  // between two other people who knew nothing about it, leaving the receiver
+  // carrying cash on the books that nobody had given them.
+  //
+  // Admins are not restricted: they correct and reconcile other people's
+  // positions as part of running the cash, and they are accountable for it.
   const me = (employees || []).find(
     (e) => e.staff_account_email && profile?.email && e.staff_account_email.toLowerCase() === profile.email.toLowerCase()
   );
@@ -267,12 +270,13 @@ function TransferModal({ brand, employees, profile, onClose, onSaved }) {
   const [error, setError] = useState("");
 
   async function handleSave() {
-    if (!me) {
+    const senderId = isAdmin ? fromId : me?.id;
+    if (!isAdmin && !me) {
       setError("Your login is not linked to an employee record, so cash cannot be transferred from it.");
       return;
     }
-    if (!toId || me.id === toId) {
-      setError("Choose a different employee to hand the cash to.");
+    if (!senderId || !toId || senderId === toId) {
+      setError("Choose two different employees.");
       return;
     }
     if (!amount || Number(amount) <= 0) {
@@ -287,8 +291,8 @@ function TransferModal({ brand, employees, profile, onClose, onSaved }) {
         brand,
         amount: Number(amount),
         payment_method: "cash",
-        // Taken from the signed-in employee, never from the form.
-        from_employee_id: me.id,
+        // For an employee this is themselves, never the form value.
+        from_employee_id: senderId,
         to_employee_id: toId,
         note: note || null,
         status: "pending",
@@ -319,13 +323,22 @@ function TransferModal({ brand, employees, profile, onClose, onSaved }) {
     <Modal title="Log Cash Transfer" onClose={onClose}>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>Always cash - confirmed by the employee receiving it, from their own portal.</p>
       <FieldLabel>Handing Over</FieldLabel>
-      <div style={{ ...inp, background: "#f6f6f9", color: theme.navy, display: "flex", alignItems: "center" }}>
-        {me ? `${me.name} (you)` : "Your login is not linked to an employee record"}
-      </div>
+      {isAdmin ? (
+        <select value={fromId} onChange={(e) => setFromId(e.target.value)} style={inp}>
+          <option value="">Select employee...</option>
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>{e.name}</option>
+          ))}
+        </select>
+      ) : (
+        <div style={{ ...inp, background: "#f6f6f9", color: theme.navy, display: "flex", alignItems: "center" }}>
+          {me ? `${me.name} (you)` : "Your login is not linked to an employee record"}
+        </div>
+      )}
       <FieldLabel>Receiving</FieldLabel>
-      <select value={toId} onChange={(e) => setToId(e.target.value)} style={inp} disabled={!me}>
+      <select value={toId} onChange={(e) => setToId(e.target.value)} style={inp} disabled={!isAdmin && !me}>
         <option value="">Select employee...</option>
-        {employees.filter((e) => e.id !== me?.id).map((e) => (
+        {employees.filter((e) => e.id !== (isAdmin ? fromId : me?.id)).map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </select>
