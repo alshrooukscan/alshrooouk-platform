@@ -5,6 +5,21 @@ import { useRouter } from "next/navigation";
 // Deliberately un-branded, full-screen, website-style e-commerce page - no
 // Al Shrooouk logo or navy header here, unlike the rest of the doctor
 // portal. This is meant to feel like a standalone shopping site.
+// Small square control for the quantity steppers, sized for a thumb since this
+// is used on a phone at the chairside.
+const stepBtn = {
+  width: 30,
+  height: 30,
+  borderRadius: 6,
+  border: "1px solid #ddd",
+  background: "#fff",
+  color: "#1a1a2e",
+  fontSize: 15,
+  fontWeight: 700,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
 export default function DentalStockShopPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +73,27 @@ export default function DentalStockShopPage() {
       })
       .catch(() => router.replace("/login"));
   }, [router]);
+
+  // Typing 0 into the box already removed a line, but nothing said so and
+  // there was no way to nudge a quantity up or down or take something out
+  // once it was in the cart. A doctor who over-ordered had to clear the box
+  // and guess, or reload the page.
+  function stepQty(itemId, delta, max) {
+    setCart((c) => {
+      const next = { ...c };
+      const n = (next[itemId] || 0) + delta;
+      if (n <= 0) delete next[itemId];
+      else next[itemId] = max ? Math.min(n, max) : n;
+      return next;
+    });
+  }
+  function removeFromCart(itemId) {
+    setCart((c) => {
+      const next = { ...c };
+      delete next[itemId];
+      return next;
+    });
+  }
 
   function addToCart(itemId) {
     setCart((c) => ({ ...c, [itemId]: (c[itemId] || 0) + 1 }));
@@ -232,16 +268,35 @@ export default function DentalStockShopPage() {
                 </div>
               )}
               {cart[item.id] ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="number"
-                    min={1}
-                    max={item.qty_available > 0 ? item.qty_available : undefined}
-                    value={cart[item.id]}
-                    onChange={(e) => setQty(item.id, e.target.value)}
-                    style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd" }}
-                  />
-                  <span style={{ fontSize: 12, color: "#999" }}>in cart</span>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button onClick={() => stepQty(item.id, -1)} aria-label={`Remove one ${item.name}`} style={stepBtn}>&minus;</button>
+                    <input
+                      type="number"
+                      min={1}
+                      // An out-of-stock line is a backorder, so it is not
+                      // capped by what happens to be on the shelf.
+                      max={item.qty_available > 0 ? item.qty_available : undefined}
+                      value={cart[item.id]}
+                      onChange={(e) => setQty(item.id, e.target.value)}
+                      style={{ width: 54, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd", textAlign: "center" }}
+                    />
+                    <button
+                      onClick={() => stepQty(item.id, 1, item.qty_available > 0 ? item.qty_available : null)}
+                      aria-label={`Add one ${item.name}`}
+                      style={stepBtn}
+                    >
+                      +
+                    </button>
+                    <button onClick={() => removeFromCart(item.id)} style={{ ...stepBtn, width: "auto", padding: "0 10px", color: "#8c1d18", borderColor: "#f0c9c9" }}>
+                      Remove
+                    </button>
+                  </div>
+                  {item.qty_available > 0 && cart[item.id] >= item.qty_available && (
+                    <p style={{ fontSize: 11, color: "#8a6d00", margin: "6px 0 0" }}>
+                      That is all we have in stock right now.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <button
@@ -260,10 +315,26 @@ export default function DentalStockShopPage() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, padding: 20 }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 360, maxHeight: "85vh", overflowY: "auto" }}>
             <h3 style={{ marginTop: 0 }}>Checkout</h3>
+            {cartLines.length === 0 && (
+              <p style={{ fontSize: 13, color: "#666" }}>Your cart is empty. Close this to keep browsing.</p>
+            )}
             {cartLines.map((l) => (
-              <div key={l.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
-                <span>{l.name}{" \u00d7 "}{l.qty}</span>
-                <span>{(Number(l.sale_price) * l.qty).toFixed(2)} EGP</span>
+              <div key={l.id} style={{ fontSize: 13, padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontWeight: 600 }}>{l.name}</span>
+                  <span>{(Number(l.sale_price) * l.qty).toFixed(2)} EGP</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                  <button onClick={() => stepQty(l.id, -1)} aria-label={`Remove one ${l.name}`} style={stepBtn}>&minus;</button>
+                  <span style={{ minWidth: 22, textAlign: "center" }}>{l.qty}</span>
+                  <button onClick={() => stepQty(l.id, 1, l.qty_available > 0 ? l.qty_available : null)} aria-label={`Add one ${l.name}`} style={stepBtn}>+</button>
+                  <button onClick={() => removeFromCart(l.id)} style={{ ...stepBtn, width: "auto", padding: "0 10px", color: "#8c1d18", borderColor: "#f0c9c9" }}>
+                    Remove
+                  </button>
+                  {l.qty_available <= 0 && (
+                    <span style={{ fontSize: 11, color: "#8a6d00" }}>awaiting stock</span>
+                  )}
+                </div>
               </div>
             ))}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, padding: "10px 0" }}>
