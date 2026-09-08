@@ -10,6 +10,7 @@ export default function DentalStockShopPage() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState({}); // { stock_item_id: quantity }
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [orderSplit, setOrderSplit] = useState(null);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [requestBusy, setRequestBusy] = useState(false);
@@ -99,6 +100,7 @@ export default function DentalStockShopPage() {
       return;
     }
     setConfirmedOrder(result.orderId);
+    setOrderSplit({ hasBackorder: !!result.hasBackorder, hasInStock: !!result.hasInStock });
     setCart({});
     setCheckoutOpen(false);
   }
@@ -113,7 +115,17 @@ export default function DentalStockShopPage() {
         <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center", maxWidth: 380, boxShadow: "0 8px 30px rgba(0,0,0,0.08)" }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>{"\u2705"}</div>
           <h2 style={{ margin: "0 0 8px" }}>Order Confirmed</h2>
-          <p style={{ color: "#666", fontSize: 14, marginBottom: 24 }}>Your order has been placed and sent to the team for fulfillment.</p>
+          <p style={{ color: "#666", fontSize: 14, marginBottom: orderSplit?.hasBackorder ? 12 : 24 }}>
+            Your order has been placed and sent to the team for fulfillment.
+          </p>
+          {orderSplit?.hasBackorder && (
+            <p style={{ background: "#fff8e1", border: "1px solid #f0d58c", color: "#8a6d00", fontSize: 13, lineHeight: 1.5, borderRadius: 8, padding: "10px 12px", marginBottom: 24, textAlign: "left" }}>
+              {orderSplit.hasInStock
+                ? "Some of what you ordered is out of stock, so it has been split into two orders: the available items are being prepared now, and the rest will be delivered once they arrive."
+                : "These items are currently out of stock. Your order is recorded and will be delivered once they arrive."}
+              {" You can follow both on your portal home page."}
+            </p>
+          )}
           <button
             onClick={() => setConfirmedOrder(null)}
             style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#1a1a2e", color: "#fff", fontWeight: 600, cursor: "pointer" }}

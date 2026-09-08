@@ -46,5 +46,24 @@ export async function POST(req) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, orderId });
+  // A basket spanning available and unavailable items becomes two orders, so
+  // the available half is not held up by the half that is not. Report that
+  // back rather than returning a single id and letting the doctor discover
+  // two records on their orders page with no explanation.
+  const { data: split } = await supabaseAdmin
+    .from("dental_orders")
+    .select("id, fulfillment, total_amount")
+    .eq("doctor_id", session.id)
+    .gte("created_at", new Date(Date.now() - 60000).toISOString())
+    .order("created_at", { ascending: false });
+
+  const backorder = (split || []).find((o) => o.fulfillment === "backorder");
+  const inStock = (split || []).find((o) => o.fulfillment === "in_stock");
+
+  return NextResponse.json({
+    ok: true,
+    orderId,
+    hasBackorder: !!backorder,
+    hasInStock: !!inStock,
+  });
 }
