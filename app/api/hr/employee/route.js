@@ -64,6 +64,10 @@ const WRITABLE = [
   "name", "phone", "role", "national_id",
   "fixed_salary", "variable_salary", "hourly_rate",
   "branch_id", "is_active",
+  // The cash custody limit. The column already existed and the custody monitor
+  // already read it, but no screen could write it - so a new employee was
+  // created with no limit at all and showed permanently as "No limit set".
+  "max_cash_threshold",
 ];
 
 // Only ever copies the fields a screen is allowed to set. Anything else in the

@@ -10,6 +10,14 @@ import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 import { APP_URL } from "../../../../lib/appUrl";
 
+// The limits from the specification: 10,000 for the Receptionist, 5,000 for
+// everyone else. Used only as the default when the field is left blank - the
+// figure is stored per employee, so it can be set to anything per person
+// without touching this.
+function defaultCashLimit(role) {
+  return /receptionist/i.test(role || "") ? 10000 : 5000;
+}
+
 export default function NewEmployeePage() {
   const router = useRouter();
   const [deductionRules, setDeductionRules] = useState([]);
@@ -33,6 +41,7 @@ export default function NewEmployeePage() {
     fixed_salary: "",
     variable_salary: "",
     hourly_rate: "",
+    max_cash_threshold: "",
   });
 
   useEffect(() => {
@@ -105,6 +114,11 @@ export default function NewEmployeePage() {
         fixed_salary: form.fixed_salary || 0,
         variable_salary: form.variable_salary || 0,
         hourly_rate: form.hourly_rate || null,
+        // Never left empty. An employee with no limit shows as "No limit set"
+        // on the custody monitor and is silently excluded from the over-limit
+        // warnings, so they could hold any amount without anyone being told.
+        max_cash_threshold:
+          form.max_cash_threshold === "" ? defaultCashLimit(form.role) : Number(form.max_cash_threshold),
       }),
     });
     const createJson = await createRes.json();
@@ -194,6 +208,20 @@ export default function NewEmployeePage() {
           </Row>
           <Field label="Hourly Rate (EGP, optional, leave blank for salaried employees)">
             <input style={inp} value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} placeholder="e.g., 50" />
+          </Field>
+          <Field label="Cash Limit (EGP)">
+            <input
+              style={inp}
+              type="number"
+              value={form.max_cash_threshold}
+              onChange={(e) => setForm({ ...form, max_cash_threshold: e.target.value })}
+              placeholder={String(defaultCashLimit(form.role))}
+            />
+            <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
+              How much cash this person may hold before the custody monitor flags them. A warning, never a block &mdash;
+              they are never stopped from taking a payment. Left blank, {defaultCashLimit(form.role).toLocaleString()} EGP is
+              used for this role.
+            </p>
           </Field>
         </Section>
 

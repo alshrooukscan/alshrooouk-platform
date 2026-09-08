@@ -150,6 +150,7 @@ export default function EmployeeProfilePage() {
       fixed_salary: employee.fixed_salary ?? "",
       variable_salary: employee.variable_salary ?? "",
       hourly_rate: employee.hourly_rate ?? "",
+      max_cash_threshold: employee.max_cash_threshold ?? "",
     });
     setInfoError("");
     setEditingInfo(true);
@@ -177,6 +178,8 @@ export default function EmployeeProfilePage() {
         fixed_salary: infoDraft.fixed_salary === "" ? null : Number(infoDraft.fixed_salary),
         variable_salary: infoDraft.variable_salary === "" ? null : Number(infoDraft.variable_salary),
         hourly_rate: infoDraft.hourly_rate === "" ? null : Number(infoDraft.hourly_rate),
+        max_cash_threshold:
+          infoDraft.max_cash_threshold === "" ? null : Number(infoDraft.max_cash_threshold),
       }),
     });
     setSavingInfo(false);
@@ -335,6 +338,13 @@ export default function EmployeeProfilePage() {
               <div>
                 <label style={editLabel}>Hourly Rate (EGP)</label>
                 <input style={editInp} type="number" value={infoDraft.hourly_rate} onChange={(e) => setInfoDraft({ ...infoDraft, hourly_rate: e.target.value })} />
+              </div>
+              <div>
+                {/* The custody monitor already read this column; nothing could
+                    write it, so a new employee had no limit and was silently
+                    left out of the over-limit warnings entirely. */}
+                <label style={editLabel}>Cash Limit (EGP)</label>
+                <input style={editInp} type="number" value={infoDraft.max_cash_threshold} onChange={(e) => setInfoDraft({ ...infoDraft, max_cash_threshold: e.target.value })} placeholder="e.g., 5000" />
               </div>
             </div>
             {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
