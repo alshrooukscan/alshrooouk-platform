@@ -10,6 +10,34 @@ export default function DentalStockShopPage() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState({}); // { stock_item_id: quantity }
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestError, setRequestError] = useState("");
+  const [reqName, setReqName] = useState("");
+  const [reqQty, setReqQty] = useState("");
+  const [reqNote, setReqNote] = useState("");
+
+  async function sendRequest() {
+    setRequestError("");
+    if (!reqName.trim()) {
+      setRequestError("Tell us what you need.");
+      return;
+    }
+    setRequestBusy(true);
+    const res = await fetch("/api/portal/doctor/dental-stock/request-item", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemName: reqName, quantity: reqQty, note: reqNote }),
+    });
+    const result = await res.json().catch(() => ({}));
+    setRequestBusy(false);
+    if (!res.ok) {
+      setRequestError(result.error || "Could not send that request.");
+      return;
+    }
+    setRequestSent(true);
+  }
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [payLater, setPayLater] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -101,6 +129,16 @@ export default function DentalStockShopPage() {
     <div style={{ minHeight: "100vh", fontFamily: "system-ui", background: "#f7f7f8" }}>
       <div style={{ position: "sticky", top: 0, background: "#fff", borderBottom: "1px solid #eee", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 10 }}>
         <span style={{ fontWeight: 700, fontSize: 18 }}>Dental Supplies</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        {/* Separate from the cart on purpose: this is not an order. There is no
+            such item yet, so there is nothing to price or reserve - it is a
+            request for the team to consider stocking it. */}
+        <button
+          onClick={() => setRequestOpen(true)}
+          style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid #1a1a2e", background: "#fff", color: "#1a1a2e", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          Request an item we don&apos;t list
+        </button>
         <button
           onClick={() => setCheckoutOpen(true)}
           disabled={cartCount === 0}
@@ -111,10 +149,52 @@ export default function DentalStockShopPage() {
         >
           Cart ({cartCount}) {cartTotal > 0 && `\u2013 ${cartTotal.toFixed(2)} EGP`}
         </button>
+        </div>
       </div>
 
+      {requestOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 380, maxWidth: "100%" }}>
+            <h3 style={{ marginTop: 0 }}>Request an item</h3>
+            <p style={{ fontSize: 12, color: "#666", marginTop: -6 }}>
+              Something we don&apos;t carry. We&apos;ll look into sourcing it and get back to you &mdash; this is not an order.
+            </p>
+            {requestSent ? (
+              <>
+                <p style={{ fontSize: 14, color: "#1e7a3c", fontWeight: 600 }}>Request sent. Thank you.</p>
+                <button onClick={() => { setRequestOpen(false); setRequestSent(false); setReqName(""); setReqQty(""); setReqNote(""); }}
+                  style={{ width: "100%", padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer" }}>
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Item name</label>
+                <input value={reqName} onChange={(e) => setReqName(e.target.value)} placeholder="What do you need?"
+                  style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", margin: "6px 0 12px", boxSizing: "border-box" }} />
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Quantity (optional)</label>
+                <input type="number" min={1} value={reqQty} onChange={(e) => setReqQty(e.target.value)}
+                  style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", margin: "6px 0 12px", boxSizing: "border-box" }} />
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Notes (brand, size, anything that helps)</label>
+                <input value={reqNote} onChange={(e) => setReqNote(e.target.value)}
+                  style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", margin: "6px 0 14px", boxSizing: "border-box" }} />
+                {requestError && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{requestError}</p>}
+                <button onClick={sendRequest} disabled={requestBusy}
+                  style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: "#1a1a2e", color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
+                  {requestBusy ? "Sending..." : "Send request"}
+                </button>
+                <button onClick={() => setRequestOpen(false)}
+                  style={{ width: "100%", padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "24px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-        {items.length === 0 && <p style={{ color: "#666" }}>No items currently available.</p>}
+        {items.length === 0 && <p style={{ color: "#666" }}>No items in the catalogue yet.</p>}
         {items.map((item) => (
           <div key={item.id} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
             <div style={{ height: 140, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -126,13 +206,25 @@ export default function DentalStockShopPage() {
             </div>
             <div style={{ padding: 14 }}>
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{item.name}</div>
-              <div style={{ color: "#1a1a2e", fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{Number(item.sale_price).toFixed(2)} EGP</div>
+              <div style={{ color: "#1a1a2e", fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{Number(item.sale_price).toFixed(2)} EGP</div>
+              {/* The real count, not just a hidden maximum. A doctor ordering
+                  supplies needs to know whether we hold 2 or 40 before deciding
+                  how much to ask for. */}
+              {item.qty_available > 0 ? (
+                <div style={{ fontSize: 12, color: "#1e7a3c", fontWeight: 600, marginBottom: 10 }}>
+                  {item.qty_available} in stock
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#8a6d00", background: "#fff8e1", border: "1px solid #f0d58c", borderRadius: 6, padding: "6px 8px", marginBottom: 10, lineHeight: 1.4 }}>
+                  Currently out of stock &mdash; you can still order it and we will deliver it once it arrives.
+                </div>
+              )}
               {cart[item.id] ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input
                     type="number"
                     min={1}
-                    max={item.qty_remaining}
+                    max={item.qty_available > 0 ? item.qty_available : undefined}
                     value={cart[item.id]}
                     onChange={(e) => setQty(item.id, e.target.value)}
                     style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd" }}
@@ -144,7 +236,7 @@ export default function DentalStockShopPage() {
                   onClick={() => addToCart(item.id)}
                   style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: "1px solid #1a1a2e", background: "#fff", color: "#1a1a2e", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
                 >
-                  Add to Cart
+                  {item.qty_available > 0 ? "Add to Cart" : "Order for later"}
                 </button>
               )}
             </div>

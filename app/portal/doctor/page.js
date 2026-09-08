@@ -6,6 +6,17 @@ import { formatVisitDate, doctorLabel } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 
+// Mirrors the staff dental orders screen so both sides describe an order the
+// same way.
+const ORDER_STATUS = {
+  placed: { bg: "#eef0f7", fg: "#3b3a5a", label: "Received" },
+  reviewed: { bg: "#fff8e1", fg: "#8a6d00", label: "Reviewed" },
+  in_transit: { bg: "#e7f0fd", fg: "#1a4fa0", label: "On its way" },
+  delivered: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Delivered" },
+  confirmed: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Delivered" },
+  cancelled: { bg: "#fdecea", fg: "#8c1d18", label: "Cancelled" },
+};
+
 export default function DoctorPortalPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,6 +24,8 @@ export default function DoctorPortalPage() {
   const [filesByPatient, setFilesByPatient] = useState({});
   const [filesLoading, setFilesLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [orders, setOrders] = useState([]);
+  const [itemRequests, setItemRequests] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -28,6 +41,14 @@ export default function DoctorPortalPage() {
         }
         setData(d);
         setLoading(false);
+        // Loaded separately so a failure here leaves the patient list working.
+        fetch("/api/portal/doctor/orders")
+          .then((r) => (r.ok ? r.json() : { orders: [], itemRequests: [] }))
+          .then((o) => {
+            setOrders(o.orders || []);
+            setItemRequests(o.itemRequests || []);
+          })
+          .catch(() => {});
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -114,6 +135,59 @@ export default function DoctorPortalPage() {
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
         <h2 style={{ color: theme.navy, marginBottom: 2 }}>{data.doctor?.name}</h2>
         <p style={{ color: theme.gold, fontWeight: 600, marginBottom: 20 }}>{data.doctor?.clinic_code} &middot; {data.doctor?.clinic_name}</p>
+
+        {(orders.length > 0 || itemRequests.length > 0) && (
+          <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
+            <h3 style={{ color: theme.navy, marginTop: 0 }}>My Supply Orders</h3>
+            {orders.map((o) => {
+              const st = ORDER_STATUS[o.status] || ORDER_STATUS.placed;
+              return (
+                <div key={o.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
+                      {Number(o.total_amount).toLocaleString()} EGP
+                      {o.fulfillment === "backorder" && (
+                        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00" }}>
+                          Awaiting stock
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg }}>{st.label}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.gray, margin: "4px 0 6px" }}>
+                    {new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    {" \u00b7 "}{o.items.length} item{o.items.length === 1 ? "" : "s"}
+                    {" \u00b7 "}{o.payment_status === "paid" ? "Paid" : "Unpaid"}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.navy }}>
+                    {o.items.map((l, i) => (
+                      <div key={i}>{l.quantity} &times; {l.item_name}</div>
+                    ))}
+                  </div>
+                  {/* The same four digits the team sees. Read them out to
+                      whoever brings the order - it is what closes the delivery. */}
+                  {o.delivery_otp && o.status !== "delivered" && (
+                    <div style={{ marginTop: 10, background: theme.goldLight, borderRadius: 10, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 11, color: theme.navy, fontWeight: 600 }}>Give this code to the person delivering your order</div>
+                      <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 6, color: theme.navy }}>{o.delivery_otp}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {itemRequests.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: theme.navy, marginBottom: 6 }}>Items you asked us to source</div>
+                {itemRequests.map((r) => (
+                  <div key={r.id} style={{ fontSize: 12, color: theme.gray, padding: "4px 0" }}>
+                    {r.item_name}{r.quantity ? ` \u00b7 ${r.quantity}` : ""}{" \u00b7 "}
+                    <span style={{ color: r.status === "pending" ? "#8a6d00" : theme.navy }}>{r.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Clinic Patients</h3>

@@ -105,6 +105,10 @@ export async function POST(req) {
       action: "dental_delivery_verified", entity_type: "dental_order", entity_id: orderId,
       details: { doctor: order.doctors?.name },
     });
+    // Stock leaves the shelf and the sale is recognised here, at the point the
+    // goods actually change hands - not when the order was placed. Guarded
+    // inside the function so a repeat call cannot debit twice.
+    await supabaseAdmin.rpc("fulfill_dental_order", { p_order_id: orderId });
     return NextResponse.json({ ok: true, result: data });
   }
 
@@ -130,6 +134,8 @@ export async function POST(req) {
       action: "dental_delivery_overridden", entity_type: "dental_order", entity_id: orderId,
       details: { doctor: order.doctors?.name, reason: body.reason },
     });
+    // An overridden delivery is still a delivery: the goods left.
+    await supabaseAdmin.rpc("fulfill_dental_order", { p_order_id: orderId });
     return NextResponse.json({ ok: true, result: data });
   }
 
@@ -140,22 +146,16 @@ export async function POST(req) {
         { status: 409 }
       );
     }
-    // Stock left the shelf when the order was placed, so cancelling has to put
-    // it back or the shelf count stays permanently short.
-    const { data: items } = await supabaseAdmin
-      .from("dental_order_items")
-      .select("stock_item_id, quantity")
-      .eq("order_id", orderId);
-    for (const it of items || []) {
-      const { data: si } = await supabaseAdmin.from("stock_items").select("qty_remaining").eq("id", it.stock_item_id).maybeSingle();
-      if (si) {
-        await supabaseAdmin
-          .from("stock_items")
-          .update({ qty_remaining: Number(si.qty_remaining || 0) + Number(it.quantity || 0) })
-          .eq("id", it.stock_item_id);
-      }
-    }
-    await supabaseAdmin.from("dental_orders").update({ status: "cancelled", note: note || order.note }).eq("id", orderId);
+    // Handled in one place in the database now. The old version here put the
+    // stock back but left the sale standing, so a cancelled order still read as
+    // revenue - one cancelled test order left 11,725 EGP of income that never
+    // happened. cancel_dental_order releases the reservation, and for orders
+    // placed before delivery-time deduction it also reverses what they recorded.
+    const { error: cancelErr } = await supabaseAdmin.rpc("cancel_dental_order", {
+      p_order_id: orderId,
+      p_note: note || null,
+    });
+    if (cancelErr) return NextResponse.json({ error: cancelErr.message }, { status: 400 });
     return NextResponse.json({ ok: true, status: "cancelled" });
   }
 

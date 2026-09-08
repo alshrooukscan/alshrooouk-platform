@@ -33,6 +33,10 @@ export default function DentalOrdersPage() {
   const [code, setCode] = useState("");
   const [issuedCode, setIssuedCode] = useState(null);
   const [pay, setPay] = useState({ amount: "", method: "cash" });
+  // Doctors asking for something the catalogue does not carry. Not orders -
+  // there is no item, no price and nothing to reserve until someone decides
+  // to stock it - so they are listed separately rather than mixed in.
+  const [itemRequests, setItemRequests] = useState([]);
 
   useEffect(() => { load(); }, []);
 
@@ -41,12 +45,32 @@ export default function DentalOrdersPage() {
     return data.session?.access_token;
   }
 
+  async function reviewItemRequest(r, status) {
+    const { data: sess } = await supabase.auth.getSession();
+    await supabase
+      .from("stock_item_requests")
+      .update({
+        status,
+        reviewed_by_id: sess.session?.user?.id || null,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", r.id);
+    load();
+  }
+
   async function load() {
     setLoading(true);
     const res = await fetch("/api/admin/dental-orders", { headers: { Authorization: `Bearer ${await token()}` } });
     const j = await res.json();
     if (res.ok) setOrders(j.orders || []);
     else setError(j.error || "Could not load orders");
+
+    const { data: reqs } = await supabase
+      .from("stock_item_requests")
+      .select("*, doctors(name, clinic_name)")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    setItemRequests(reqs || []);
     setLoading(false);
   }
 
@@ -169,10 +193,38 @@ export default function DentalOrdersPage() {
       </div>
 
       {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {itemRequests.length > 0 && (
+        <div style={{ ...card, marginBottom: 16, borderLeft: "4px solid #f0d58c" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0, fontSize: 15 }}>Items Doctors Have Asked For</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -6, marginBottom: 12 }}>
+            Things we don&apos;t stock. Nothing is ordered or reserved &mdash; decide whether to carry them.
+          </p>
+          {itemRequests.map((r) => (
+            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>
+                  {r.item_name}{r.quantity ? ` \u00b7 ${r.quantity}` : ""}
+                </div>
+                <div style={{ fontSize: 11, color: theme.gray }}>
+                  {r.doctors?.name || "Unknown doctor"}
+                  {" \u00b7 "}{new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+                {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic" }}>{r.note}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => reviewItemRequest(r, "sourcing")} style={btn(theme.navy, "#fff")}>Will source</button>
+                <button onClick={() => reviewItemRequest(r, "declined")} style={btn("#fff", theme.navy)}>Decline</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {!loading && shown.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing here.</p>}
 
       {shown.map((o) => {
         const st = STATUS[o.status] || STATUS.placed;
+        const isBackorder = o.fulfillment === "backorder";
         const ps = PAYSTATUS[o.payment_status] || PAYSTATUS.unpaid;
         const owed = owedOn(o);
         return (
@@ -182,6 +234,13 @@ export default function DentalOrdersPage() {
                 <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
                   {o.doctors?.name || "Unknown doctor"}
                   {o.doctors?.clinic_code && <span style={{ color: theme.gold, fontSize: 11, marginLeft: 6 }}>{o.doctors.clinic_code}</span>}
+                  {isBackorder && (
+                    // Nothing is reserved for this one - there was no stock to
+                    // hold. It cannot be delivered until the items arrive.
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00", marginLeft: 8 }}>
+                      Awaiting stock
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
                   {new Date(o.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
