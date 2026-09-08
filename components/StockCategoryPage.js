@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { formatMoney } from "../lib/format";
 import { exportToCsv } from "../lib/exportCsv";
+import { usePermissions } from "../lib/usePermissions";
 
 // One dedicated page per stock category (Dental, El3awama) - no in-page toggle,
 // each is its own real route matching its own sidebar entry.
@@ -16,6 +17,7 @@ export default function StockCategoryPage({ category, title }) {
   const [showTxn, setShowTxn] = useState(null); // item being transacted on
   const [showCount, setShowCount] = useState(null); // item being counted
   const [editingImageId, setEditingImageId] = useState(null);
+  const { profile } = usePermissions();
 
   useEffect(() => {
     load();
@@ -31,6 +33,61 @@ export default function StockCategoryPage({ category, title }) {
       .order("name");
     setItems(data || []);
     setLoading(false);
+  }
+
+  const [cellError, setCellError] = useState("");
+
+  // Saves one field of one row. Everything on this table was read-only, so any
+  // correction - a typo in a name, a price that had moved, a miscount - meant
+  // asking someone with database access.
+  async function saveCell(item, field, raw) {
+    setCellError("");
+    const numeric = ["qty_remaining", "purchase_price", "sale_price"].includes(field);
+    let value = numeric ? (raw === "" ? null : Number(raw)) : String(raw).trim();
+
+    if (numeric && value !== null && (!Number.isFinite(value) || value < 0)) {
+      setCellError("That needs to be a number, and not negative.");
+      return false;
+    }
+    if (field === "name" && !value) {
+      setCellError("An item needs a name.");
+      return false;
+    }
+    // Physical stock cannot drop below what is already promised to placed
+    // orders - those units are still on the shelf and someone is coming for
+    // them. Releasing them means cancelling the order, not editing this number.
+    if (field === "qty_remaining" && value !== null && value < Number(item.qty_reserved || 0)) {
+      setCellError(
+        `${item.name} has ${item.qty_reserved} unit(s) reserved for orders already placed, so the count cannot go below that.`
+      );
+      return false;
+    }
+    if (String(item[field] ?? "") === String(value ?? "")) return true;
+
+    const { error } = await supabase.from("stock_items").update({ [field]: value }).eq("id", item.id);
+    if (error) {
+      setCellError(error.message);
+      return false;
+    }
+
+    // A quantity change here is a stock adjustment that never went through a
+    // purchase, sale or count, so it leaves no trace anywhere else. Recorded
+    // so a shelf count that moved by hand can still be explained later.
+    if (field === "qty_remaining") {
+      const { data: sess } = await supabase.auth.getSession();
+      await supabase.from("activity_log").insert({
+        actor_id: sess.session?.user?.id || null,
+        actor_name: profile?.name || null,
+        actor_type: "admin",
+        action: "stock_qty_adjusted",
+        entity_type: "stock_item",
+        entity_id: item.id,
+        details: { item: item.name, from: item.qty_remaining, to: value },
+      });
+    }
+
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, [field]: value } : i)));
+    return true;
   }
 
   const filtered = items.filter(
@@ -84,6 +141,14 @@ export default function StockCategoryPage({ category, title }) {
         <Link href="/dashboard/stock/purchase-orders" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Purchase Orders</Link>
       </div>
 
+      {cellError && (
+        <p style={{ background: "#fdecea", color: "#8c1d18", fontSize: 12.5, padding: "10px 12px", borderRadius: 8, marginBottom: 12 }}>
+          {cellError}
+        </p>
+      )}
+      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 10px" }}>
+        Click any name, code, quantity or price to edit it. Enter saves, Escape cancels.
+      </p>
       <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
@@ -121,15 +186,26 @@ export default function StockCategoryPage({ category, title }) {
                       </div>
                     </Td>
                   )}
-                  <Td>{item.name}</Td>
-                  <Td>{item.item_code}</Td>
+                  <Td><EditableCell item={item} field="name" onSave={saveCell} /></Td>
+                  <Td><EditableCell item={item} field="item_code" onSave={saveCell} placeholder="\u2014" /></Td>
                   <Td>
-                    <span style={{ fontWeight: 700, color: (item.qty_remaining || 0) <= 5 ? "#ba1a1a" : theme.navy }}>
-                      {item.qty_remaining ?? 0}
-                    </span>
+                    <EditableCell
+                      item={item}
+                      field="qty_remaining"
+                      numeric
+                      onSave={saveCell}
+                      render={(v) => (
+                        <span style={{ fontWeight: 700, color: (Number(v) || 0) <= 5 ? "#ba1a1a" : theme.navy }}>
+                          {v ?? 0}
+                          {Number(item.qty_reserved) > 0 && (
+                            <span style={{ fontWeight: 400, fontSize: 11, color: theme.gray }}> ({item.qty_reserved} reserved)</span>
+                          )}
+                        </span>
+                      )}
+                    />
                   </Td>
-                  <Td>{item.purchase_price != null ? formatMoney(item.purchase_price) : "\u2014"}</Td>
-                  <Td>{item.sale_price != null ? formatMoney(item.sale_price) : "\u2014"}</Td>
+                  <Td><EditableCell item={item} field="purchase_price" numeric onSave={saveCell} render={(v) => (v != null ? formatMoney(v) : "\u2014")} /></Td>
+                  <Td><EditableCell item={item} field="sale_price" numeric onSave={saveCell} render={(v) => (v != null ? formatMoney(v) : "\u2014")} /></Td>
                   <Td>{item.purchase_price ? `${formatMoney(profit)} (${profitPct}%)` : "\u2014"}</Td>
                   <Td>
                     {variance ? (
@@ -409,6 +485,77 @@ function Modal({ title, children, onClose }) {
 function Th({ children }) {
   return <th style={{ padding: "12px 16px", fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase" }}>{children}</th>;
 }
+// A read-only value that turns into an input when clicked. Kept deliberately
+// small: one field, one row, saved on Enter or on leaving the cell, abandoned
+// on Escape. No edit mode to enter and no Save button to hunt for, because the
+// common case is correcting a single number.
+function EditableCell({ item, field, numeric, onSave, render, placeholder }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function begin() {
+    setDraft(item[field] ?? "");
+    setEditing(true);
+  }
+
+  async function commit() {
+    if (busy) return;
+    setBusy(true);
+    const ok = await onSave(item, field, draft);
+    setBusy(false);
+    // Stays open on a rejected value so the typing is not thrown away and the
+    // reason is visible right next to it.
+    if (ok) setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type={numeric ? "number" : "text"}
+        min={numeric ? 0 : undefined}
+        value={draft}
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        onFocus={(e) => e.target.select()}
+        style={{
+          width: numeric ? 90 : "100%", minWidth: 70, padding: "5px 7px",
+          borderRadius: 6, border: `1px solid ${theme.navy}`, fontSize: 13,
+          fontFamily: "inherit", boxSizing: "border-box",
+        }}
+      />
+    );
+  }
+
+  const shown = render ? render(item[field]) : item[field];
+  return (
+    <span
+      onClick={begin}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          begin();
+        }
+      }}
+      title="Click to edit"
+      style={{
+        display: "inline-block", minWidth: 28, padding: "3px 6px", margin: "-3px -6px",
+        borderRadius: 6, cursor: "text", borderBottom: "1px dashed #d8d8e0",
+      }}
+    >
+      {shown === null || shown === undefined || shown === "" ? (placeholder ?? "\u2014") : shown}
+    </span>
+  );
+}
+
 function Td({ children }) {
   return <td style={{ padding: "12px 16px", color: theme.navy }}>{children}</td>;
 }
