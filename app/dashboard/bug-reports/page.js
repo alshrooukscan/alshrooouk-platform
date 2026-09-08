@@ -109,13 +109,29 @@ export default function BugReportsPage() {
   }
 
   async function setStatus(id, status) {
+    await patchReport({ id, status });
+  }
+
+  // The PATCH route already accepted a note; nothing here ever sent one, so
+  // admin_notes stayed permanently empty and the person who raised a report
+  // only ever saw a status change with no explanation of what was done.
+  async function patchReport(body) {
     await fetch("/api/bug-reports", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify(body),
     });
     load();
   }
+
+  async function saveNote(id) {
+    setNoteBusy(id);
+    await patchReport({ id, adminNotes: noteDrafts[id] ?? "" });
+    setNoteBusy(null);
+  }
+
+  const [noteDrafts, setNoteDrafts] = useState({});
+  const [noteBusy, setNoteBusy] = useState(null);
 
   const shown = filter === "all" ? reports : reports.filter((r) => r.status === filter);
   const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box", marginBottom: 12 };
@@ -233,6 +249,33 @@ export default function BugReportsPage() {
                 style={{ fontSize: 12, fontWeight: 700, color: theme.gold, textDecoration: "none" }}>
                 View screenshot &rarr;
               </a>
+            )}
+            {r.admin_notes && (
+              <div style={{ marginTop: 10, background: theme.goldLight || "#fff8e1", border: "1px solid #f0d58c", borderRadius: 8, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8a6d00", marginBottom: 4 }}>
+                  Update from {r.resolved_by_name || "the team"}
+                </div>
+                <div style={{ fontSize: 13, color: theme.navy, whiteSpace: "pre-wrap" }} dir="auto">{r.admin_notes}</div>
+              </div>
+            )}
+            {canTriage && (
+              <div style={{ marginTop: 12 }}>
+                <textarea
+                  value={noteDrafts[r.id] ?? r.admin_notes ?? ""}
+                  onChange={(e) => setNoteDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
+                  placeholder="Reply to whoever reported this - what you found, what you changed, or what you need from them."
+                  rows={2}
+                  dir="auto"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }}
+                />
+                <button
+                  onClick={() => saveNote(r.id)}
+                  disabled={noteBusy === r.id || (noteDrafts[r.id] ?? r.admin_notes ?? "") === (r.admin_notes ?? "")}
+                  style={{ marginTop: 6, padding: "6px 14px", borderRadius: 7, border: "none", background: theme.navy, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {noteBusy === r.id ? "Saving..." : "Send update"}
+                </button>
+              </div>
             )}
             {canTriage && (
               <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
