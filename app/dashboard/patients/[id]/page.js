@@ -1720,7 +1720,13 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   // removed since). Carried through the save untouched so editing an unrelated
   // field can't erase them from the record.
   const [legacyScanNames, setLegacyScanNames] = useState([]);
-  const [recalcAmount, setRecalcAmount] = useState(true);
+  const [initialScanIds, setInitialScanIds] = useState(null);
+  const [recalcAmount, setRecalcAmount] = useState(false);
+  // Payments already taken against this visit. The form only ever showed a
+  // single "Already paid" total, so staff could not see WHAT had been taken,
+  // WHEN, by which method or by whom - and one 480 EGP cash payment was
+  // therefore recorded twice, leaving a 600 EGP visit showing 960 paid.
+  const [existingPayments, setExistingPayments] = useState([]);
 
   const [form, setForm] = useState({
     exam_date: visit.exam_date || "",
@@ -1789,8 +1795,20 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       // to recompute from, so recalculation is off by default there - the
       // stored amount stays authoritative until someone deliberately overrides
       // it. Never silently replace a correct figure with an incomplete one.
-      setRecalcAmount(unmatched.length === 0);
+      // Recalculation is off until someone changes the scan types. Prices move,
+      // and recomputing on open silently rewrote history: a visit taken at 480
+      // when that scan cost 480 was rewritten to 600 simply because the price
+      // had since gone up. The stored figure is what the patient was actually
+      // charged.
+      setInitialScanIds(matchedIds);
       setForm((f) => ({ ...f, scan_type_ids: matchedIds }));
+
+      const { data: pays } = await supabase
+        .from("visit_payments")
+        .select("id, amount, payment_method, paid_at, created_by_name")
+        .eq("visit_id", visit.id)
+        .order("paid_at", { ascending: true });
+      setExistingPayments(pays || []);
 
       if (visit.doctor_id) {
         const { data: d } = await supabase
@@ -1849,11 +1867,15 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
   const discountPct = form.discount_on ? Number(form.discount_pct) || 0 : 0;
   const discountAmount = sumBeforeDiscount * (discountPct / 100);
   const sumAfterDiscount = sumBeforeDiscount - discountAmount;
+  const scanTypesChanged =
+    initialScanIds !== null &&
+    (initialScanIds.length !== form.scan_type_ids.length ||
+      initialScanIds.some((id) => !form.scan_type_ids.includes(id)));
   const storedAmountDue = Number(visit.amount_due) || 0;
   // What this edit will actually write. Recomputing from the ticked scan types
   // is right in the normal case, but wrong when the visit carries a scan type
   // that no longer exists - there the stored figure is the only correct one.
-  const finalAmountDue = recalcAmount ? sumAfterDiscount : storedAmountDue;
+  const finalAmountDue = recalcAmount || scanTypesChanged ? sumAfterDiscount : storedAmountDue;
   const amountDiffers = Math.abs(finalAmountDue - storedAmountDue) > 0.01;
   const alreadyPaid = Number(visit.amount_paid) || 0;
   // Reflects the amount due as it stands with whatever's currently selected
@@ -2169,6 +2191,24 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
 
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <div style={{ flex: 1 }}>
+              {existingPayments.length > 0 && (
+                <div style={{ background: "#f6f6f9", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: theme.navy, marginBottom: 6 }}>
+                    Already recorded &mdash; do not enter these again
+                  </div>
+                  {existingPayments.map((p) => (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, color: theme.navy, padding: "3px 0" }}>
+                      <span>
+                        {Number(p.amount).toLocaleString()} EGP &middot; {p.payment_method}
+                      </span>
+                      <span style={{ color: theme.gray }}>
+                        {new Date(p.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        {p.created_by_name ? ` \u00b7 ${p.created_by_name}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <FieldLabel>Record a New Payment (optional)</FieldLabel>
               <input
                 type="number"
@@ -2196,10 +2236,24 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         <FieldLabel>Notes</FieldLabel>
         <input style={inp} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
+        {/* Shown when today's list price no longer matches what the patient was
+            actually charged - usually because a price has since changed. The
+            stored figure is kept unless someone deliberately chooses otherwise,
+            or has changed the scan types, which is the one edit that genuinely
+            changes the price. */}
+        {!scanTypesChanged && Math.abs(sumAfterDiscount - storedAmountDue) > 0.01 && (
+          <div style={{ fontSize: 12, background: "#fff8e1", border: "1px solid #f0d58c", color: "#8a6d00", padding: "10px 12px", borderRadius: 8, margin: "12px 0 4px" }}>
+            This visit was charged <strong>{storedAmountDue.toFixed(2)} EGP</strong>. At today&apos;s prices the same
+            scans come to <strong>{sumAfterDiscount.toFixed(2)} EGP</strong>. The charged amount is kept unless you say otherwise.
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+              <input type="checkbox" checked={recalcAmount} onChange={(e) => setRecalcAmount(e.target.checked)} />
+              Re-price this visit at today&apos;s prices
+            </label>
+          </div>
+        )}
         {amountDiffers && (
           <p style={{ fontSize: 12, background: "#fdecea", color: "#8c1d18", padding: "10px 12px", borderRadius: 8, margin: "12px 0 4px" }}>
-            Heads up: this visit is stored at {storedAmountDue.toFixed(2)} EGP, and saving now will change it to {finalAmountDue.toFixed(2)} EGP.
-            {!recalcAmount && " Tick the recalculate box above if that is what you want."}
+            Saving now changes the amount due from {storedAmountDue.toFixed(2)} EGP to {finalAmountDue.toFixed(2)} EGP.
           </p>
         )}
         {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
