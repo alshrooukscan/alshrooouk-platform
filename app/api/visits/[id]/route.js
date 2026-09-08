@@ -39,36 +39,18 @@ export async function DELETE(req, { params }) {
     .select("amount, payment_method, paid_at, created_by_id")
     .eq("visit_id", id);
 
-  let expenseEntriesRemoved = 0;
-  let expenseEntriesLeftForReview = 0;
-  for (const payment of payments || []) {
-    let method = (payment.payment_method || "").toLowerCase().replace(/\s+/g, "_");
-    // "wallet" is canonical; vodafone_cash is the retired name for the same
-    // method and is folded in so older rows still match.
-    if (method === "vodafone_cash") method = "wallet";
-    if (!["cash", "visa", "instapay", "wallet"].includes(method)) method = "cash";
-    const entryDate = payment.paid_at ? new Date(payment.paid_at).toISOString().slice(0, 10) : null;
-
-    let q = supabaseAdmin
-      .from("expense_transactions")
-      .select("id")
-      .eq("type", "visit_collection")
-      .eq("brand", "scan")
-      .eq("amount", payment.amount)
-      .eq("payment_method", method)
-      .eq("note", "Auto-logged from a visit payment");
-    if (entryDate) q = q.eq("entry_date", entryDate);
-    if (payment.created_by_id) q = q.eq("created_by_id", payment.created_by_id);
-    const { data: candidates } = await q;
-
-    if (candidates && candidates.length === 1) {
-      await supabaseAdmin.from("expense_transactions").delete().eq("id", candidates[0].id);
-      expenseEntriesRemoved++;
-    } else if (candidates && candidates.length > 1) {
-      expenseEntriesLeftForReview++;
-    }
-  }
-
+  // The cash entry for each payment is removed by a database trigger when the
+  // payment itself is deleted, which happens automatically when the visit goes.
+  //
+  // This used to be done here by guessing - matching on amount, method, date
+  // and who logged it - and doing nothing when more than one row matched. A
+  // patient logged twice produced two identical entries, so the guess found
+  // both, gave up, and the money stayed on the books after the duplicate visit
+  // was removed. That is what left 480 EGP on the Scan cash screen.
+  //
+  // Payments now carry source_payment_id, so the reversal is exact rather than
+  // inferred, and it applies to every path that removes a payment - including
+  // deleting a whole patient - instead of only this one.
   // Any generated invoice is deleted along with the visit, per the same
   // instruction - it's part of the same mistake being cleaned up, not a
   // separate record left dangling.
@@ -92,5 +74,5 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ error: delErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, expenseEntriesRemoved, expenseEntriesLeftForReview });
+  return NextResponse.json({ ok: true });
 }

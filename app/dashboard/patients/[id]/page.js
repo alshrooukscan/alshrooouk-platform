@@ -556,11 +556,10 @@ export default function PatientProfilePage() {
       alert(data.error || "Could not delete this visit.");
       return;
     }
-    if (data.expenseEntriesLeftForReview > 0) {
-      alert(
-        `Visit deleted. ${data.expenseEntriesRemoved} matching cash-ledger entry(ies) were also removed, but ${data.expenseEntriesLeftForReview} payment(s) had more than one possible matching ledger entry, so none were touched - review Expenses Management manually for those.`
-      );
-    }
+    // No warning to show any more: the cash entries are removed by their own
+    // link to the payment rather than by a guess that could not tell two
+    // identical entries apart, so there is nothing left for a person to
+    // reconcile by hand afterwards.
     await syncPatientLastVisitDate(supabase, patient.id);
     load();
   }
@@ -777,7 +776,15 @@ export default function PatientProfilePage() {
               entityLabel="patient"
               entityName={patient.name}
               onDelete={async () => {
-                const { error } = await supabase.from("patients").delete().eq("id", id);
+                // A plain delete on patients could not work: visits.patient_id
+                // is ON DELETE NO ACTION, so this failed on a foreign key for
+                // anyone who had ever had a visit - and their payments stayed
+                // on the cash screen. delete_patient_cascade removes the
+                // visits first, which cascades to their payments and takes the
+                // cash entries with them, keeps any real report by unlinking
+                // it rather than destroying it, and does the whole thing in
+                // one transaction.
+                const { error } = await supabase.rpc("delete_patient_cascade", { p_patient_id: id });
                 if (error) throw error;
                 logActivity({
                   actorId: profile?.id,
