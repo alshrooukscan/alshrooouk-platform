@@ -1,6 +1,11 @@
 "use client";
-import BrandCashPage from "../../../../components/BrandCashPage";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function El3awamaStockCashPage() {
-  return <BrandCashPage brand="el3awama_stock" brandLabel="El3awama Stock" permissionKey="expenses_el3awama_stock" />;
+// Merged into the single Brands Cash page. Kept as a redirect: staff have these
+// links, and several WhatsApp messages point at them.
+export default function Redirect_el3awama_stock() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/dashboard/expenses?brand=el3awama-stock"); }, [router]);
+  return null;
 }

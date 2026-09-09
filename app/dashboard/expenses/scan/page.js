@@ -1,6 +1,11 @@
 "use client";
-import BrandCashPage from "../../../../components/BrandCashPage";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function ScanCashPage() {
-  return <BrandCashPage brand="scan" brandLabel="Scan" permissionKey="expenses_scan" />;
+// Merged into the single Brands Cash page. Kept as a redirect: staff have these
+// links, and several WhatsApp messages point at them.
+export default function Redirect_scan() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/dashboard/expenses?brand=scan"); }, [router]);
+  return null;
 }

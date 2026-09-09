@@ -93,9 +93,12 @@ const NAV = [
     label: "Expenses Management",
     icon: Banknote,
     items: [
-      { href: "/dashboard/expenses/scan", label: "Scan Cash", icon: Banknote, key: "expenses_scan" },
-      { href: "/dashboard/expenses/dental-stock", label: "Dental Stock Cash", icon: Banknote, key: "expenses_dental_stock" },
-      { href: "/dashboard/expenses/el3awama-stock", label: "El3awama Stock Cash", icon: Banknote, key: "expenses_el3awama_stock" },
+      // Three entries for the same screen against three businesses became one.
+      // anyKey, not key: the page shows only the businesses this person can
+      // see, so it should appear for anyone holding any one of the three -
+      // a single key would have hidden it from someone with only El3awama.
+      { href: "/dashboard/expenses", label: "Brands Cash", icon: Banknote,
+        anyKey: ["expenses_scan", "expenses_dental_stock", "expenses_el3awama_stock"] },
       // Cross-brand by nature (moves money between two brands) and always
       // admin-confirmed, so it sits outside the per-brand permission model -
       // adminOnly, not grantable via a permission key, same pattern as the
@@ -193,6 +196,7 @@ export default function Sidebar() {
     if (loading) return true;
     if (navItem.alwaysVisible) return true;
     if (navItem.adminOnly) return isAdmin;
+    if (navItem.anyKey) return isAdmin || navItem.anyKey.some((k) => can(k));
     return can(navItem.key);
   }
   const visibleNav = NAV.map((item) => {

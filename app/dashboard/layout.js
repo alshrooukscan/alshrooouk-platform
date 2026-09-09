@@ -26,6 +26,14 @@ const ROUTE_PERMISSION = {
   "/dashboard/settings": "settings",
 };
 
+// Brands Cash carries all three businesses on one page and shows only the ones
+// this person can see, so holding any one of the three is enough to open it.
+// A single required key would have shut out someone granted only El3awama.
+// Matched before the table below, which is exact-prefix and one key per path.
+const ANY_OF_ROUTES = [
+  { path: "/dashboard/expenses", keys: ["expenses_scan", "expenses_dental_stock", "expenses_el3awama_stock"] },
+];
+
 // Pages everyone signed in may open, whatever their page permissions.
 const OPEN_ROUTES = ["/dashboard/action-center", "/dashboard/bug-reports"];
 
@@ -43,6 +51,11 @@ function permissionForPath(pathname) {
   // so all of those pages refused everyone but an admin, while the sidebar
   // went on offering them.
   if (pathname === "/dashboard") return "dashboard";
+
+  // The old per-brand routes are still in the table and are longer, so they
+  // keep their own single-key guard; only the merged path lands here.
+  const anyOf = ANY_OF_ROUTES.find((r) => pathname === r.path);
+  if (anyOf) return { anyOf: anyOf.keys };
 
   const match = Object.keys(ROUTE_PERMISSION)
     .sort((a, b) => b.length - a.length)
@@ -72,8 +85,10 @@ export default function DashboardLayout({ children }) {
 
   const required = permissionForPath(pathname);
   const adminOnly = ADMIN_ROUTES.some((p) => pathname.startsWith(p));
-  const denied =
-    ready && !permsLoading && ((required && !can(required)) || (adminOnly && profile?.role !== "admin"));
+  const lacksRequired = required?.anyOf
+    ? !required.anyOf.some((k) => can(k))
+    : !!required && !can(required);
+  const denied = ready && !permsLoading && (lacksRequired || (adminOnly && profile?.role !== "admin"));
 
   if (!ready || permsLoading) {
     return <Loading />;
