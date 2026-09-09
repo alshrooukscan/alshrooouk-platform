@@ -244,6 +244,11 @@ export default function EmployeePortalPage() {
               </p>
             </div>
 
+            {/* Made deliberately quiet in the last pass, which went too far: for
+                staff who have it, this is a door they use every shift and it
+                stopped looking pressable. It is a filled button again - gold, so
+                it reads as an action against the navy shift band above without
+                competing with it for the top of the page. */}
             {data.employee?.staff_account_email && Object.values(data.employee?.permissions || {}).some(Boolean) && (
               <button
                 onClick={handleOpenDashboard}
@@ -251,24 +256,19 @@ export default function EmployeePortalPage() {
                   width: "100%",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  background: "#fff",
-                  border: `1px solid ${theme.goldLight}`,
+                  justifyContent: "center",
+                  gap: 10,
+                  background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
+                  border: "none",
                   borderRadius: 14,
-                  padding: "14px 16px",
+                  padding: "16px 18px",
                   marginBottom: 20,
                   cursor: "pointer",
-                  textAlign: "left",
+                  boxShadow: "0 6px 18px rgba(169,139,77,0.28)",
                 }}
               >
-                <span>
-                  <span style={{ display: "block", color: theme.navy, fontWeight: 700, fontSize: 14 }}>Staff dashboard</span>
-                  <span style={{ display: "block", color: theme.gray, fontSize: 12, marginTop: 2 }}>
-                    Patients, stock and cash tools
-                  </span>
-                </span>
-                <span style={{ color: theme.gold, fontSize: 20, lineHeight: 1 }}>&rsaquo;</span>
+                <span style={{ color: theme.navy, fontWeight: 700, fontSize: 15 }}>Open staff dashboard</span>
+                <span style={{ color: theme.navy, fontSize: 18, lineHeight: 1 }}>&rsaquo;</span>
               </button>
             )}
 

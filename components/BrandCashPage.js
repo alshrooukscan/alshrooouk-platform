@@ -33,7 +33,7 @@ const CASH_OUT_CATEGORIES = [
 // confirmed by the receiving employee from their own portal) or a Cash
 // Collection (to the owner, cash or electronic, always confirmed by admin).
 export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
-  const { can, isAdmin, loading: permsLoading, profile } = usePermissions();
+  const { can, isAdmin, loading: permsLoading, profile, linkedEmployeeId } = usePermissions();
   const [balances, setBalances] = useState([]);
   const [recent, setRecent] = useState([]);
   // Null for an admin, or for a login not tied to an employee record.
@@ -44,10 +44,17 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
 
   const hasAccess = permsLoading || can(permissionKey);
 
+  // Waits for permissions to resolve before loading. hasAccess is true while
+  // they are still loading (so the page does not flash "no access"), which
+  // meant the old dependency went true -> true and never fired again: the one
+  // load ran with profile still null, so the scoping below could not tell who
+  // was signed in and filtered every row away - for admins too. Keyed on the
+  // profile id so it re-runs the moment identity is actually known.
   useEffect(() => {
-    if (hasAccess) load();
+    if (permsLoading) return;
+    if (isAdmin || can(permissionKey)) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasAccess]);
+  }, [permsLoading, profile?.id]);
 
   async function load() {
     setLoading(true);
@@ -76,10 +83,17 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
     // a personal figure, and one receptionist has no business reading what
     // another is holding. Admins still see everyone, because reconciling the
     // brand is the whole point of the page for them.
-    const me = (emps || []).find(
-      (e) => e.staff_account_email && profile?.email &&
-             e.staff_account_email.toLowerCase() === profile.email.toLowerCase()
-    );
+    // Two ways to find the signed-in person's employee record: the id carried
+    // on staff accounts created by elevating an employee, and the email link on
+    // the employee row. Either alone leaves someone unmatched.
+    const me =
+      (linkedEmployeeId && (emps || []).find((e) => e.id === linkedEmployeeId)) ||
+      (emps || []).find(
+        (e) =>
+          e.staff_account_email &&
+          profile?.email &&
+          e.staff_account_email.toLowerCase() === profile.email.toLowerCase()
+      );
     const mine = (row) =>
       isAdmin ||
       (me && [row.employee_id, row.from_employee_id, row.to_employee_id].includes(me.id));
@@ -123,7 +137,9 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
           <p style={{ color: theme.gray, fontSize: 13 }}>
             {isAdmin
               ? `No one is currently holding ${brandLabel} cash.`
-              : `You are not holding any ${brandLabel} cash.`}
+              : myEmployeeId
+              ? `You are not holding any ${brandLabel} cash.`
+              : "Your login isn't linked to an employee record, so no cash can be shown against you. An admin can link it in Employee Management."}
           </p>
         )}
         <div style={{ display: "grid", gap: 8 }}>
