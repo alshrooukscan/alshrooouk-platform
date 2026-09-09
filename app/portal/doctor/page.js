@@ -139,6 +139,41 @@ export default function DoctorPortalPage() {
         <h2 style={{ color: theme.navy, marginBottom: 2 }}>{data.doctor?.name}</h2>
         <p style={{ color: theme.gold, fontWeight: 600, marginBottom: 20 }}>{data.doctor?.clinic_code} &middot; {data.doctor?.clinic_name}</p>
 
+        {/* Shown on both views, above the tabs: what the clinic owes is the
+            first thing a doctor should see, and it is a clinic figure - every
+            doctor at 506 sees the same 1,075, because that is who the money is
+            owed by. Only rendered when something is actually outstanding; a
+            clinic that owes nothing does not need telling. */}
+        {Number(data.clinicOwes || 0) > 0 && (
+          <div
+            style={{
+              background: "#fff8e1",
+              border: "1px solid #eedfae",
+              borderRadius: 14,
+              padding: "16px 18px",
+              marginBottom: 20,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ color: "#8a6d00", fontWeight: 700, fontSize: 14 }}>
+                Your clinic owes us
+              </div>
+              <div style={{ color: "#8a6d00", fontSize: 12, marginTop: 2 }}>
+                {data.clinicName || data.doctor?.clinic_name || `Clinic ${data.doctor?.clinic_code}`} &middot;
+                {" "}for dental supplies. Settle it with reception on your next visit.
+              </div>
+            </div>
+            <div style={{ color: "#8a6d00", fontSize: 26, fontWeight: 700, whiteSpace: "nowrap" }}>
+              {Number(data.clinicOwes).toLocaleString()} EGP
+            </div>
+          </div>
+        )}
+
         {/* Patients and supply orders are two different jobs a doctor comes
             here to do. Stacking both made the page long and pushed the patient
             search below the orders, so they are separate views now. Scans is

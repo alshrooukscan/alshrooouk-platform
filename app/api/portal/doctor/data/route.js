@@ -52,5 +52,38 @@ export async function GET() {
     // Impersonating admins are exempt: they are inspecting the account, not
   // using it, and cannot set someone else's password.
   if (!session.impersonated && doctor?.must_change_password) return passwordChangeRequired();
-  return NextResponse.json({ doctor, visits: visits || [], mustChangePassword: session.impersonated ? false : !!doctor?.must_change_password, impersonatedBy: session.impersonatedBy || null });
+  // What the clinic owes, not what this doctor owes. Orders are placed and
+  // debts run at clinic level - clinic 506 has four doctors - so the balance is
+  // the clinic's and every doctor at it sees the same figure. Charges minus
+  // payments, so a part payment shows the remainder rather than the original.
+  let clinicOwes = 0;
+  let clinicName = null;
+  if (doctor?.clinic_code) {
+    const { data: clinic } = await supabaseAdmin
+      .from("clinics")
+      .select("id, name")
+      .eq("code", doctor.clinic_code)
+      .maybeSingle();
+    if (clinic) {
+      clinicName = clinic.name;
+      const { data: ledger } = await supabaseAdmin
+        .from("customer_ar_ledger")
+        .select("direction, amount")
+        .eq("customer_type", "clinic")
+        .eq("customer_id", clinic.id);
+      clinicOwes = (ledger || []).reduce(
+        (sum, l) => sum + (l.direction === "charge" ? Number(l.amount) : -Number(l.amount)),
+        0
+      );
+    }
+  }
+
+  return NextResponse.json({
+    doctor,
+    visits: visits || [],
+    clinicOwes: Math.round(clinicOwes * 100) / 100,
+    clinicName,
+    mustChangePassword: session.impersonated ? false : !!doctor?.must_change_password,
+    impersonatedBy: session.impersonatedBy || null,
+  });
 }
