@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { signSession } from "../../../../lib/session";
+import { APP_URL } from "../../../../lib/appUrl";
 
 async function requireAdmin(req) {
   const authHeader = req.headers.get("authorization") || "";
@@ -86,7 +87,13 @@ export async function POST(req) {
       if (!profile) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
-      const { data, error } = await supabaseAdmin.auth.admin.generateLink({ type: "magiclink", email: profile.email });
+      // Same reason as the employee dashboard link: pinned to APP_URL rather
+      // than inherited from the Supabase Site URL setting.
+      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        type: "magiclink",
+        email: profile.email,
+        options: { redirectTo: `${APP_URL}/dashboard` },
+      });
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
