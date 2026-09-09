@@ -1,10 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { theme } from "../../../../lib/theme";
 
-// Deliberately un-branded, full-screen, website-style e-commerce page - no
-// Al Shrooouk logo or navy header here, unlike the rest of the doctor
-// portal. This is meant to feel like a standalone shopping site.
+// Was deliberately un-branded, styled like a standalone shopping site. Doctors
+// reach it from their portal, so arriving at a page with a different header and
+// a different navy read as a different system - and one asking them to spend
+// money, which is exactly where a brand should be recognisable. It now carries
+// the same logo, navy and gold as the rest of the platform.
 // Small square control for the quantity steppers, sized for a thumb since this
 // is used on a phone at the chairside.
 const stepBtn = {
@@ -13,7 +16,7 @@ const stepBtn = {
   borderRadius: 6,
   border: "1px solid #ddd",
   background: "#fff",
-  color: "#1a1a2e",
+  color: theme.navy,
   fontSize: 15,
   fontWeight: 700,
   lineHeight: 1,
@@ -164,7 +167,7 @@ export default function DentalStockShopPage() {
           )}
           <button
             onClick={() => setConfirmedOrder(null)}
-            style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#1a1a2e", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+            style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 600, cursor: "pointer" }}
           >
             Continue Shopping
           </button>
@@ -175,15 +178,21 @@ export default function DentalStockShopPage() {
 
   return (
     <div style={{ minHeight: "100vh", fontFamily: "system-ui", background: "#f7f7f8" }}>
-      <div style={{ position: "sticky", top: 0, background: "#fff", borderBottom: "1px solid #eee", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 10 }}>
-        <span style={{ fontWeight: 700, fontSize: 18 }}>Dental Supplies</span>
+      <div style={{ position: "sticky", top: 0, background: theme.navy, padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 10, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <img src="/logo-mark.png" alt="" style={{ height: 30, width: "auto" }} />
+          <div>
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>Al Shrooouk Scan &amp; Lab</div>
+            <div style={{ color: theme.goldLight, fontSize: 12 }}>Dental Supplies</div>
+          </div>
+        </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         {/* Separate from the cart on purpose: this is not an order. There is no
             such item yet, so there is nothing to price or reserve - it is a
             request for the team to consider stocking it. */}
         <button
           onClick={() => setRequestOpen(true)}
-          style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid #1a1a2e", background: "#fff", color: "#1a1a2e", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+          style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
         >
           Request an item we don&apos;t list
         </button>
@@ -192,7 +201,9 @@ export default function DentalStockShopPage() {
           disabled={cartCount === 0}
           style={{
             padding: "10px 20px", borderRadius: 999, border: "none", fontWeight: 700, fontSize: 14, cursor: cartCount ? "pointer" : "default",
-            background: cartCount ? "#1a1a2e" : "#eee", color: cartCount ? "#fff" : "#999",
+            // Gold on the navy bar: a navy button on a navy header disappears.
+            background: cartCount ? `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})` : "rgba(255,255,255,0.15)",
+            color: cartCount ? theme.navy : "rgba(255,255,255,0.6)",
           }}
         >
           Cart ({cartCount}) {cartTotal > 0 && `\u2013 ${cartTotal.toFixed(2)} EGP`}
@@ -228,7 +239,7 @@ export default function DentalStockShopPage() {
                   style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", margin: "6px 0 14px", boxSizing: "border-box" }} />
                 {requestError && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{requestError}</p>}
                 <button onClick={sendRequest} disabled={requestBusy}
-                  style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: "#1a1a2e", color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
+                  style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
                   {requestBusy ? "Sending..." : "Send request"}
                 </button>
                 <button onClick={() => setRequestOpen(false)}
@@ -243,7 +254,17 @@ export default function DentalStockShopPage() {
 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "24px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
         {items.length === 0 && <p style={{ color: "#666" }}>No items in the catalogue yet.</p>}
-        {items.map((item) => (
+        {[...items]
+          .sort((a, b) => {
+            // Available first, then out of stock. Out-of-stock items stay
+            // listed - a doctor can still order one and it becomes a backorder
+            // - but they should not be what fills the top of the page.
+            const aOut = Number(a.qty_remaining || 0) <= 0;
+            const bOut = Number(b.qty_remaining || 0) <= 0;
+            if (aOut !== bOut) return aOut ? 1 : -1;
+            return String(a.name || "").localeCompare(String(b.name || ""));
+          })
+          .map((item) => (
           <div key={item.id} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
             <div style={{ height: 140, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {item.image_url ? (
@@ -254,7 +275,7 @@ export default function DentalStockShopPage() {
             </div>
             <div style={{ padding: 14 }}>
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{item.name}</div>
-              <div style={{ color: "#1a1a2e", fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{Number(item.sale_price).toFixed(2)} EGP</div>
+              <div style={{ color: theme.navy, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{Number(item.sale_price).toFixed(2)} EGP</div>
               {/* The real count, not just a hidden maximum. A doctor ordering
                   supplies needs to know whether we hold 2 or 40 before deciding
                   how much to ask for. */}
@@ -301,14 +322,14 @@ export default function DentalStockShopPage() {
               ) : (
                 <button
                   onClick={() => addToCart(item.id)}
-                  style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: "1px solid #1a1a2e", background: "#fff", color: "#1a1a2e", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+                  style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: "1px solid #1a1a2e", background: "#fff", color: theme.navy, fontWeight: 600, fontSize: 13, cursor: "pointer" }}
                 >
                   {item.qty_available > 0 ? "Add to Cart" : "Order for later"}
                 </button>
               )}
             </div>
           </div>
-        ))}
+          ))}
       </div>
 
       {checkoutOpen && (
@@ -357,7 +378,7 @@ export default function DentalStockShopPage() {
             <button
               onClick={confirmOrder}
               disabled={placing}
-              style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: "#1a1a2e", color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 8 }}
+              style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 8 }}
             >
               {placing ? "Placing Order..." : "Confirm Order"}
             </button>
