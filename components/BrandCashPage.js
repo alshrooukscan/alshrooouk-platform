@@ -526,9 +526,16 @@ function ConversionModal({ brand, employees, profile, onClose, onSaved }) {
       <FieldLabel>Note (optional)</FieldLabel>
       <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
       {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
-      <button onClick={handleSave} disabled={saving} style={primaryBtn}>
-        {saving ? "Saving..." : "Record Conversion"}
-      </button>
+      {/* Same Cancel/confirm row as every other modal here. This one shipped
+          with only the confirm button, so the sole way out was the X in the
+          corner - a modal about money should always offer a plain way to back
+          out. */}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={onClose} style={cancelBtn}>Cancel</button>
+        <button onClick={handleSave} disabled={saving} style={primaryBtn}>
+          {saving ? "Saving..." : "Record Conversion"}
+        </button>
+      </div>
     </Modal>
   );
 }
