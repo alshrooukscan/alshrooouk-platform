@@ -16,13 +16,16 @@ const STATUS = {
 // cash they hold for each business, and their status against the limit.
 // A27: this is advisory. Nothing here blocks anyone from taking a payment.
 export default function CashMonitorPage() {
-  const { isAdmin, loading: permsLoading } = usePermissions();
+  const { can, isAdmin, loading: permsLoading } = usePermissions();
+  // Granting the sidebar key without this left a visible link to a page that
+  // still refused entry. Admins keep access regardless of the key.
+  const allowed = isAdmin || can("cash_monitor");
   const [rows, setRows] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [revenue, setRevenue] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { if (isAdmin) load(); /* eslint-disable-next-line */ }, [isAdmin]);
+  useEffect(() => { if (allowed) load(); /* eslint-disable-next-line */ }, [allowed]);
 
   async function load() {
     setLoading(true);
@@ -37,7 +40,7 @@ export default function CashMonitorPage() {
   }
 
   if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!isAdmin) return <p style={{ color: theme.gray }}>Admin access required.</p>;
+  if (!allowed) return <p style={{ color: theme.gray }}>You do not have access to this page.</p>;
 
   const totals = rows.reduce(
     (a, r) => ({

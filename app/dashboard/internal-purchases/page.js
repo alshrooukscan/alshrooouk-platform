@@ -15,7 +15,10 @@ const LABEL = Object.fromEntries(BRANDS.map((b) => [b.key, b.label]));
 // Section 4: one business buying from another. Distinct from Brand Transfer,
 // which is a loan of capital and already existed.
 export default function InternalPurchasesPage() {
-  const { isAdmin, loading: permsLoading } = usePermissions();
+  const { can, isAdmin, loading: permsLoading } = usePermissions();
+  // Granting the sidebar key without this left a visible link to a page that
+  // still refused entry. Admins keep access regardless of the key.
+  const allowed = isAdmin || can("internal_purchases");
   const [rows, setRows] = useState([]);
   const [netting, setNetting] = useState([]);
   const [elimination, setElimination] = useState([]);
@@ -25,7 +28,7 @@ export default function InternalPurchasesPage() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
 
-  useEffect(() => { if (isAdmin) load(); /* eslint-disable-next-line */ }, [isAdmin]);
+  useEffect(() => { if (allowed) load(); /* eslint-disable-next-line */ }, [allowed]);
 
   async function load() {
     const [{ data: p }, { data: n }, { data: el }, { data: emp }] = await Promise.all([
@@ -63,7 +66,7 @@ export default function InternalPurchasesPage() {
   }
 
   if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!isAdmin) return <p style={{ color: theme.gray }}>Admin access required.</p>;
+  if (!allowed) return <p style={{ color: theme.gray }}>You do not have access to this page.</p>;
 
   const toEliminate = elimination.reduce((s, e) => s + Number(e.profit_to_eliminate), 0);
 

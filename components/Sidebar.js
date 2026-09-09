@@ -101,8 +101,11 @@ const NAV = [
       // Debt collection spans every brand (one customer can owe more than one
       // business), so it is gated on the reception/stock permissions the API
       // route already checks rather than a per-brand key.
-      { href: "/dashboard/cash-monitor", label: "Cash Monitor", icon: Banknote, adminOnly: true },
-      { href: "/dashboard/internal-purchases", label: "Internal Purchases", icon: ArrowLeftRight, adminOnly: true },
+      // Grantable now rather than admin-only: there was no way to give a
+      // manager these without making them a full admin. Admins still see them
+      // regardless of the key.
+      { href: "/dashboard/cash-monitor", label: "Cash Monitor", icon: Banknote, key: "cash_monitor" },
+      { href: "/dashboard/internal-purchases", label: "Internal Purchases", icon: ArrowLeftRight, key: "internal_purchases" },
       { href: "/dashboard/counter-sale", label: "Counter Sale", icon: Banknote, key: "reception" },
       { href: "/dashboard/debt-collection", label: "Debt Collection", icon: Banknote, key: "reception" },
     ],
