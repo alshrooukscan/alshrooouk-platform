@@ -315,14 +315,30 @@ export default function PatientProfilePage() {
       // directly: that table is RLS-locked with no policies, so a staff
       // client always read back nothing and the page believed every patient
       // was account-less.
-      fetch("/api/patients/credential-status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId: id }),
-      })
-        .then((r) => r.json())
-        .then((d) => ({ data: d?.hasAccount ? d : null }))
-        .catch(() => ({ data: null })),
+      // Bounded on purpose. This sits in a Promise.all, and fetch has no
+      // default timeout, so one stalled request used to leave the whole page
+      // on "loading" with no error - which is what made staff believe a saved
+      // visit had failed and add it a second time. Portal credentials are the
+      // least important thing here, so they give up rather than hold up the
+      // patient's record.
+      (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        try {
+          const r = await fetch("/api/patients/credential-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ patientId: id }),
+            signal: controller.signal,
+          });
+          const d = await r.json();
+          return { data: d?.hasAccount ? d : null };
+        } catch {
+          return { data: null };
+        } finally {
+          clearTimeout(timer);
+        }
+      })(),
       // Fetched in this first wave, not after render: visitNeedsReport defaults
       // to true while unknown, so loading it later made the "Report Done" row
       // flash in and then vanish on every no-report visit.
@@ -1498,6 +1514,11 @@ function AddScanModal({ patient, onClose, onSaved }) {
       return;
     }
     setSaving(true);
+    // Wrapped so the button always comes back. Without this, anything that
+    // threw or stalled left it reading "Saving..." forever while the visit had
+    // in fact been written - which is precisely how the same scan came to be
+    // recorded twice.
+    try {
     const scanNames = selectedExams.map((e) => e.name);
     const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
 
@@ -1527,7 +1548,9 @@ function AddScanModal({ patient, onClose, onSaved }) {
       .single();
 
     if (vErr) {
-      setSaving(false);
+      // The database refuses an identical visit saved moments earlier, so a
+      // resubmit after a stalled screen is reported plainly rather than
+      // silently duplicating the record.
       setError(vErr.message);
       return;
     }
@@ -1547,14 +1570,22 @@ function AddScanModal({ patient, onClose, onSaved }) {
         created_by_name: profile?.name || null,
       });
       if (pErr) {
-        setSaving(false);
         setError(`Scan was created, but recording the payment failed: ${pErr.message}`);
         return;
       }
     }
 
-    setSaving(false);
     onSaved();
+    } catch (err) {
+      console.error("Saving the scan failed", err);
+      setError(
+        (err?.message || "Something went wrong while saving.") +
+          " Refresh the patient before trying again - the scan may already have been saved."
+      );
+    } finally {
+      // Runs on every path, including the early returns above.
+      setSaving(false);
+    }
   }
 
   return (
