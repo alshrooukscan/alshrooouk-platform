@@ -7,6 +7,20 @@ import { formatMoney } from "../../../lib/format";
 import Loading from "../../../lib/Loading";
 import { loadFaceModels, extractDescriptor } from "../../../lib/faceMatch";
 
+// Same wording the dashboard uses, so a figure means the same thing wherever
+// an employee reads it.
+const BRAND_LABEL = {
+  scan: "Scan",
+  dental_stock: "Dental Supply",
+  el3awama_stock: "El3awama F&B",
+};
+const MOVEMENT_LABEL = {
+  cash_out: "Cash spent",
+  cash_transfer: "Cash handed over",
+  cash_collection: "Cash collected",
+  cash_conversion: "Converted to digital",
+};
+
 export default function EmployeePortalPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -231,7 +245,7 @@ export default function EmployeePortalPage() {
 
         {tab === "vacations" && <VacationsTab leaveRequests={data.leaveRequests} onSubmitted={load} />}
         {tab === "excuses" && <ExcusesTab excuseRules={data.excuseRules} excuseSubmissions={data.excuseSubmissions} onSubmitted={load} />}
-        {tab === "transfers" && <TransfersTab incomingTransfers={data.incomingTransfers} onReviewed={load} />}
+        {tab === "transfers" && <TransfersTab incomingTransfers={data.incomingTransfers} cashBalances={data.cashBalances} cashMovements={data.cashMovements} onReviewed={load} />}
       </div>
 
       {captureEventType && (
@@ -666,7 +680,7 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
   );
 }
 
-function TransfersTab({ incomingTransfers, onReviewed }) {
+function TransfersTab({ incomingTransfers, cashBalances, cashMovements, onReviewed }) {
   const [busyId, setBusyId] = useState(null);
   const statusColor = { pending: "#a97c00", confirmed: "#2e7d32", rejected: "#ba1a1a" };
   const statusBg = { pending: "#fff8e1", confirmed: "#e8f5e9", rejected: "#fdecea" };
@@ -687,6 +701,44 @@ function TransfersTab({ incomingTransfers, onReviewed }) {
 
   return (
     <div>
+      {/* The employee's own cash position, brought here from the dashboard.
+          They are the person answerable for this money, so they should be able
+          to see it without an admin opening a page for them. Read-only: money
+          still moves through the dashboard, where it is logged and confirmed. */}
+      <div style={cardStyle}>
+        <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 10 }}>My Cash In Hand</div>
+        {(cashBalances || []).filter((b) => Number(b.balance) !== 0).length === 0 ? (
+          <div style={{ fontSize: 13, color: theme.gray }}>You are not holding any cash right now.</div>
+        ) : (
+          (cashBalances || [])
+            .filter((b) => Number(b.balance) !== 0)
+            .map((b) => (
+              <div key={b.brand} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f4f4f4" }}>
+                <span style={{ color: theme.navy, fontSize: 13 }}>{BRAND_LABEL[b.brand] || b.brand}</span>
+                <span style={{ color: theme.gold, fontWeight: 700 }}>{Number(b.balance).toLocaleString()} EGP</span>
+              </div>
+            ))
+        )}
+      </div>
+
+      {(cashMovements || []).length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 10 }}>My Recent Cash Movements</div>
+          {cashMovements.map((m) => (
+            <div key={m.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid #f4f4f4" }}>
+              <div>
+                <div style={{ color: theme.navy, fontSize: 13 }}>{MOVEMENT_LABEL[m.type] || m.type}</div>
+                <div style={{ color: theme.gray, fontSize: 11 }}>
+                  {BRAND_LABEL[m.brand] || m.brand} &middot; {m.entry_date || (m.created_at || "").slice(0, 10)}
+                  {m.note ? ` · ${m.note}` : ""}
+                </div>
+              </div>
+              <div style={{ color: theme.navy, fontWeight: 600, whiteSpace: "nowrap" }}>{Number(m.amount).toLocaleString()} EGP</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {pending.length === 0 && reviewed.length === 0 && <div style={cardStyle}>No cash transfers to you yet.</div>}
       {pending.map((t) => (
         <div key={t.id} style={{ ...cardStyle, border: `1px solid ${theme.gold}` }}>

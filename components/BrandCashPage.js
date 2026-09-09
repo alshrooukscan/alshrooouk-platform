@@ -36,6 +36,8 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
   const { can, isAdmin, loading: permsLoading, profile } = usePermissions();
   const [balances, setBalances] = useState([]);
   const [recent, setRecent] = useState([]);
+  // Null for an admin, or for a login not tied to an employee record.
+  const [myEmployeeId, setMyEmployeeId] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // "transfer" | "collection" | "cash_out" | null
@@ -68,13 +70,29 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
     ]);
     // Attach names here rather than via a PostgREST embed the view cannot support.
     const nameById = new Map((emps || []).map((e) => [e.id, e.name]));
+
+    // This page had no scoping of any kind: every member of staff saw every
+    // colleague's cash in hand and every transaction on the brand. Cash held is
+    // a personal figure, and one receptionist has no business reading what
+    // another is holding. Admins still see everyone, because reconciling the
+    // brand is the whole point of the page for them.
+    const me = (emps || []).find(
+      (e) => e.staff_account_email && profile?.email &&
+             e.staff_account_email.toLowerCase() === profile.email.toLowerCase()
+    );
+    const mine = (row) =>
+      isAdmin ||
+      (me && [row.employee_id, row.from_employee_id, row.to_employee_id].includes(me.id));
+
     setBalances(
       (bal || [])
         .filter((b) => Number(b.balance) !== 0)
+        .filter(mine)
         .map((b) => ({ ...b, employeeName: nameById.get(b.employee_id) || "Unknown employee" }))
     );
     setEmployees(emps || []);
-    setRecent(tx || []);
+    setRecent((tx || []).filter(mine));
+    setMyEmployeeId(me?.id || null);
     setLoading(false);
   }
 
@@ -95,8 +113,19 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Cash In Hand</h3>
-        {!loading && balances.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No one is currently holding {brandLabel} cash.</p>}
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{isAdmin ? "Cash In Hand" : "Your Cash In Hand"}</h3>
+        {!isAdmin && (
+          <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 10px" }}>
+            Only your own cash and your own movements are shown here.
+          </p>
+        )}
+        {!loading && balances.length === 0 && (
+          <p style={{ color: theme.gray, fontSize: 13 }}>
+            {isAdmin
+              ? `No one is currently holding ${brandLabel} cash.`
+              : `You are not holding any ${brandLabel} cash.`}
+          </p>
+        )}
         <div style={{ display: "grid", gap: 8 }}>
           {balances.map((b) => (
             <div key={b.employee_id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
@@ -108,8 +137,12 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Recent Transfers &amp; Collections</h3>
-        {!loading && recent.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing logged yet.</p>}
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{isAdmin ? "Recent Transfers & Collections" : "Your Recent Transfers & Collections"}</h3>
+        {!loading && recent.length === 0 && (
+          <p style={{ color: theme.gray, fontSize: 13 }}>
+            {isAdmin ? "Nothing logged yet." : "Nothing logged against you yet."}
+          </p>
+        )}
         <div style={{ display: "grid", gap: 8 }}>
           {recent.map((tx) => (
             <div key={tx.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>

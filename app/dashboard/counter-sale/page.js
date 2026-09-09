@@ -116,8 +116,8 @@ function CounterSalePageInner() {
           items: lines.map((l) => ({ stock_item_id: l.id, quantity: l.qty })),
           paymentMethod: method,
           collectedByEmployeeId: method === "cash" ? collectedBy : null,
-          customerType: method === "postponed" ? "doctor" : null,
-          customerId: method === "postponed" ? customerId : null,
+          customerType: customerId ? "doctor" : null,
+          customerId: customerId || null,
           employeeId: method === "staff_tab" ? employeeId : null,
           tabPin: method === "staff_tab" ? tabPin : null,
         }),
@@ -199,6 +199,20 @@ function CounterSalePageInner() {
             </div>
           )}
 
+          {/* Previously only asked when the sale was postponed, so a paid sale
+              recorded nothing about who bought it - and a doctor's paid history
+              was invisible. Optional on a paid sale (a genuine walk-in has no
+              account) and still required when the money is owed. */}
+          <FieldLabel>Customer</FieldLabel>
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={inp}>
+            <option value="">Walk-in (no account)</option>
+            {doctors.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}{d.clinic_code ? ` - ${d.clinic_code}` : ""}
+              </option>
+            ))}
+          </select>
+
           <FieldLabel>Payment</FieldLabel>
           <select value={method} onChange={(e) => setMethod(e.target.value)} style={inp}>
             {METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -235,17 +249,10 @@ function CounterSalePageInner() {
             </>
           )}
 
-          {method === "postponed" && (
-            <>
-              <FieldLabel>Billed To</FieldLabel>
-              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={inp}>
-                <option value="">Select customer...</option>
-                {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}{d.clinic_name ? ` (${d.clinic_name})` : ""}</option>)}
-              </select>
-              <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-                This is added to what they owe, and appears in Debt Collection.
-              </p>
-            </>
+          {method === "postponed" && !customerId && (
+            <p style={{ fontSize: 12, color: "#ba1a1a", margin: "6px 0 0" }}>
+              A postponed sale is money owed, so it has to be billed to a customer above.
+            </p>
           )}
 
           {method === "staff_tab" && (

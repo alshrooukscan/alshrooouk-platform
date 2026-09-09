@@ -79,9 +79,21 @@ export async function GET() {
     supabaseAdmin.rpc("employee_spend_capacity", { p_employee_id: session.id }),
   ]);
 
+  // Their own cash movements, so the balance above is explainable without
+  // asking an admin to open the dashboard. Scoped to this employee on every
+  // side of a transaction - money they took, handed over, or received.
+  const { data: myMovements } = await supabaseAdmin
+    .from("expense_transactions")
+    .select("id, brand, type, amount, payment_method, note, status, entry_date, created_at, from_employee_id, to_employee_id, employee_id")
+    .or(`employee_id.eq.${session.id},from_employee_id.eq.${session.id},to_employee_id.eq.${session.id}`)
+    .in("type", ["cash_transfer", "cash_collection", "cash_out", "cash_conversion"])
+    .order("created_at", { ascending: false })
+    .limit(30);
+
   return NextResponse.json({
     employee,
     cashBalances: myCash || [],
+    cashMovements: myMovements || [],
     tabBalance: Number(myTab?.balance || 0),
     spendCapacity: myCapacity || null,
     payslips: payslips || [],
