@@ -8,7 +8,6 @@ import { formatPhone } from "../../../../lib/formatPhone";
 import { resolvePatientUsername } from "../../../../lib/uniqueUsername";
 import { customerWhatsAppLink } from "../../../../lib/whatsapp";
 import { usePermissions } from "../../../../lib/usePermissions";
-import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 import { APP_URL } from "../../../../lib/appUrl";
 
@@ -218,81 +217,44 @@ export default function NewPatientPage() {
       (p) => (p.name || "").trim().toLowerCase().replace(/\s+/g, " ") === typedName
     );
 
-    let patientId = sameHuman?.id;
-    if (!patientId) {
-      const { data: newPatient, error: pErr } = await supabase
-        .from("patients")
-        .insert({
-          name: form.name,
-          mobile: normalizedMobile,
-          dob: form.dob || null,
-          email: form.email || null,
-          preferred_contact: form.preferred_contact,
-        })
-        .select("id")
-        .single();
-      if (pErr) {
-        setError(pErr.message);
-        setSaving(false);
-        return;
-      }
-      patientId = newPatient.id;
-    }
-
     const scanNames = selectedExams.map((e) => e.name);
     const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
+    const paidNow = Number(form.amount_paid) || 0;
 
-    const { data: visit, error: vErr } = await supabase
-      .from("visits")
-      .insert({
-        patient_id: patientId,
-        doctor_id: walkIn ? null : selectedDoctor?.id,
-        branch_id: form.branch_id || null,
-        scan_types: scanNames,
-        // Written alongside the names so the edit form can re-open this visit
-        // by id rather than by string match. Renaming a scan type in Settings
-        // must never retroactively break a saved visit again.
-        exam_type_ids: selectedExams.map((e) => e.id),
-        amount_due: sumAfterDiscount,
-        discount_pct: discountPct,
-        discount_reason: form.discount_on ? finalReason : null,
-        notes: form.notes || null,
-      })
-      .select("id")
-      .single();
+    // One call, one transaction. This used to write the patient, then the
+    // visit, then the payment as three separate steps with nothing to undo
+    // the earlier ones - so a failure part-way through left a patient and a
+    // visit stranded with no payment, which is exactly what the ReferenceError
+    // fixed earlier today was doing on every registration.
+    const { data: reg, error: regErr } = await supabase.rpc("register_patient_visit", {
+      p_patient_id: sameHuman?.id || null,
+      p_name: form.name,
+      p_mobile: normalizedMobile,
+      p_dob: form.dob || null,
+      p_email: form.email || null,
+      p_preferred_contact: form.preferred_contact,
+      p_doctor_id: walkIn ? null : selectedDoctor?.id || null,
+      p_branch_id: form.branch_id || null,
+      p_scan_types: scanNames,
+      p_exam_type_ids: selectedExams.map((e) => e.id),
+      p_amount_due: sumAfterDiscount,
+      p_discount_pct: discountPct,
+      p_discount_reason: form.discount_on ? finalReason : null,
+      p_notes: form.notes || null,
+      p_amount_paid: paidNow,
+      p_payment_method: form.payment_method,
+      p_created_by_id: profile?.id || null,
+      p_created_by_name: profile?.name || null,
+    });
 
-    if (vErr) {
-      setError(vErr.message);
+    if (regErr) {
+      setError(regErr.message);
       setSaving(false);
       return;
     }
 
-    await syncPatientLastVisitDate(supabase, patientId);
-
-    // Logging the payment as a visit_payments row (rather than setting
-    // amount_paid/payment_status directly on the visit) is what makes it
-    // count as cash in this specific employee's hand: it's what
-    // recompute_visit_payment() reads to set the visit's real payment
-    // status, and what sync_visit_payment_to_expenses() reads to create the
-    // confirmed expense ledger entry attributed to created_by_id. Setting
-    // the visit's payment fields directly, like this form used to do, left
-    // the payment invisible to both of those and to the employee's cash
-    // ledger entirely.
-    const paidNow = Number(form.amount_paid) || 0;
-    if (paidNow > 0) {
-      const { error: pErr } = await supabase.from("visit_payments").insert({
-        visit_id: visit.id,
-        amount: paidNow,
-        payment_method: form.payment_method,
-        created_by_id: profile?.id || null,
-        created_by_name: profile?.name || null,
-      });
-      if (pErr) {
-        setError(pErr.message);
-        setSaving(false);
-        return;
-      }
-    }
+    const patientId = reg?.[0]?.patient_id;
+    const visit = { id: reg?.[0]?.visit_id };
 
     // sameHuman is the already-registered patient this form matched, if any.
     // This read "existing", which was never declared anywhere - a plain
