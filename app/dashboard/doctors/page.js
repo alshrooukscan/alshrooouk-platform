@@ -12,6 +12,7 @@ export default function DoctorsPage() {
   const { isAdmin } = usePermissions();
   useAutoRefresh(["doctors", "visits"], () => { load(); });
   const [doctors, setDoctors] = useState([]);
+  const [owed, setOwed] = useState({}); // clinic code -> outstanding balance
   const [engagement, setEngagement] = useState({});
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -28,6 +29,22 @@ export default function DoctorsPage() {
       .select("id, name, clinic_name, clinic_code, phone, phone_2, drive_folder_id")
       .order("created_at", { ascending: false });
     setDoctors(data || []);
+
+    // What each clinic owes, keyed by clinic code so every doctor at a clinic
+    // carries the same figure - the debt is the clinic's, not one doctor's.
+    // Charges minus payments, so a part payment shows the remainder.
+    const [{ data: clinicRows }, { data: ledger }] = await Promise.all([
+      supabase.from("clinics").select("id, code"),
+      supabase.from("customer_ar_ledger").select("customer_id, direction, amount").eq("customer_type", "clinic"),
+    ]);
+    const codeById = new Map((clinicRows || []).map((c) => [c.id, c.code]));
+    const owedByCode = {};
+    for (const l of ledger || []) {
+      const code = codeById.get(l.customer_id);
+      if (!code) continue;
+      owedByCode[code] = (owedByCode[code] || 0) + (l.direction === "charge" ? Number(l.amount) : -Number(l.amount));
+    }
+    setOwed(owedByCode);
 
     // Low engagement = real referral history exists, but fewer than 2 in the last 90 days
     const { data: visits } = await supabase.from("visits").select("doctor_id, exam_date").not("doctor_id", "is", null);
@@ -133,13 +150,23 @@ export default function DoctorsPage() {
               boxShadow: "0 4px 20px rgba(39,33,77,0.06)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name}</div>
-              {engagement[d.id] && (
-                <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a", fontWeight: 700, whiteSpace: "nowrap" }}>
-                  Low Engagement
-                </span>
-              )}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {/* Money owed reads as amber rather than red: it is a balance to
+                    collect, not a problem with the doctor, and it should not
+                    shout louder than a referral relationship going quiet. */}
+                {Number(owed[d.clinic_code] || 0) > 0 && (
+                  <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    Owes {Number(owed[d.clinic_code]).toLocaleString()} EGP
+                  </span>
+                )}
+                {engagement[d.id] && (
+                  <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    Low Engagement
+                  </span>
+                )}
+              </div>
             </div>
             <div style={{ fontSize: 12, color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{d.clinic_code}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.clinic_name}</div>
