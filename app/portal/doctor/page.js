@@ -23,6 +23,9 @@ export default function DoctorPortalPage() {
   const [openPatientId, setOpenPatientId] = useState(null);
   const [filesByPatient, setFilesByPatient] = useState({});
   const [filesLoading, setFilesLoading] = useState(false);
+  // Which of the two views is showing. Scans first: patient lookup is the
+  // commoner reason a doctor opens this page.
+  const [view, setView] = useState("scans");
   const [query, setQuery] = useState("");
   const [orders, setOrders] = useState([]);
   const [itemRequests, setItemRequests] = useState([]);
@@ -136,7 +139,35 @@ export default function DoctorPortalPage() {
         <h2 style={{ color: theme.navy, marginBottom: 2 }}>{data.doctor?.name}</h2>
         <p style={{ color: theme.gold, fontWeight: 600, marginBottom: 20 }}>{data.doctor?.clinic_code} &middot; {data.doctor?.clinic_name}</p>
 
-        {(orders.length > 0 || itemRequests.length > 0) && (
+        {/* Patients and supply orders are two different jobs a doctor comes
+            here to do. Stacking both made the page long and pushed the patient
+            search below the orders, so they are separate views now. Scans is
+            first because looking up a patient is the commoner errand. */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {[
+            { key: "scans", label: "Scans" },
+            { key: "orders", label: "Supply Orders" },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setView(t.key)}
+              style={{
+                flex: 1,
+                padding: "12px 0",
+                borderRadius: 10,
+                border: `1px solid ${view === t.key ? theme.navy : "#ddd"}`,
+                background: view === t.key ? theme.navy : "#fff",
+                color: view === t.key ? "#fff" : theme.navy,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {view === "orders" && (orders.length > 0 || itemRequests.length > 0) && (
           <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
             <h3 style={{ color: theme.navy, marginTop: 0 }}>My Supply Orders</h3>
             {orders.map((o) => {
@@ -189,7 +220,13 @@ export default function DoctorPortalPage() {
           </div>
         )}
 
-        <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        {view === "orders" && orders.length === 0 && itemRequests.length === 0 && (
+          <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", color: theme.gray, fontSize: 14 }}>
+            No supply orders yet. Use &quot;Request Dental Stock Items&quot; above to place one.
+          </div>
+        )}
+
+        <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", display: view === "scans" ? "block" : "none" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Clinic Patients</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Every patient referred to {data.doctor?.clinic_code} is shown here, including cases referred by other doctors at this clinic.</p>
           <input

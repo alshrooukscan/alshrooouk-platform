@@ -14,7 +14,6 @@ export default function StockCategoryPage({ category, title }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAddItem, setShowAddItem] = useState(false);
-  const [showTxn, setShowTxn] = useState(null); // item being transacted on
   const [showCount, setShowCount] = useState(null); // item being counted
   const [editingImageId, setEditingImageId] = useState(null);
   const { profile } = usePermissions();
@@ -226,7 +225,10 @@ export default function StockCategoryPage({ category, title }) {
                   </Td>
                   <Td>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => setShowTxn(item)} style={smallBtn}>Transaction</button>
+                      {/* The manual "Transaction" action was removed: stock now
+                          moves through orders, counter sales and counts, and
+                          quantities are editable in place. A second, silent way
+                          to move stock only made the numbers harder to trust. */}
                       <button onClick={() => setShowCount(item)} style={smallBtn}>Count</button>
                     </div>
                   </Td>
@@ -256,11 +258,10 @@ export default function StockCategoryPage({ category, title }) {
           boxShadow: "0 8px 24px rgba(169,139,77,0.4)",
         }}
       >
-        + Add Transaction
+        + Add Item
       </button>
 
       {showAddItem && <AddItemModal category={category} title={title} onClose={() => setShowAddItem(false)} onSaved={load} />}
-      {showTxn && <TransactionModal item={showTxn} onClose={() => setShowTxn(null)} onSaved={load} />}
       {showCount && <CountModal item={showCount} onClose={() => setShowCount(null)} onSaved={load} />}
       {editingImageId && (
         <ImageUploadModal
@@ -337,106 +338,7 @@ function AddItemModal({ category, title, onClose, onSaved }) {
   );
 }
 
-function TransactionModal({ item, onClose, onSaved }) {
-  const [type, setType] = useState("purchase");
-  const [qty, setQty] = useState("");
-  const [unitPrice, setUnitPrice] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("paid");
-  const [amountPaid, setAmountPaid] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const total = (Number(qty) || 0) * (Number(unitPrice) || 0);
-
-  async function handleSave() {
-    if (!qty || !unitPrice) {
-      setError("Quantity and unit price are required.");
-      return;
-    }
-    setSaving(true);
-    const paid = paymentStatus === "paid" ? total : paymentStatus === "pending" ? 0 : Number(amountPaid) || 0;
-    const { error: err } = await supabase.rpc("record_stock_transaction", {
-      p_item_id: item.id,
-      p_type: type,
-      p_qty: Number(qty),
-      p_unit_price: Number(unitPrice),
-      p_amount_paid: paid,
-      p_payment_status: paymentStatus,
-    });
-    setSaving(false);
-    if (err) {
-      setError(err.message);
-      return;
-    }
-    onSaved();
-    onClose();
-  }
-
-  return (
-    <Modal title={`Record Transaction \u2014 ${item.name}`} onClose={onClose}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {["purchase", "sale"].map((t) => (
-          <button
-            key={t}
-            onClick={() => setType(t)}
-            style={{
-              flex: 1,
-              padding: "8px 0",
-              borderRadius: 8,
-              border: `1px solid ${type === t ? theme.gold : "#ddd"}`,
-              background: type === t ? theme.goldLight : "#fff",
-              color: theme.navy,
-              fontWeight: 700,
-              cursor: "pointer",
-              textTransform: "capitalize",
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <FieldLabel>Quantity</FieldLabel>
-      <input style={inp} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
-      <FieldLabel>Unit Price (EGP)</FieldLabel>
-      <input style={inp} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="0.00" />
-      {total > 0 && <p style={{ fontSize: 12, color: theme.gray, marginTop: -12, marginBottom: 12 }}>Total: {formatMoney(total, { decimals: 2 })} EGP</p>}
-
-      <FieldLabel>{type === "sale" ? "Payment from Customer" : "Payment to Supplier"}</FieldLabel>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {["paid", "partial", "pending"].map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setPaymentStatus(s)}
-            style={{
-              flex: 1,
-              padding: "6px 0",
-              borderRadius: 6,
-              fontSize: 11,
-              border: `1px solid ${paymentStatus === s ? theme.gold : "#ddd"}`,
-              background: paymentStatus === s ? theme.goldLight : "#fff",
-              color: theme.navy,
-              cursor: "pointer",
-              textTransform: "capitalize",
-            }}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-      {paymentStatus === "partial" && (
-        <>
-          <FieldLabel>Amount Actually Paid (EGP)</FieldLabel>
-          <input style={inp} value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="0.00" />
-        </>
-      )}
-
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
-      <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Save Transaction"}</button>
-    </Modal>
-  );
-}
-
+// TransactionModal removed with the manual stock-movement action above.
 function CountModal({ item, onClose, onSaved }) {
   const [physicalQty, setPhysicalQty] = useState("");
   const [saving, setSaving] = useState(false);

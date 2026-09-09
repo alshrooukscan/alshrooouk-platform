@@ -1,6 +1,11 @@
 "use client";
-import StockCategoryPage from "../../../../components/StockCategoryPage";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function DentalStockPage() {
-  return <StockCategoryPage category="dental" title="Dental Stock" />;
+// Merged into the single Stock Details page. Kept as a redirect so existing
+// bookmarks and any links already sent to staff still land in the right place.
+export default function Redirectdental() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/dashboard/stock?stock=dental"); }, [router]);
+  return null;
 }

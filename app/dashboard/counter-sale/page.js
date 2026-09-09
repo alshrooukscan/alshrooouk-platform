@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
@@ -20,9 +21,15 @@ const METHODS = [
 
 // The counter / till screen. El3awama had no way to sell anything at all
 // before this, which is why its revenue always read zero.
-export default function CounterSalePage() {
+function CounterSalePageInner() {
   const { can, isAdmin, loading: permsLoading } = usePermissions();
-  const [brand, setBrand] = useState("el3awama_stock");
+  // Opened from Stock Orders, which passes the stock being viewed, so choosing
+  // Dental there does not mean choosing it again here.
+  const params = useSearchParams();
+  const fromUrl = params.get("stock");
+  const [brand, setBrand] = useState(
+    fromUrl === "dental" ? "dental_stock" : fromUrl === "el3awama" ? "el3awama_stock" : "el3awama_stock"
+  );
   const [items, setItems] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -337,3 +344,12 @@ function FieldLabel({ children }) {
 const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #d8dee3", fontSize: 13, boxSizing: "border-box" };
 const qtyBtn = { width: 26, height: 26, borderRadius: 6, border: "1px solid #d8dee3", background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 14, lineHeight: 1 };
 const primaryBtn = { padding: "11px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 };
+
+export default function CounterSalePage() {
+  // useSearchParams requires a Suspense boundary to prerender.
+  return (
+    <Suspense fallback={null}>
+      <CounterSalePageInner />
+    </Suspense>
+  );
+}

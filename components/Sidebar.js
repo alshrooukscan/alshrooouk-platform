@@ -13,7 +13,6 @@ import {
   Wallet,
   Handshake,
   Boxes,
-  Smile,
   Package,
   Users,
   UserPlus,
@@ -66,12 +65,15 @@ const NAV = [
   },
   {
     type: "group",
-    label: "Inventory Management",
+    label: "Stock Management",
     icon: Boxes,
     items: [
-      { href: "/dashboard/stock/dental", label: "Dental Stock", icon: Smile, key: "stock" },
-      { href: "/dashboard/stock/dental-orders", label: "Dental Stock Orders", icon: ShoppingBag, key: "stock" },
-      { href: "/dashboard/stock/el3awama", label: "El3awama Stock", icon: Package, key: "stock" },
+      // Dental and El3awama were four entries between them. They are the same
+      // two screens against different items, so they are two entries now, each
+      // with a switch inside. Counter Sale moved into Stock Orders, where the
+      // stock being viewed is already chosen.
+      { href: "/dashboard/stock", label: "Stock Details", icon: Package, key: "stock" },
+      { href: "/dashboard/stock/orders", label: "Stock Orders", icon: ShoppingBag, key: "stock" },
     ],
   },
   {
@@ -106,7 +108,6 @@ const NAV = [
       // regardless of the key.
       { href: "/dashboard/cash-monitor", label: "Cash Monitor", icon: Banknote, key: "cash_monitor" },
       { href: "/dashboard/internal-purchases", label: "Internal Purchases", icon: ArrowLeftRight, key: "internal_purchases" },
-      { href: "/dashboard/counter-sale", label: "Counter Sale", icon: Banknote, key: "reception" },
       { href: "/dashboard/debt-collection", label: "Debt Collection", icon: Banknote, key: "reception" },
     ],
   },
