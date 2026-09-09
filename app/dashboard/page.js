@@ -97,7 +97,7 @@ function DashboardTabs() {
 
 function Overview() {
   const { isAdmin, profile } = usePermissions();
-  useAutoRefresh(["visits", "invoices", "reports", "cash_expenses", "expense_transactions"], () => { load(); loadReconciliation(); });
+  useAutoRefresh(["visits", "invoices", "reports", "cash_expenses", "expense_transactions"], () => { load(); });
   const [allLedger, setAllLedger] = useState([]);
   const [allPaymentRows, setAllPaymentRows] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
@@ -115,7 +115,6 @@ function Overview() {
 
   useEffect(() => {
     load();
-    loadReconciliation();
   }, []);
 
 

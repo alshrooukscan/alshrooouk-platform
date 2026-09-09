@@ -294,7 +294,13 @@ export default function NewPatientPage() {
       }
     }
 
-    if (!existing) {
+    // sameHuman is the already-registered patient this form matched, if any.
+    // This read "existing", which was never declared anywhere - a plain
+    // ReferenceError thrown on every single registration, right after the
+    // patient and visit had been written. The catch added earlier meant staff
+    // saw a message instead of a frozen button, but the registration still
+    // failed at the last step and the portal account was never created.
+    if (!sameHuman) {
       // The patient and their visit are already saved at this point. Portal
       // credentials are a convenience on top of that, so a failure here must
       // not discard the registration or strand the form - it hands over to
