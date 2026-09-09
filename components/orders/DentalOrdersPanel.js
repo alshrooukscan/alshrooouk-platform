@@ -11,10 +11,34 @@ const METHODS = ["cash", "visa", "instapay", "wallet"];
 const STATUS = {
   placed: { bg: "#fff8e1", fg: "#a97c00", label: "Awaiting review" },
   reviewed: { bg: "#e8eefc", fg: "#27214d", label: "Ready to deliver" },
+  assigned: { bg: "#e8eefc", fg: "#27214d", label: "Assigned" },
+  in_transit: { bg: "#e8eefc", fg: "#27214d", label: "Out for delivery" },
   delivered: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Delivered" },
   cancelled: { bg: "#f0f0f0", fg: "#888", label: "Cancelled" },
-  confirmed: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Delivered" },
+  // Was labelled "Delivered", which is how a brand new order came to show as
+  // delivered and unpaid at the same time - one of them while its only item
+  // was out of stock. Nothing writes this status any more (0057), but old rows
+  // must still read honestly.
+  confirmed: { bg: "#fff8e1", fg: "#a97c00", label: "Awaiting review" },
 };
+
+// What the person looking at this order should do next. Spelled out because
+// the badges describe where the order IS, not what is being waited on.
+function nextStep(o) {
+  if (o.status === "cancelled") return null;
+  if (o.status === "delivered") {
+    return Number(o.total_amount) - Number(o.amount_paid || 0) > 0.005
+      ? "Delivered. Waiting on payment."
+      : null;
+  }
+  if (o.fulfillment === "backorder") {
+    return "Some items are not in stock. This cannot be delivered until they arrive.";
+  }
+  if (o.status === "placed" || o.status === "confirmed") return "Review it, then assign someone to deliver.";
+  if (o.status === "reviewed") return "Assign someone to deliver and send the customer their code.";
+  if (o.status === "assigned" || o.status === "in_transit") return "With the driver. Enter the customer's code once handed over.";
+  return null;
+}
 const PAYSTATUS = {
   unpaid: { bg: "#fdecea", fg: "#ba1a1a", label: "Unpaid" },
   partial: { bg: "#fff8e1", fg: "#a97c00", label: "Part paid" },
@@ -98,7 +122,7 @@ export default function DentalOrdersPanel() {
   const outstanding = live.reduce((s, o) => s + owedOn(o), 0);
   const collected = live.reduce((s, o) => s + Number(o.amount_paid || 0), 0);
   const ordered = live.reduce((s, o) => s + Number(o.total_amount || 0), 0);
-  const awaitingReview = orders.filter((o) => o.status === "placed").length;
+  const awaitingReview = orders.filter((o) => ["placed", "confirmed"].includes(o.status)).length;
   const awaitingDelivery = orders.filter((o) => o.status === "reviewed").length;
 
   // Who owes what - the number that actually needs chasing.
@@ -121,8 +145,8 @@ export default function DentalOrdersPanel() {
 
   const shown = orders.filter((o) => {
     if (filter === "all") return true;
-    if (filter === "open") return o.status !== "cancelled" && (o.payment_status !== "paid" || o.status === "placed");
-    if (filter === "review") return o.status === "placed";
+    if (filter === "open") return o.status !== "cancelled" && (o.payment_status !== "paid" || ["placed", "confirmed"].includes(o.status));
+    if (filter === "review") return ["placed", "confirmed"].includes(o.status);
     return o.status === filter;
   });
 
@@ -261,6 +285,26 @@ export default function DentalOrdersPanel() {
               </div>
             )}
 
+            {nextStep(o) && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "flex-start",
+                  background: o.fulfillment === "backorder" && o.status !== "delivered" ? "#fff8e1" : "#f5f4f8",
+                  border: `1px solid ${o.fulfillment === "backorder" && o.status !== "delivered" ? "#eedfae" : "#eceaf1"}`,
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  margin: "8px 0 4px",
+                  fontSize: 12,
+                  color: o.fulfillment === "backorder" && o.status !== "delivered" ? "#8a6d00" : theme.navy,
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>Next:</span>
+                <span>{nextStep(o)}</span>
+              </div>
+            )}
+
             <button onClick={() => setExpanded(expanded === o.id ? null : o.id)}
               style={{ marginTop: 8, background: "none", border: "none", color: theme.gold, fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0 }}>
               {expanded === o.id ? "Hide items" : `Show ${(o.dental_order_items || []).length} items`}
@@ -291,13 +335,22 @@ export default function DentalOrdersPanel() {
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              {o.status === "placed" && (
+              {["placed", "confirmed"].includes(o.status) && (
                 <button onClick={() => act(o.id, "review")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>Mark Reviewed</button>
               )}
-              {["placed", "reviewed"].includes(o.status) && (
+              {/* An order whose items are not in stock cannot be sent out, so
+                  the button that sends someone to deliver it is not offered.
+                  It used to be, which is how an out-of-stock order could be
+                  pushed through the flow it had no business entering. */}
+              {["placed", "confirmed", "reviewed"].includes(o.status) && o.fulfillment !== "backorder" && (
                 <button onClick={() => act(o.id, "assign")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>
                   Assign &amp; Send Code
                 </button>
+              )}
+              {["placed", "confirmed", "reviewed"].includes(o.status) && o.fulfillment === "backorder" && (
+                <span style={{ fontSize: 12, color: "#8a6d00", alignSelf: "center" }}>
+                  Waiting for stock before it can go out.
+                </span>
               )}
               {o.status === "in_transit" && (
                 <>
