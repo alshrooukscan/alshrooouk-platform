@@ -198,7 +198,8 @@ export default function DentalStockShopPage() {
 
   return (
     <div style={{ minHeight: "100vh", fontFamily: "system-ui", background: "#f7f7f8" }}>
-      <div style={{ position: "sticky", top: 0, background: theme.navy, padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 10, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 10, boxShadow: "0 2px 10px rgba(39,33,77,0.08)" }}>
+      <div style={{ background: theme.navy, padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* The only way off this page used to be the browser's back button.
               A doctor who arrived here by tapping "Request Dental Stock Items"
@@ -236,11 +237,11 @@ export default function DentalStockShopPage() {
         </div>
       </div>
 
-      {/* Second row, under the brand bar. Out-of-stock items are still orderable
-          as backorders, so they are one tap away rather than hidden - but what
-          a doctor can have today is what they land on. Requesting an unlisted
-          item sits beside the filters because that is what you reach for when
-          neither list has what you came for. */}
+      {/* Second row, inside the same sticky wrapper so both stay put while a
+          doctor scrolls 246 items - the filters are useless if you have to
+          scroll back to the top to reach them. Requesting an unlisted item sits
+          directly beside the filters: it is the third thing you might do here,
+          not a far-right afterthought. */}
       <div
         style={{
           background: "#fff", borderBottom: "1px solid #eceaf1", padding: "12px 24px",
@@ -268,13 +269,14 @@ export default function DentalStockShopPage() {
         <button
           onClick={() => setRequestOpen(true)}
           style={{
-            marginLeft: "auto", padding: "9px 18px", borderRadius: 999,
+            padding: "9px 18px", borderRadius: 999,
             border: `1px solid ${theme.gold}`, background: "#fff", color: theme.navy,
             fontWeight: 600, fontSize: 13, cursor: "pointer",
           }}
         >
           Request an item we don&apos;t list
         </button>
+      </div>
       </div>
 
       {requestOpen && (
