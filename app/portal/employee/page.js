@@ -23,6 +23,11 @@ const MOVEMENT_LABEL = {
 
 export default function EmployeePortalPage() {
   const [data, setData] = useState(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [geoError, setGeoError] = useState("");
@@ -85,8 +90,19 @@ export default function EmployeePortalPage() {
 
   if (loading) return <Loading />;
 
+  // Ticks once a minute while a shift is open. The only moving thing on the
+  // page, and it moves because the shift really is getting longer.
   const lastEvent = data.events[0];
+  const elapsed = (() => {
+    if (lastEvent?.event_type !== "login") return "--:--";
+    const mins = Math.max(0, Math.floor((nowTick - new Date(lastEvent.event_time).getTime()) / 60000));
+    return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  })();
   const nextAction = lastEvent?.event_type === "login" ? "logout" : "login";
+  const onShift = lastEvent?.event_type === "login";
+  const shiftStartLabel = lastEvent
+    ? new Date(lastEvent.event_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "";
   const annualBase = formatMoney(Number(data.employee?.fixed_salary || 0) * 12);
 
   return (
@@ -103,10 +119,28 @@ export default function EmployeePortalPage() {
       </div>
 
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px" }}>
-        <h2 style={{ color: theme.navy, marginBottom: 2 }}>{data.employee?.name}</h2>
-        <p style={{ color: theme.gray, marginBottom: 20 }}>{data.employee?.role} &middot; {data.employee?.hr_id}</p>
+        <h2 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 26, letterSpacing: "-0.02em" }}>{data.employee?.name}</h2>
+        <p style={{ color: theme.gray, margin: "0 0 18px", fontSize: 13 }}>
+          {data.employee?.role}
+          <span style={{ color: "#c9c7d0" }}> · </span>
+          {data.employee?.hr_id}
+        </p>
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+        {/* Eight tabs stretched to equal width made "Fix Attendance" wrap and
+            pushed the whole row taller than its neighbours. They size to their
+            own words now and scroll sideways, which is how a phone handles a
+            row that does not fit - rather than shrinking every label until none
+            of them read well. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            marginBottom: 20,
+            overflowX: "auto",
+            paddingBottom: 4,
+            scrollbarWidth: "none",
+          }}
+        >
           {[
             { key: "overview", label: "Overview" },
             { key: "schedule", label: "Schedule" },
@@ -121,14 +155,15 @@ export default function EmployeePortalPage() {
               key={t.key}
               onClick={() => setTab(t.key)}
               style={{
-                flex: 1,
-                padding: "8px 0",
-                borderRadius: 8,
-                border: `1px solid ${tab === t.key ? theme.gold : "#ddd"}`,
-                background: tab === t.key ? theme.goldLight : "#fff",
-                color: theme.navy,
-                fontWeight: 700,
-                fontSize: 12,
+                flexShrink: 0,
+                padding: "9px 14px",
+                borderRadius: 999,
+                border: `1px solid ${tab === t.key ? theme.navy : "#e2e0e8"}`,
+                background: tab === t.key ? theme.navy : "#fff",
+                color: tab === t.key ? "#fff" : theme.navy,
+                fontWeight: 600,
+                fontSize: 13,
+                whiteSpace: "nowrap",
                 cursor: "pointer",
               }}
             >
@@ -139,57 +174,134 @@ export default function EmployeePortalPage() {
 
         {tab === "overview" && (
           <>
-            <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 20, textAlign: "center", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-              <p style={{ fontSize: 13, color: theme.gray, marginBottom: 12 }}>
-                {lastEvent ? `Last: ${lastEvent.event_type} at ${new Date(lastEvent.event_time).toLocaleTimeString()}` : "No activity yet today"}
-              </p>
+            {/* The page's one loud element. Whether someone is on shift is the
+                reason they opened this at all, so the band answers it by its own
+                colour before a word is read, and counts the time up. It replaced
+                a grey line reading "Last: login at 11:11:40 AM", which made the
+                reader do the work of turning a timestamp into an answer.
+                "Sign Out" also sat inches under the header's "Log Out" meaning
+                something entirely different - one ends your shift, the other
+                closes your account. They are named for what they do now. */}
+            <div
+              style={{
+                background: onShift ? theme.navy : "#fff",
+                border: onShift ? "none" : "1px solid #e2e0e8",
+                borderRadius: 18,
+                padding: "22px 20px",
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: onShift ? "#6ee7a0" : "#c9c7d0",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ color: onShift ? "rgba(255,255,255,0.75)" : theme.gray, fontSize: 13 }}>
+                  {onShift ? "On shift" : "Not on shift"}
+                </span>
+              </div>
+
+              <div style={{ color: onShift ? "#fff" : theme.navy, fontSize: 34, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+                {onShift ? elapsed : "--:--"}
+              </div>
+              <div style={{ color: onShift ? "rgba(255,255,255,0.6)" : theme.gray, fontSize: 12, marginTop: 4 }}>
+                {onShift
+                  ? `Started at ${shiftStartLabel}`
+                  : lastEvent
+                  ? `Last shift ended at ${shiftStartLabel}`
+                  : "You haven't started a shift today."}
+              </div>
+
               <button
                 onClick={() => handlePunch(nextAction)}
                 disabled={punching}
                 style={{
-                  padding: "14px 32px",
-                  borderRadius: 999,
+                  width: "100%",
+                  marginTop: 18,
+                  padding: "14px 0",
+                  borderRadius: 12,
                   border: "none",
-                  background: nextAction === "login" ? theme.navy : "#ba1a1a",
-                  color: "#fff",
+                  background: onShift ? `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})` : theme.navy,
+                  color: onShift ? theme.navy : "#fff",
                   fontWeight: 700,
                   fontSize: 15,
-                  cursor: "pointer",
-                  textTransform: "capitalize",
+                  cursor: punching ? "wait" : "pointer",
                 }}
               >
-                {punching ? "Getting location..." : nextAction === "login" ? "Sign In" : "Sign Out"}
+                {punching ? "Checking your location..." : onShift ? "End shift" : "Start shift"}
               </button>
-              {geoError && <p style={{ color: "#ba1a1a", fontSize: 12, marginTop: 10 }}>{geoError}</p>}
-              <p style={{ fontSize: 10, color: "#bbb", marginTop: 10 }}>Sign in/out only works from the clinic. Your location and IP address are recorded with each entry for attendance tracking.</p>
+
+              {geoError && (
+                <p style={{ color: onShift ? "#ffb4ab" : "#ba1a1a", fontSize: 12, marginTop: 10, marginBottom: 0 }}>{geoError}</p>
+              )}
+              <p style={{ fontSize: 11, color: onShift ? "rgba(255,255,255,0.5)" : "#8e8c96", marginTop: 12, marginBottom: 0, lineHeight: 1.5 }}>
+                Only works from the clinic. Your location and IP are recorded with each entry.
+              </p>
             </div>
 
             {data.employee?.staff_account_email && Object.values(data.employee?.permissions || {}).some(Boolean) && (
-              <div style={{ background: theme.navy, borderRadius: 16, padding: 20, marginBottom: 20, textAlign: "center" }}>
-                <p style={{ color: "#fff", fontSize: 13, marginBottom: 10 }}>You've been given access to additional workspace tools.</p>
-                <button
-                  onClick={handleOpenDashboard}
-                  style={{
-                    padding: "10px 24px",
-                    borderRadius: 999,
-                    border: "none",
-                    background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`,
-                    color: theme.navy,
-                    fontWeight: 700,
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
-                >
-                  Open Staff Dashboard
-                </button>
-              </div>
+              <button
+                onClick={handleOpenDashboard}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  background: "#fff",
+                  border: `1px solid ${theme.goldLight}`,
+                  borderRadius: 14,
+                  padding: "14px 16px",
+                  marginBottom: 20,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span>
+                  <span style={{ display: "block", color: theme.navy, fontWeight: 700, fontSize: 14 }}>Staff dashboard</span>
+                  <span style={{ display: "block", color: theme.gray, fontSize: 12, marginTop: 2 }}>
+                    Patients, stock and cash tools
+                  </span>
+                </span>
+                <span style={{ color: theme.gold, fontSize: 20, lineHeight: 1 }}>&rsaquo;</span>
+              </button>
             )}
 
-            <div style={cardStyle}>
-              <h3 style={{ color: theme.navy, marginTop: 0, fontSize: 15 }}>Salary Overview</h3>
-              <Row label="Fixed Salary (monthly)" value={`${formatMoney(data.employee?.fixed_salary, { decimals: 2 })} EGP`} />
-              <Row label="Variable Salary (monthly)" value={`${formatMoney(data.employee?.variable_salary, { decimals: 2 })} EGP`} />
-              <Row label="Annual Base (fixed x 12)" value={`${annualBase} EGP`} bold />
+            {/* Three equal rows made the monthly figure - the one anybody
+                actually checks - no more prominent than a derived annual total.
+                The monthly pay leads; the rest supports it. */}
+            <div style={{ background: "#fff", border: "1px solid #eceaf1", borderRadius: 14, padding: 18, marginBottom: 20 }}>
+              <div style={{ color: theme.gray, fontSize: 13, marginBottom: 6 }}>Monthly salary</div>
+              <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
+                {formatMoney(
+                  Number(data.employee?.fixed_salary || 0) + Number(data.employee?.variable_salary || 0),
+                  { decimals: 2 }
+                )}{" "}
+                <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>EGP</span>
+              </div>
+              <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ color: theme.gray, fontSize: 11 }}>Fixed</div>
+                  <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
+                    {formatMoney(data.employee?.fixed_salary, { decimals: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: theme.gray, fontSize: 11 }}>Variable</div>
+                  <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
+                    {formatMoney(data.employee?.variable_salary, { decimals: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: theme.gray, fontSize: 11 }}>Annual base</div>
+                  <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>{annualBase}</div>
+                </div>
+              </div>
             </div>
 
             <h3 style={{ color: theme.navy, marginTop: 20, marginBottom: 10, fontSize: 15 }}>Recent Activity</h3>
