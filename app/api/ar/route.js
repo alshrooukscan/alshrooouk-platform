@@ -82,7 +82,17 @@ export async function GET(req) {
     })
     .sort((a, b) => b.balance - a.balance);
 
-  return NextResponse.json({ customers: rows });
+  // Same reasoning as the counter: the page has to know before the collection
+  // whether this login can be attributed automatically, so it can ask at the
+  // point of collection rather than refuse afterwards.
+  const selfEmployeeId = await employeeIdFor(staff);
+  const { data: staffRows } = await supabaseAdmin
+    .from("employees")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name");
+
+  return NextResponse.json({ customers: rows, staff: staffRows || [], selfEmployeeId: selfEmployeeId || null });
 }
 
 export async function POST(req) {

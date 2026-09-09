@@ -62,7 +62,18 @@ export async function GET(req) {
     });
   }
 
-  return NextResponse.json({ items: items || [], staff: staffRows, doctors: doctors || [] });
+  // Whether this login is itself linked to an employee record. The page needs
+  // to know before the sale, not after: cash has to be attributed to somebody,
+  // and if it cannot be resolved automatically the person has to be asked at
+  // the point of sale rather than told afterwards that their sale failed.
+  const selfEmployeeId = await employeeIdFor(staff);
+
+  return NextResponse.json({
+    items: items || [],
+    staff: staffRows,
+    doctors: doctors || [],
+    selfEmployeeId: selfEmployeeId || null,
+  });
 }
 
 export async function POST(req) {

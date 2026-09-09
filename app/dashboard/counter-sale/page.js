@@ -32,6 +32,12 @@ export default function CounterSalePage() {
   const [employeeId, setEmployeeId] = useState("");
   const [tabPin, setTabPin] = useState("");
   const [customerId, setCustomerId] = useState("");
+  // Who physically takes the cash. Resolved from the login where possible, so
+  // the usual case needs no input at all. An admin whose login is not tied to
+  // an employee record has to say - previously the sale was simply refused,
+  // with a message telling them to pick someone and nowhere to pick.
+  const [selfEmployeeId, setSelfEmployeeId] = useState(null);
+  const [collectedBy, setCollectedBy] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +62,8 @@ export default function CounterSalePage() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Could not load the counter.");
       setItems(j.items || []); setStaffList(j.staff || []); setDoctors(j.doctors || []);
+      setSelfEmployeeId(j.selfEmployeeId || null);
+      setCollectedBy((prev) => prev || j.selfEmployeeId || "");
       setCart({});
     } catch (e) { setError(e.message); }
     setLoading(false);
@@ -90,6 +98,7 @@ export default function CounterSalePage() {
       if (tabPin.length !== 4) return setError("Enter the employee's 4-digit PIN.");
     }
     if (method === "postponed" && !customerId) return setError("Choose the customer this is billed to.");
+    if (method === "cash" && !collectedBy) return setError("Choose who is taking the cash.");
 
     setSaving(true);
     try {
@@ -99,6 +108,7 @@ export default function CounterSalePage() {
           brand,
           items: lines.map((l) => ({ stock_item_id: l.id, quantity: l.qty })),
           paymentMethod: method,
+          collectedByEmployeeId: method === "cash" ? collectedBy : null,
           customerType: method === "postponed" ? "doctor" : null,
           customerId: method === "postponed" ? customerId : null,
           employeeId: method === "staff_tab" ? employeeId : null,
@@ -186,6 +196,37 @@ export default function CounterSalePage() {
           <select value={method} onChange={(e) => setMethod(e.target.value)} style={inp}>
             {METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
           </select>
+
+          {method === "cash" && (
+            <>
+              <FieldLabel>Who is taking the cash</FieldLabel>
+              {selfEmployeeId ? (
+                // Resolved from the login, so the everyday case is one less
+                // thing to fill in. Still changeable: the person ringing up a
+                // sale is not always the one holding the drawer.
+                <select value={collectedBy} onChange={(e) => setCollectedBy(e.target.value)} style={inp}>
+                  {staffList.map((s2) => (
+                    <option key={s2.id} value={s2.id}>
+                      {s2.name}{s2.id === selfEmployeeId ? " (you)" : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <select value={collectedBy} onChange={(e) => setCollectedBy(e.target.value)} style={inp}>
+                    <option value="">Select employee...</option>
+                    {staffList.map((s2) => (
+                      <option key={s2.id} value={s2.id}>{s2.name}</option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
+                    Your login isn&apos;t linked to an employee record, so the cash can&apos;t be attributed to you
+                    automatically. Choose whoever is actually taking the money.
+                  </p>
+                </>
+              )}
+            </>
+          )}
 
           {method === "postponed" && (
             <>

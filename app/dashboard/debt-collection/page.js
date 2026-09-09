@@ -30,6 +30,8 @@ export default function DebtCollectionPage() {
   const [target, setTarget] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [brandFilter, setBrandFilter] = useState("all");
+  const [staffList, setStaffList] = useState([]);
+  const [selfEmployeeId, setSelfEmployeeId] = useState(null);
 
   const hasAccess = permsLoading || isAdmin || can("stock") || can("reception");
 
@@ -55,6 +57,8 @@ export default function DebtCollectionPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load outstanding balances.");
       setCustomers(json.customers || []);
+      setStaffList(json.staff || []);
+      setSelfEmployeeId(json.selfEmployeeId || null);
     } catch (e) {
       setError(e.message);
     }
@@ -139,6 +143,8 @@ export default function DebtCollectionPage() {
 
       {target && (
         <PaymentModal
+          staffList={staffList}
+          selfEmployeeId={selfEmployeeId}
           customer={target}
           authedFetch={authedFetch}
           onClose={() => setTarget(null)}
@@ -150,11 +156,15 @@ export default function DebtCollectionPage() {
   );
 }
 
-function PaymentModal({ customer, authedFetch, onClose, onSaved }) {
+function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClose, onSaved }) {
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [acknowledged, setAcknowledged] = useState(false);
   const [note, setNote] = useState("");
+  // Cash has to be attributed to whoever is physically holding it. Taken from
+  // the login when it maps to an employee; asked for when it does not, instead
+  // of failing the collection after the fact.
+  const [collectedBy, setCollectedBy] = useState(selfEmployeeId || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -166,6 +176,7 @@ function PaymentModal({ customer, authedFetch, onClose, onSaved }) {
     if (!amt || amt <= 0) return setError("Enter the amount collected.");
     if (amt > customer.balance) return setError(`That is more than the ${formatMoney(customer.balance)} EGP outstanding.`);
     if (paymentMethod === "cash" && !acknowledged) return setError("Please confirm the cash has been received.");
+    if (paymentMethod === "cash" && !collectedBy) return setError("Choose who is taking the cash.");
 
     setSaving(true);
     try {
@@ -179,6 +190,7 @@ function PaymentModal({ customer, authedFetch, onClose, onSaved }) {
           amount: amt,
           paymentMethod,
           cashAcknowledged: acknowledged,
+          collectedByEmployeeId: paymentMethod === "cash" ? collectedBy : null,
           note: note || null,
         }),
       });
@@ -214,10 +226,36 @@ function PaymentModal({ customer, authedFetch, onClose, onSaved }) {
       </select>
 
       {paymentMethod === "cash" && (
+        <div style={{ marginTop: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 6 }}>
+            Who is taking the cash
+          </label>
+          <select
+            value={collectedBy}
+            onChange={(e) => setCollectedBy(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
+          >
+            {!selfEmployeeId && <option value="">Select employee...</option>}
+            {staffList.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}{e.id === selfEmployeeId ? " (you)" : ""}
+              </option>
+            ))}
+          </select>
+          {!selfEmployeeId && (
+            <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
+              Your login isn&apos;t linked to an employee record, so this can&apos;t be attributed to you
+              automatically. Choose whoever is actually taking the money.
+            </p>
+          )}
+        </div>
+      )}
+
+      {paymentMethod === "cash" && (
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 12, fontSize: 13, color: theme.navy }}>
           <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} style={{ marginTop: 3 }} />
           <span>
-            I confirm I have received this cash. It will be added to my cash in hand until I hand it over.
+            I confirm this cash has been received. It will be added to that person&apos;s cash in hand until they hand it over.
           </span>
         </label>
       )}
