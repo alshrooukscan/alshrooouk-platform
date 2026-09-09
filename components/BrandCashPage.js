@@ -62,7 +62,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
         .from("expense_transactions")
         .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
         .eq("brand", brand)
-        .in("type", ["cash_transfer", "cash_collection", "cash_out"])
+        .in("type", ["cash_transfer", "cash_collection", "cash_out", "cash_conversion"])
         .order("created_at", { ascending: false })
         .limit(20),
     ]);
@@ -90,6 +90,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <button onClick={() => setModal("cash_out")} style={primaryBtn}>+ Log Cash Out</button>
         <button onClick={() => setModal("transfer")} style={secondaryBtn}>+ Log Cash Transfer</button>
+        <button onClick={() => setModal("conversion")} style={secondaryBtn}>+ Convert Cash to Digital</button>
         <button onClick={() => setModal("collection")} style={secondaryBtn}>+ Log Cash Collection</button>
       </div>
 
@@ -117,7 +118,13 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
               </span>
               <div style={{ flex: 1, fontSize: 13 }}>
                 <strong style={{ color: theme.navy }}>
-                  {tx.type === "cash_transfer" ? "Transfer" : tx.type === "cash_collection" ? "Collection" : "Cash Out"}
+                  {tx.type === "cash_transfer"
+                    ? "Transfer"
+                    : tx.type === "cash_collection"
+                    ? "Collection"
+                    : tx.type === "cash_conversion"
+                    ? `Converted to ${tx.payment_method}`
+                    : "Cash Out"}
                 </strong>{" "}
                 {formatMoney(tx.amount)} EGP
                 {tx.category && ` \u00b7 ${tx.category}`}
@@ -136,6 +143,9 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       )}
       {modal === "transfer" && (
         <TransferModal brand={brand} employees={employees} profile={profile} isAdmin={isAdmin} onClose={() => setModal(null)} onSaved={load} />
+      )}
+      {modal === "conversion" && (
+        <ConversionModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
       )}
       {modal === "collection" && (
         <CollectionModal brand={brand} employees={employees} profile={profile} onClose={() => setModal(null)} onSaved={load} />
@@ -431,6 +441,94 @@ function CollectionModal({ brand, employees, profile, onClose, onSaved }) {
         <button onClick={onClose} style={cancelBtn}>Cancel</button>
         <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Log Collection"}</button>
       </div>
+    </Modal>
+  );
+}
+
+// Someone takes the notes a colleague is holding and settles the same amount to
+// the company by card, InstaPay or wallet. Two people doing two different
+// things - so both are named, and only one balance moves. Recording it as a
+// cash-out from the person who PAID sent them negative for money they never
+// held, while the person who handed over the notes still showed them.
+function ConversionModal({ brand, employees, profile, onClose, onSaved }) {
+  const [fromId, setFromId] = useState("");
+  const [paidById, setPaidById] = useState("");
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("visa");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    setError("");
+    if (!fromId || !Number(amount)) {
+      setError("Say whose cash is being converted, and how much.");
+      return;
+    }
+    setSaving(true);
+    const { data: sess } = await supabase.auth.getSession();
+    const { error: err } = await supabase.rpc("record_cash_conversion", {
+      p_brand: brand,
+      p_from_employee_id: fromId,
+      p_paid_by_employee_id: paidById || null,
+      p_amount: Number(amount),
+      p_to_method: method,
+      p_note: note || null,
+      p_created_by_id: sess.session?.user?.id || null,
+      p_created_by_name: profile?.name || null,
+    });
+    setSaving(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    logActivity({
+      actorId: profile?.id,
+      actorName: profile?.name,
+      actorType: "admin",
+      action: "recorded_cash_conversion",
+      entityType: "expense_transaction",
+      details: { brand, amount: Number(amount), method },
+    });
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Modal title="Convert Cash to Digital" onClose={onClose}>
+      <p style={{ fontSize: 12, color: theme.gray, marginTop: 0 }}>
+        For when someone takes the cash a colleague is holding and pays the same amount to the company by card,
+        InstaPay or wallet. Only the cash holder&apos;s balance goes down &mdash; whoever paid keeps the notes, so
+        their cash is unchanged.
+      </p>
+      <FieldLabel>Whose cash is being converted</FieldLabel>
+      <select value={fromId} onChange={(e) => setFromId(e.target.value)} style={inp}>
+        <option value="">Select employee...</option>
+        {employees.map((e) => (
+          <option key={e.id} value={e.id}>{e.name}</option>
+        ))}
+      </select>
+      <FieldLabel>Who paid it digitally (optional)</FieldLabel>
+      <select value={paidById} onChange={(e) => setPaidById(e.target.value)} style={inp}>
+        <option value="">Not recorded</option>
+        {employees.filter((e) => e.id !== fromId).map((e) => (
+          <option key={e.id} value={e.id}>{e.name}</option>
+        ))}
+      </select>
+      <FieldLabel>Amount (EGP)</FieldLabel>
+      <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} placeholder="0.00" />
+      <FieldLabel>Converted to</FieldLabel>
+      <select value={method} onChange={(e) => setMethod(e.target.value)} style={inp}>
+        <option value="visa">Visa</option>
+        <option value="instapay">InstaPay</option>
+        <option value="wallet">Wallet</option>
+      </select>
+      <FieldLabel>Note (optional)</FieldLabel>
+      <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
+      {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
+      <button onClick={handleSave} disabled={saving} style={primaryBtn}>
+        {saving ? "Saving..." : "Record Conversion"}
+      </button>
     </Modal>
   );
 }
