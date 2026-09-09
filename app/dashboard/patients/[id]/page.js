@@ -1946,6 +1946,18 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       setSaving(false);
       return;
     }
+    // The database refuses this too, so nothing can slip through another
+    // route - but caught here it reads as a sentence rather than a raised
+    // exception, and it names the payments that are already recorded, which
+    // is the thing the person needed to see before typing.
+    if (newPaymentAmount > 0 && finalAmountDue > 0 && alreadyPaid + newPaymentAmount > finalAmountDue + 0.005) {
+      setError(
+        `This visit is charged ${finalAmountDue.toFixed(2)} EGP and ${alreadyPaid.toFixed(2)} EGP has already been received. ` +
+          `Only ${Math.max(finalAmountDue - alreadyPaid, 0).toFixed(2)} EGP is still outstanding - check the payments listed above before adding another.`
+      );
+      setSaving(false);
+      return;
+    }
 
     if (isAdmin) {
       // Admin edits apply immediately - requiring admin to approve their own
