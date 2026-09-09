@@ -39,12 +39,19 @@ export default function ReportsPage() {
             .from("reports")
             .select("*, clients(name, is_pseudo, contact_phone), patients(id, name)")
             .eq("status", filter)
+            // Sorted on the date the page actually shows - "Needed by" - not on
+            // when the row happened to be written. They are usually the same
+            // day, but not always: the reports backfilled in 0066 were written
+            // in one run, so by created_at a scan from 29 August outranked one
+            // from last week. Newest scan first, oldest last.
+            .order("date_required", { ascending: false })
             .order("created_at", { ascending: false })
         : supabase
             .from("reports")
             .select("*, clients(name, is_pseudo, contact_phone), patients(id, name)")
             .eq("status", filter)
             .eq("source_type", sourceFilter)
+            .order("date_required", { ascending: false })
             .order("created_at", { ascending: false })),
       supabase.from("staff_profiles").select("id, name").order("name"),
     ]);
