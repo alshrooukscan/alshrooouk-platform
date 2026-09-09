@@ -3,7 +3,7 @@ import { requireStaff } from "../../../../lib/requireStaff";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req) {
   // Every route in this group ran with the service-role key and no
   // identity check at all, so anyone who knew the path could call it.
   // Reports the state of the Drive backup, including counts and paths. No caller left.
