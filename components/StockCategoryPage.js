@@ -16,6 +16,9 @@ export default function StockCategoryPage({ category, title }) {
   const [showAddItem, setShowAddItem] = useState(false);
   const [showCount, setShowCount] = useState(null); // item being counted
   const [editingImageId, setEditingImageId] = useState(null);
+  const [stockFilter, setStockFilter] = useState("in"); // in | out | all
+  const [openBatches, setOpenBatches] = useState(null); // item id whose deliveries are shown
+  const [returnFor, setReturnFor] = useState(null); // batch being returned to its supplier
   const { profile } = usePermissions();
 
   useEffect(() => {
@@ -89,9 +92,19 @@ export default function StockCategoryPage({ category, title }) {
     return true;
   }
 
-  const filtered = items.filter(
-    (i) => i.name?.toLowerCase().includes(query.toLowerCase()) || i.item_code?.toLowerCase().includes(query.toLowerCase())
-  );
+  // Sold-out items are hidden by default: 249 items of which a third are
+  // finished makes the list of what you can actually sell hard to read. They
+  // are not gone - "Sold out" brings back exactly those, with what was bought
+  // and sold before they ran out.
+  const filtered = items.filter((i) => {
+    const q = query.toLowerCase();
+    const hit = i.name?.toLowerCase().includes(q) || i.item_code?.toLowerCase().includes(q);
+    if (!hit) return false;
+    const qty = Number(i.qty_remaining || 0);
+    if (stockFilter === "in") return qty > 0;
+    if (stockFilter === "out") return qty <= 0;
+    return true;
+  });
 
   const totalValue = items.reduce((sum, i) => sum + (i.qty_remaining || 0) * (i.purchase_price || 0), 0);
   const lowStockCount = items.filter((i) => (i.qty_remaining || 0) <= 5).length;
@@ -136,6 +149,15 @@ export default function StockCategoryPage({ category, title }) {
         >
           Export CSV
         </button>
+        <select
+          value={stockFilter}
+          onChange={(e) => setStockFilter(e.target.value)}
+          style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, color: theme.navy }}
+        >
+          <option value="in">In stock</option>
+          <option value="out">Sold out</option>
+          <option value="all">All items</option>
+        </select>
         <button onClick={() => setShowAddItem(true)} style={outlineBtn}>+ Add Item</button>
         <Link href="/dashboard/stock/purchase-orders" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Purchase Orders</Link>
       </div>
@@ -230,6 +252,15 @@ export default function StockCategoryPage({ category, title }) {
                           quantities are editable in place. A second, silent way
                           to move stock only made the numbers harder to trust. */}
                       <button onClick={() => setShowCount(item)} style={smallBtn}>Count</button>
+                      {/* Cost differs per delivery - the same gloves bought at
+                          145 in May and 155 in July are two different margins -
+                          so the deliveries behind an item are worth opening. */}
+                      <button
+                        onClick={() => setOpenBatches(openBatches === item.id ? null : item.id)}
+                        style={smallBtn}
+                      >
+                        {openBatches === item.id ? "Hide" : "Deliveries"}
+                      </button>
                     </div>
                   </Td>
                 </tr>
@@ -237,6 +268,14 @@ export default function StockCategoryPage({ category, title }) {
             })}
           </tbody>
         </table>
+        {openBatches && (
+          <BatchPanel
+            item={items.find((i) => i.id === openBatches)}
+            onClose={() => setOpenBatches(null)}
+            onReturn={(b) => setReturnFor(b)}
+            reloadKey={returnFor === null ? 1 : 0}
+          />
+        )}
         {!loading && filtered.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No items yet in {title}.</div>
         )}
@@ -261,6 +300,13 @@ export default function StockCategoryPage({ category, title }) {
         + Add Item
       </button>
 
+      {returnFor && (
+        <ReturnModal
+          batch={returnFor}
+          onClose={() => setReturnFor(null)}
+          onSaved={() => { setReturnFor(null); load(); }}
+        />
+      )}
       {showAddItem && <AddItemModal category={category} title={title} onClose={() => setShowAddItem(false)} onSaved={load} />}
       {showCount && <CountModal item={showCount} onClose={() => setShowCount(null)} onSaved={load} />}
       {editingImageId && (
@@ -467,5 +513,168 @@ function FieldLabel({ children }) {
 
 const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box", marginBottom: 16 };
 const primaryBtn = { width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" };
+const cancelBtn = { flex: 1, padding: "12px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" };
 const outlineBtn = { padding: "0 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const smallBtn = { padding: "5px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, cursor: "pointer" };
+
+// The deliveries behind one item. Cost differs per delivery, so a single
+// blended purchase price on the row above hides where the margin actually
+// comes from - and which delivery a return should go back to.
+function BatchPanel({ item, onClose, onReturn }) {
+  const [batches, setBatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from("stock_batches")
+        .select("id, po_number, supplier_name, purchase_price, sale_price, qty_in, qty_remaining, received_date, note")
+        .eq("stock_item_id", item.id)
+        .order("received_date", { ascending: true, nullsFirst: true })
+        .order("created_at", { ascending: true });
+      if (live) { setBatches(data || []); setLoading(false); }
+    })();
+    return () => { live = false; };
+  }, [item.id]);
+
+  const sold = batches.reduce((s, b) => s + (Number(b.qty_in) - Number(b.qty_remaining)), 0);
+  const left = batches.reduce((s, b) => s + Number(b.qty_remaining), 0);
+
+  return (
+    <div style={{ borderTop: "1px solid #eceaf1", background: "#fafafd", padding: "14px 16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontWeight: 700, color: theme.navy }}>{item.name} &mdash; deliveries</div>
+          <div style={{ fontSize: 12, color: theme.gray }}>
+            {batches.length} deliveries &middot; {sold} sold &middot; {left} still on hand.
+            Sales come out of the oldest delivery first.
+          </div>
+        </div>
+        <button onClick={onClose} style={smallBtn}>Close</button>
+      </div>
+
+      {loading && <p style={{ fontSize: 13, color: theme.gray }}>Loading...</p>}
+      {!loading && batches.length === 0 && (
+        <p style={{ fontSize: 13, color: theme.gray }}>No deliveries recorded for this item yet.</p>
+      )}
+      {!loading && batches.length > 0 && (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ color: theme.gray, fontSize: 11, textAlign: "left" }}>
+              <th style={bth}>PO</th><th style={bth}>Supplier</th><th style={bth}>Received</th>
+              <th style={bth}>Bought</th><th style={bth}>Sold</th><th style={bth}>Left</th>
+              <th style={bth}>Buy</th><th style={bth}>Sell</th><th style={bth}>Profit made</th><th style={bth}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {batches.map((b) => {
+              const used = Number(b.qty_in) - Number(b.qty_remaining);
+              const margin = (Number(b.sale_price || 0) - Number(b.purchase_price || 0)) * used;
+              return (
+                <tr key={b.id} style={{ borderTop: "1px solid #eceaf1" }}>
+                  <td style={btd}>{b.po_number || "\u2014"}</td>
+                  <td style={btd}>{b.supplier_name || "\u2014"}</td>
+                  <td style={btd}>{b.received_date || "\u2014"}</td>
+                  <td style={btd}>{Number(b.qty_in)}</td>
+                  <td style={btd}>{used}</td>
+                  <td style={{ ...btd, fontWeight: 700, color: Number(b.qty_remaining) > 0 ? theme.navy : "#aaa" }}>
+                    {Number(b.qty_remaining)}
+                  </td>
+                  <td style={btd}>{b.purchase_price ? formatMoney(b.purchase_price) : "\u2014"}</td>
+                  <td style={btd}>{b.sale_price ? formatMoney(b.sale_price) : "\u2014"}</td>
+                  <td style={{ ...btd, color: margin >= 0 ? "#1e7a3c" : "#ba1a1a" }}>
+                    {used > 0 ? formatMoney(margin) : "\u2014"}
+                  </td>
+                  <td style={btd}>
+                    {Number(b.qty_remaining) > 0 && (
+                      <button onClick={() => onReturn({ ...b, item })} style={smallBtn}>Return</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// Returning goods is not negative stock. The units go back to the supplier they
+// came from, at the price that delivery was bought at, and their value is held
+// as credit against that supplier's next invoice.
+function ReturnModal({ batch, onClose, onSaved }) {
+  const [qty, setQty] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const max = Number(batch.qty_remaining);
+  const supplier = batch.supplier_name || "Main Dental Supplier";
+  const value = (Number(qty) || 0) * Number(batch.purchase_price || 0);
+
+  async function handleSave() {
+    setError("");
+    const q = Number(qty);
+    if (!q || q <= 0) return setError("Enter how many units are going back.");
+    if (q > max) return setError(`Only ${max} left in this delivery. You cannot return more than that.`);
+    setSaving(true);
+    try {
+      const { data: ret, error: rErr } = await supabase
+        .from("supplier_returns")
+        .insert({
+          supplier_name: supplier, stock_item_id: batch.item.id, batch_id: batch.id,
+          qty: q, unit_cost: batch.purchase_price || 0,
+          total_value: q * Number(batch.purchase_price || 0), reason: reason || null,
+        })
+        .select("id").single();
+      if (rErr) throw new Error(rErr.message);
+
+      const { error: cErr } = await supabase.from("supplier_credits").insert({
+        supplier_name: supplier, direction: "credit",
+        amount: q * Number(batch.purchase_price || 0), return_id: ret.id,
+        note: `Returned ${q} x ${batch.item.name}`,
+      });
+      if (cErr) throw new Error(cErr.message);
+
+      // Both the delivery and the item's own count come down, so the return
+      // shows up wherever stock is read from.
+      await supabase.from("stock_batches").update({ qty_remaining: max - q }).eq("id", batch.id);
+      await supabase
+        .from("stock_items")
+        .update({ qty_remaining: Math.max(Number(batch.item.qty_remaining || 0) - q, 0) })
+        .eq("id", batch.item.id);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Modal title="Return to supplier" onClose={onClose}>
+      <p style={{ fontSize: 13, color: theme.gray, marginTop: 0 }}>
+        {batch.item.name} &middot; {batch.po_number || "no PO"} &middot; {max} left in this delivery.
+      </p>
+      <FieldLabel>How many go back</FieldLabel>
+      <input type="number" min="1" max={max} value={qty} onChange={(e) => setQty(e.target.value)} style={inp} />
+      <FieldLabel>Reason (optional)</FieldLabel>
+      <input value={reason} onChange={(e) => setReason(e.target.value)} style={inp} />
+      <p style={{ fontSize: 12, color: theme.navy, background: "#f6efdd", padding: "10px 12px", borderRadius: 8, marginTop: 12 }}>
+        {supplier} will be credited <strong>{formatMoney(value)} EGP</strong> &mdash; {qty || 0} at{" "}
+        {formatMoney(batch.purchase_price)} each, the price this delivery was bought at. Use it against their next invoice.
+      </p>
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={onClose} style={cancelBtn}>Cancel</button>
+        <button onClick={handleSave} disabled={saving} style={{ ...primaryBtn, flex: 1, width: "auto" }}>
+          {saving ? "Saving..." : "Record Return"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+const bth = { padding: "6px 8px", fontWeight: 600 };
+const btd = { padding: "7px 8px", color: theme.navy };
