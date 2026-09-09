@@ -20,6 +20,8 @@ const ROUTE_PERMISSION = {
   "/dashboard/stock": "stock",
   "/dashboard/hr": "hr",
   "/dashboard/cash-expenses": "cash_expenses",
+  "/dashboard/cash-monitor": "cash_monitor",
+  "/dashboard/internal-purchases": "internal_purchases",
   "/dashboard/expenses/scan": "expenses_scan",
   "/dashboard/expenses/dental-stock": "expenses_dental_stock",
   "/dashboard/expenses/el3awama-stock": "expenses_el3awama_stock",
@@ -39,7 +41,11 @@ const OPEN_ROUTES = ["/dashboard/action-center", "/dashboard/bug-reports"];
 
 // Admin only, and not grantable by a permission key. These are not in the table
 // above, so without this they would fall through to "no permission required".
-const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer", "/dashboard/cash-monitor", "/dashboard/internal-purchases"];
+// Cash Monitor and Internal Purchases were made grantable - the sidebar offers
+// them and the pages honour the key - but they were still listed here, so a
+// person granted the permission saw the link, clicked it, and was refused by
+// the layout. They are gated by their own keys now, like every other page.
+const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer"];
 
 function permissionForPath(pathname) {
   if (OPEN_ROUTES.some((p) => pathname.startsWith(p))) return null;

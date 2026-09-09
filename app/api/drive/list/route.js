@@ -1,8 +1,15 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { listFilesGrouped } from "../../../../lib/googleDrive";
 
 export async function GET(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Lists a patient's clinical files. Tested from outside while signed out, it returned file names and Drive links for any patient id.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const { searchParams } = new URL(req.url);
     const patientId = searchParams.get("patientId");

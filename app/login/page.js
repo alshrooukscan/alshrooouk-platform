@@ -22,10 +22,22 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const { error: staffError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: signIn, error: staffError } = await supabase.auth.signInWithPassword({ email, password });
     if (!staffError) {
       setLoading(false);
-      router.push("/dashboard");
+      // /dashboard needs the "dashboard" permission, which no member of staff
+      // holds - so every staff login landed on "Access restricted" and had to
+      // find its own way out through the sidebar. Admins still go there;
+      // everyone else starts at Action Center, which is open to all and is
+      // where their own work actually is.
+      const { data: profile } = await supabase
+        .from("staff_profiles")
+        .select("role, permissions")
+        .eq("id", signIn?.user?.id)
+        .maybeSingle();
+      const canSeeDashboard =
+        profile?.role === "admin" || profile?.permissions?.dashboard === true;
+      router.push(canSeeDashboard ? "/dashboard" : "/dashboard/action-center");
       return;
     }
 

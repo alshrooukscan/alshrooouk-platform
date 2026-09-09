@@ -47,7 +47,23 @@ export default function DoctorsPage() {
     setOwed(owedByCode);
 
     // Low engagement = real referral history exists, but fewer than 2 in the last 90 days
-    const { data: visits } = await supabase.from("visits").select("doctor_id, exam_date").not("doctor_id", "is", null);
+    // Paged. This read one page and stopped, so it saw 1,000 of 4,747 visits
+    // and the Low Engagement badge was decided from a fifth of the history -
+    // wrong for most of the 137 doctors who have referred anybody.
+    let visits = [];
+    let vfrom = 0;
+    const vPageSize = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from("visits")
+        .select("doctor_id, exam_date")
+        .not("doctor_id", "is", null)
+        .range(vfrom, vfrom + vPageSize - 1);
+      if (!data || data.length === 0) break;
+      visits = visits.concat(data);
+      if (data.length < vPageSize) break;
+      vfrom += vPageSize;
+    }
     const cutoff = new Date(Date.now() - 90 * 86400000);
     const recentCount = {};
     const everCount = {};

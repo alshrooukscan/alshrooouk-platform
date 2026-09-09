@@ -1,9 +1,16 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { ensurePatientFolder } from "../../../../lib/folderProvisioning";
 import { uploadFile } from "../../../../lib/googleDrive";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Superseded by the upload-session flow and has no caller left, but it still writes into the clinic's shared Drive.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const body = await req.json();
     const { patientId, filename, mimeType, base64, fileType, uploaderEmail, uploaderName } = body;

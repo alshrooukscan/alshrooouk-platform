@@ -1,8 +1,15 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { getFileMeta } from "../../../../lib/googleDrive";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Registers an uploaded radiology report.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const { fileId, reportId, fileName } = await req.json();
     if (!fileId || !reportId || !fileName) {

@@ -1,3 +1,5 @@
+import { NextResponse } from "next/server";
+import { requireStaff } from "../../../../lib/requireStaff";
 import { google } from "googleapis";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
@@ -27,6 +29,20 @@ async function getSetting(key, fallback) {
 }
 
 export async function GET(req) {
+  // Vercel runs this nightly at 03:00 (vercel.json). It was callable by
+  // anyone who knew the path, which meant a stranger could start the Drive
+  // backup job at will. Vercel signs its own cron calls with CRON_SECRET; a
+  // signed-in member of staff can also run it by hand, which is how it gets
+  // tested. If CRON_SECRET is not configured, only staff can run it - the job
+  // fails closed rather than staying open.
+  const secret = process.env.CRON_SECRET;
+  const auth = req.headers.get("authorization") || "";
+  const fromCron = !!secret && auth === `Bearer ${secret}`;
+  if (!fromCron) {
+    const staff = await requireStaff(req);
+    if (!staff) return NextResponse.json({ error: "Not authorised." }, { status: 401 });
+  }
+
   return handler(req);
 }
 export async function POST(req) {

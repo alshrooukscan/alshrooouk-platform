@@ -76,9 +76,13 @@ export default function ReportsPage() {
         onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
         authToken: session.session?.access_token,
       });
+      const { data: rs } = await supabase.auth.getSession();
       const res = await fetch("/api/reports/upload-complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${rs?.session?.access_token || ""}`,
+        },
         body: JSON.stringify({ fileId, reportId: report.id, fileName: file.name }),
       });
       const result = await res.json();

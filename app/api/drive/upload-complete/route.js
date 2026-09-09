@@ -1,3 +1,4 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { getFileMeta } from "../../../../lib/googleDrive";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
@@ -6,6 +7,12 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // the file the same way the old base64 upload route used to, so every
 // downstream behaviour (visit stage flags, audit stamps) is unchanged.
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Registers an uploaded file against a patient and a visit.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const { fileId, patientId, filename, fileType, visitId, uploaderEmail, uploaderName } = await req.json();
     if (!fileId || !patientId || !filename) {

@@ -1,3 +1,4 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
@@ -16,6 +17,12 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // staff-issued temporary password. There is nothing here that could be used
 // to log in as the patient.
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Returns whether a patient has a portal account and their username. Tested from outside while signed out, it answered with the patient's username - anyone holding a patient id could read it.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const { patientId } = await req.json();
     if (!patientId) {

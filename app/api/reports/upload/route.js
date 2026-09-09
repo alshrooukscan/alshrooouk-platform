@@ -1,3 +1,4 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { ensureReportFolder } from "../../../../lib/folderProvisioning";
 import { uploadFile } from "../../../../lib/googleDrive";
@@ -8,6 +9,12 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // recording it on the row - this is what flips a report from pending to
 // completed, whether it's an internal report or a real client's.
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Superseded by the report upload-session flow; no caller left.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const body = await req.json();
     const { reportId, fileName, mimeType, base64 } = body;

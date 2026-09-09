@@ -56,9 +56,13 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
         onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
         authToken: session.session?.access_token,
       });
+      const { data: ds } = await supabase.auth.getSession();
       const res = await fetch("/api/drive/document-complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ds?.session?.access_token || ""}`,
+        },
         body: JSON.stringify({
           fileId, entityType, entityId, fileName: fileName.trim(), mimeType: file.type,
           uploaderId: profile?.id, uploaderName: profile?.name,

@@ -188,7 +188,11 @@ export default function PatientProfilePage() {
   }
 
   async function loadFiles() {
-    const res = await fetch(`/api/drive/list?patientId=${id}`);
+    // These endpoints now require a signed-in member of staff.
+    const { data: sess } = await supabase.auth.getSession();
+    const res = await fetch(`/api/drive/list?patientId=${id}`, {
+      headers: { Authorization: `Bearer ${sess?.session?.access_token || ""}` },
+    });
     const data = await res.json();
     setFiles(data.files || []);
   }
@@ -256,9 +260,13 @@ export default function PatientProfilePage() {
           authToken: session.session?.access_token,
         });
 
+        const { data: us } = await supabase.auth.getSession();
         const res = await fetch("/api/drive/upload-complete", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${us?.session?.access_token || ""}`,
+          },
           body: JSON.stringify({
             fileId,
             patientId: id,
@@ -325,9 +333,13 @@ export default function PatientProfilePage() {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10000);
         try {
+          const { data: cs } = await supabase.auth.getSession();
           const r = await fetch("/api/patients/credential-status", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${cs?.session?.access_token || ""}`,
+            },
             body: JSON.stringify({ patientId: id }),
             signal: controller.signal,
           });

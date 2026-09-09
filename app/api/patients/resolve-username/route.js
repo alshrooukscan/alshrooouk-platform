@@ -1,3 +1,4 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
@@ -12,6 +13,12 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // function, trigger, or policy with a 403 - this is the workaround until
 // that clears.
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Resolves a free portal username, which reveals which usernames already exist.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const { baseUsername, excludeId } = await req.json();
     if (!baseUsername) {

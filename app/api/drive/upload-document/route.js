@@ -1,3 +1,4 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { ensureEmployeeDocumentsFolder } from "../../../../lib/folderProvisioning";
 import { uploadFile } from "../../../../lib/googleDrive";
@@ -7,6 +8,12 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 // documents - same shape (a named file, filed under the right Drive folder,
 // recorded in entity_documents), different folder resolution per entity type.
 export async function POST(req) {
+  // Every route in this group ran with the service-role key and no
+  // identity check at all, so anyone who knew the path could call it.
+  // Writes a document into the shared Drive. No caller left, but the write is real.
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
   try {
     const body = await req.json();
     const { entityType, entityId, fileName, mimeType, base64, uploaderId, uploaderName } = body;
