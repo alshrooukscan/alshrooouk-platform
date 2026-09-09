@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { usePermissions } from "../lib/usePermissions";
+import { useAutoRefresh } from "../lib/useAutoRefresh";
 import {
   LayoutDashboard,
   ScanLine,
@@ -45,12 +46,12 @@ const NAV = [
   // tasks here regardless of role; the page itself further gates the
   // approvals section to admin only, the same way other pages gate specific
   // sections rather than the whole route.
-  { type: "link", href: "/dashboard/action-center", label: "Action Center", icon: ListChecks, alwaysVisible: true },
+  { type: "link", href: "/dashboard/action-center", label: "Action Center", icon: ListChecks, alwaysVisible: true, badge: "action_center" },
   // Everyone can report a problem, including staff whose page access is
   // otherwise narrow - the whole point is to hear from the people who hit
   // the fault. The page itself shows only your own reports unless you are
   // the named owner of the list.
-  { type: "link", href: "/dashboard/bug-reports", label: "Report a Problem", icon: LifeBuoy, alwaysVisible: true },
+  { type: "link", href: "/dashboard/bug-reports", label: "Report a Problem", icon: LifeBuoy, alwaysVisible: true, badge: "bug_reports" },
   {
     type: "group",
     label: "Scan Center Management",
@@ -73,7 +74,7 @@ const NAV = [
       // with a switch inside. Counter Sale moved into Stock Orders, where the
       // stock being viewed is already chosen.
       { href: "/dashboard/stock", label: "Stock Details", icon: Package, key: "stock" },
-      { href: "/dashboard/stock/orders", label: "Stock Orders", icon: ShoppingBag, key: "stock" },
+      { href: "/dashboard/stock/orders", label: "Stock Orders", icon: ShoppingBag, key: "stock", badge: "stock_orders" },
     ],
   },
   {
@@ -123,6 +124,9 @@ export default function Sidebar() {
   const [isNarrowScreen, setIsNarrowScreen] = useState(false);
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [switchingPortal, setSwitchingPortal] = useState(false);
+  // One call for all three counters. The sidebar mounts on every dashboard
+  // page, so this must never become a query per badge.
+  const [counts, setCounts] = useState({});
 
   useEffect(() => {
     function check() {
@@ -164,6 +168,22 @@ export default function Sidebar() {
   }
 
   const collapsed = isNarrowScreen || manuallyCollapsed;
+
+  const groupCount = (group) =>
+    (group.items || []).reduce((sum, c) => sum + (c.badge ? Number(counts[c.badge] || 0) : 0), 0);
+
+  const loadCounts = useCallback(async () => {
+    const { data } = await supabase.rpc("notification_counts");
+    if (data) setCounts(data);
+  }, []);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
+  // The tables behind the counts, so a badge moves when somebody else creates
+  // the work. employees and staff_profiles are deliberately absent - Realtime
+  // sends whole rows past the column grants on those two.
+  useAutoRefresh(
+    ["bug_reports", "dental_orders", "expense_transactions", "excuse_submissions", "visit_edit_requests", "stock_item_requests", "tasks"],
+    loadCounts
+  );
 
   // An item is visible if: it's still loading (avoid a flash of nothing
   // while permissions load), OR it's adminOnly and this user is admin, OR
@@ -253,7 +273,7 @@ export default function Sidebar() {
         {visibleNav.map((item) => {
           if (item.type === "link") {
             const active = pathname === item.href;
-            return <NavLink key={item.href} item={item} active={active} collapsed={collapsed} />;
+            return <NavLink key={item.href} item={item} active={active} collapsed={collapsed} count={item.badge ? Number(counts[item.badge] || 0) : 0} />;
           }
           // Group: a non-clickable section label, followed by its indented children.
           return (
@@ -273,11 +293,24 @@ export default function Sidebar() {
                   }}
                 >
                   <item.icon size={13} strokeWidth={2.5} />
-                  {item.label}
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {/* Rolled up from the group's children, so work inside a
+                      group is visible without reading every entry under it. */}
+                  {groupCount(item) > 0 && (
+                    <span
+                      style={{
+                        minWidth: 18, padding: "1px 6px", borderRadius: 999,
+                        background: "#ba1a1a", color: "#fff", fontSize: 10,
+                        fontWeight: 700, letterSpacing: 0, lineHeight: "15px", textAlign: "center",
+                      }}
+                    >
+                      {groupCount(item) > 99 ? "99+" : groupCount(item)}
+                    </span>
+                  )}
                 </div>
               )}
               {item.items.map((child) => (
-                <NavLink key={child.href} item={child} active={isChildActive(child)} collapsed={collapsed} indent={!collapsed} />
+                <NavLink key={child.href} item={child} active={isChildActive(child)} collapsed={collapsed} indent={!collapsed} count={child.badge ? Number(counts[child.badge] || 0) : 0} />
               ))}
             </div>
           );
@@ -355,7 +388,8 @@ export default function Sidebar() {
   );
 }
 
-function NavLink({ item, active, collapsed, indent }) {
+function NavLink({ item, active, collapsed, indent, count = 0 }) {
+  const hasWork = count > 0;
   return (
     <Link
       href={item.href}
@@ -372,12 +406,42 @@ function NavLink({ item, active, collapsed, indent }) {
         textDecoration: "none",
         color: active ? theme.navy : "#e8e6f0",
         background: active ? `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})` : "transparent",
-        fontWeight: active ? 700 : 500,
+        // The name itself carries the weight when there is work waiting, so a
+        // glance down the sidebar reads even before the number does.
+        fontWeight: active || hasWork ? 700 : 500,
         fontSize: collapsed ? 18 : 13,
+        position: "relative",
       }}
     >
-      <item.icon size={collapsed ? 20 : 16} strokeWidth={2} />
-      {!collapsed && item.label}
+      <span style={{ position: "relative", display: "inline-flex" }}>
+        <item.icon size={collapsed ? 20 : 16} strokeWidth={2} />
+        {/* Collapsed, there is no label to sit beside, so the count rides the
+            icon as a dot rather than disappearing entirely. */}
+        {collapsed && hasWork && (
+          <span
+            style={{
+              position: "absolute", top: -5, right: -7, minWidth: 15, height: 15,
+              padding: "0 3px", borderRadius: 999, background: "#ba1a1a", color: "#fff",
+              fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center",
+              justifyContent: "center", lineHeight: 1,
+            }}
+          >
+            {count > 99 ? "99+" : count}
+          </span>
+        )}
+      </span>
+      {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+      {!collapsed && hasWork && (
+        <span
+          style={{
+            minWidth: 20, padding: "1px 6px", borderRadius: 999,
+            background: active ? theme.navy : "#ba1a1a", color: "#fff",
+            fontSize: 11, fontWeight: 700, textAlign: "center", lineHeight: "16px",
+          }}
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
     </Link>
   );
 }

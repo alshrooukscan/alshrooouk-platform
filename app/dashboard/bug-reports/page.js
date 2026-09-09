@@ -65,6 +65,17 @@ export default function BugReportsPage() {
       const j = await res.json();
       setReports(j.reports || []);
       setCanTriage(!!j.canTriage);
+
+      // Reading the reply is what clears the sidebar counter. This is the one
+      // notification that behaves like news rather than work: everything else
+      // counts what is still to be DONE and only falls when it is done, but a
+      // reply to your own report has been dealt with the moment it is read.
+      //
+      // Through a function, not a direct update: bug_reports has RLS on with
+      // no policies, so a staff client writing to it changes nothing and
+      // reports no error - the badge would simply have stuck forever. The
+      // function stamps only the caller's own reports.
+      await supabase.rpc("mark_bug_replies_seen");
     }
     setLoading(false);
   }
