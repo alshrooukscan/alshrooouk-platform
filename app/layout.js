@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Al Shrooouk Scan & Lab",
+  // Spelled the way the logo does - ALSHROOUK, two o's. The app had been
+  // carrying a third one that appears nowhere on the brand itself.
+  title: "Alshroouk Lab & Scan",
   description: "Staff Portal",
 };
 
