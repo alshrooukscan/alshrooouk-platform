@@ -123,8 +123,15 @@ export default function DentalStockShopPage() {
   const cartTotal = cartLines.reduce((s, l) => s + Number(l.sale_price) * l.qty, 0);
   // One pass over the catalogue: the two tab counts and the list being shown all
   // come from the same definition of "in stock".
-  const inStock = items.filter((i) => Number(i.qty_remaining || 0) > 0);
-  const outOfStock = items.filter((i) => Number(i.qty_remaining || 0) <= 0);
+  // qty_available, NOT qty_remaining. This route deliberately never sends
+  // qty_remaining - it sends what is on the shelf minus what is already
+  // promised to another order - so filtering on qty_remaining read undefined
+  // on every item and put the whole catalogue in Out of stock, while a card
+  // inside it still said "6 in stock" from the field the route does send.
+  // It is also the right rule: stock spoken for by someone else is not stock
+  // this doctor can have.
+  const inStock = items.filter((i) => Number(i.qty_available || 0) > 0);
+  const outOfStock = items.filter((i) => Number(i.qty_available || 0) <= 0);
   const inStockCount = inStock.length;
   const outOfStockCount = outOfStock.length;
   const shownItems = [...(stockView === "in" ? inStock : outOfStock)].sort((a, b) =>
