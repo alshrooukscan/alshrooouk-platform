@@ -62,6 +62,9 @@ export default function DentalStockShopPage() {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+  // Opens on what can actually be had today. Out of stock is one tap away, not
+  // hidden: those items are still orderable and become backorders.
+  const [stockView, setStockView] = useState("in");
   const router = useRouter();
 
   useEffect(() => {
