@@ -225,6 +225,7 @@ function Overview() {
     card: "Visa",
   };
   const byMethod = {};
+  const byMethodCount = {};
   for (const row of filteredPaymentRows) {
     const raw = (row.payment_method || "").trim();
     const key = raw.toLowerCase();
@@ -235,8 +236,10 @@ function Overview() {
       METHOD_LABELS[key] ||
       (key === "unknown" ? "Not recorded (migrated)" : raw ? raw : "Unspecified");
     byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
+    byMethodCount[method] = (byMethodCount[method] || 0) + 1;
   }
   const paymentMethodTotals = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
+  const migratedCount = byMethodCount["Not recorded (migrated)"] || 0;
   const paymentMethodTotalSum = paymentMethodTotals.reduce((s, [, v]) => s + v, 0);
 
   function sum(stream, direction) {
@@ -370,7 +373,7 @@ function Overview() {
         <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits{start ? ", within the selected period" : ""}.</p>
         {paymentMethodTotals.some(([m]) => m === "Not recorded (migrated)") && (
           <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
-            "Not recorded (migrated)" is the {'{'}4,304{'}'} visits imported from the original Excel files, where the payment method was stored literally as "Unknown". That detail wasn't captured at the time and can't be recovered from the source data, so it isn't a reporting fault. Every visit recorded in the platform since go-live carries its real method.
+            "Not recorded (migrated)" covers {migratedCount.toLocaleString()} payments brought over from the original Excel files, every one of them dated before September 2026. The method was stored there literally as "Unknown", was never captured at the time, and cannot be recovered from the source. It is not a reporting fault. Every payment taken in the platform since go-live carries its real method.
           </p>
         )}
         {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded for this period.</p>}
