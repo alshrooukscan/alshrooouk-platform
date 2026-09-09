@@ -72,17 +72,20 @@ begin
        and (reply_seen_at is null or reply_seen_at < replied_at);
   end if;
 
-  -- STOCK ORDERS. Orders waiting to be reviewed or delivered, plus doctors'
-  -- requests for items not in the catalogue. Backordered orders are counted
-  -- too: they are waiting on somebody to chase stock.
+  -- STOCK ORDERS. Deliberately NOT scoped to the person: an order waiting to be
+  -- reviewed is the counter's work, not one named employee's, and whoever picks
+  -- it up first should. If Nourhan and Sara both have the page, both see the
+  -- same number - scoping it per assignee would have hidden unassigned orders
+  -- from everyone, which is exactly the queue nobody was watching.
+  --
+  -- Orders waiting to be reviewed or delivered, plus doctors' requests for
+  -- items not in the catalogue. Backordered orders count too: they are waiting
+  -- on somebody to chase stock.
   select count(*) into v_orders
     from dental_orders
-   where status in ('placed', 'confirmed', 'reviewed', 'assigned', 'in_transit')
-     and (v_is_admin or assigned_to_employee_id = v_employee);
+   where status in ('placed', 'confirmed', 'reviewed', 'assigned', 'in_transit');
 
-  if v_is_admin then
-    v_orders := v_orders + (select count(*) from stock_item_requests where status = 'pending');
-  end if;
+  v_orders := v_orders + (select count(*) from stock_item_requests where status = 'pending');
 
   -- ACTION CENTRE. An admin sees every approval waiting platform-wide. Anyone
   -- else sees only what is waiting on them personally - cash someone is trying
