@@ -106,9 +106,6 @@ function Overview() {
   const [drill, setDrill] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
   const [filter, setFilter] = useState({ year: "", quarter: "", month: "" });
-  const [reconciliations, setReconciliations] = useState([]);
-  const [reconLoading, setReconLoading] = useState(true);
-  const [confirmingBrand, setConfirmingBrand] = useState(null);
 
   const BRANDS = [
     { key: "scan", label: "Scan" },
@@ -121,71 +118,7 @@ function Overview() {
     loadReconciliation();
   }, []);
 
-  // Scan's general cash-out lives in expense_transactions now (Cash Out on
-  // its brand page), same as the other two brands - but Employee Advances
-  // are a deliberate exception: they stay in cash_expenses specifically,
-  // because that's the only table generate_payslip() reads its stateful
-  // deduction tracking from. An advance paid in cash still leaves the
-  // physical register though, so Scan's cash-out has to count it too, or
-  // this reconciliation would be wrong in exactly the cases that matter.
-  async function loadReconciliation() {
-    setReconLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
 
-    const [{ data: cashVisits }, { data: advancesToday }, { data: cashOutTx }, { data: cashInTx }, { data: existingRows }] = await Promise.all([
-      supabase.from("visits").select("amount_paid").eq("exam_date", today).ilike("payment_method", "cash").gt("amount_paid", 0),
-      supabase.from("cash_expenses").select("amount").eq("entry_date", today).eq("payment_method", "cash").eq("category", "employee_advance"),
-      supabase.from("expense_transactions").select("brand, amount").eq("entry_date", today).eq("payment_method", "cash").eq("status", "confirmed").eq("type", "cash_out"),
-      supabase.from("expense_transactions").select("brand, amount").eq("entry_date", today).eq("payment_method", "cash").eq("status", "confirmed").eq("type", "stock_sale"),
-      supabase.from("cash_reconciliation").select("*").eq("entry_date", today),
-    ]);
-
-    const scanCashIn = (cashVisits || []).reduce((s, v) => s + Number(v.amount_paid || 0), 0);
-    const scanAdvancesOut = (advancesToday || []).reduce((s, a) => s + Number(a.amount || 0), 0);
-
-    const sumByBrand = (rows, brand) => (rows || []).filter((r) => r.brand === brand).reduce((s, r) => s + Number(r.amount || 0), 0);
-
-    const rows = BRANDS.map((b) => {
-      const cashIn = b.key === "scan" ? scanCashIn : sumByBrand(cashInTx, b.key);
-      const cashOut = sumByBrand(cashOutTx, b.key) + (b.key === "scan" ? scanAdvancesOut : 0);
-      const existing = (existingRows || []).find((r) => r.brand === b.key);
-      return {
-        brand: b.key,
-        label: b.label,
-        date: today,
-        cashIn,
-        cashOut,
-        remaining: cashIn - cashOut,
-        confirmed: existing?.confirmed || false,
-        confirmedByName: existing?.confirmed_by_name || null,
-      };
-    });
-
-    setReconciliations(rows);
-    setReconLoading(false);
-  }
-
-  async function handleConfirmCollected(brand) {
-    const row = reconciliations.find((r) => r.brand === brand);
-    if (!row) return;
-    setConfirmingBrand(brand);
-    const { error } = await supabase.from("cash_reconciliation").upsert(
-      {
-        entry_date: row.date,
-        brand,
-        expected_cash_in: row.cashIn,
-        expected_cash_out: row.cashOut,
-        expected_remaining: row.remaining,
-        confirmed: true,
-        confirmed_by_id: profile?.id || null,
-        confirmed_by_name: profile?.name || null,
-        confirmed_at: new Date().toISOString(),
-      },
-      { onConflict: "entry_date,brand" }
-    );
-    setConfirmingBrand(null);
-    if (!error) loadReconciliation();
-  }
 
   async function load() {
     setLoading(true);
@@ -374,52 +307,12 @@ function Overview() {
 
   return (
     <div>
-      {!reconLoading && reconciliations.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <h3 style={{ color: theme.navy, margin: "0 0 2px" }}>Today's Cash Reconciliation</h3>
-          <p style={{ fontSize: 11, color: theme.gray, margin: "0 0 12px" }}>
-            Cash in and out for each brand today - non-cash payments don't move physical cash, so they're not counted here.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-            {reconciliations.map((r) => (
-              <div key={r.brand} style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", border: r.confirmed ? "1px solid #cde5cf" : `1px solid ${theme.gold}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                  <span style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{r.label}</span>
-                  {r.confirmed ? (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#2e7d32", background: "#e8f5e9", padding: "3px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
-                      ✓ {r.confirmedByName || "Confirmed"}
-                    </span>
-                  ) : (
-                    isAdmin && (
-                      <button
-                        onClick={() => handleConfirmCollected(r.brand)}
-                        disabled={confirmingBrand === r.brand}
-                        style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 11, whiteSpace: "nowrap" }}
-                      >
-                        {confirmingBrand === r.brand ? "..." : "Confirm"}
-                      </button>
-                    )
-                  )}
-                </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 11, color: theme.gray }}>Cash In</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{formatMoney(r.cashIn)} EGP</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 11, color: theme.gray }}>Cash Out</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#ba1a1a" }}>{formatMoney(r.cashOut)} EGP</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: "1px solid #f0f0f0" }}>
-                    <span style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>In Hand</span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: theme.gold }}>{formatMoney(r.remaining)} EGP</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Today's Cash Reconciliation was removed from the overview: cash now
+          has its own pages per business - Scan Cash, Dental Stock Cash,
+          El3awama Stock Cash, plus Cash Monitor - which show who is holding
+          what and every movement behind it. Keeping a second, shallower
+          version here meant two places to read the same figure, and the one
+          on this page could not be acted on. */}
 
       <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} day={filter.day} onChange={setFilter} />
 

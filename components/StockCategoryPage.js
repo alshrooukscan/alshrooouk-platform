@@ -19,6 +19,10 @@ export default function StockCategoryPage({ category, title }) {
   const [stockFilter, setStockFilter] = useState("in"); // in | out | all
   const [openBatches, setOpenBatches] = useState(null); // item id whose deliveries are shown
   const [returnFor, setReturnFor] = useState(null); // batch being returned to its supplier
+  const [sortBy, setSortBy] = useState("name");
+  const [sortDir, setSortDir] = useState("asc");
+  const [lowOnly, setLowOnly] = useState(false);
+  const [noPriceOnly, setNoPriceOnly] = useState(false);
   const { profile } = usePermissions();
 
   useEffect(() => {
@@ -101,10 +105,28 @@ export default function StockCategoryPage({ category, title }) {
     const hit = i.name?.toLowerCase().includes(q) || i.item_code?.toLowerCase().includes(q);
     if (!hit) return false;
     const qty = Number(i.qty_remaining || 0);
+    if (lowOnly && qty > 5) return false;
+    // An item with no purchase price has no margin and no batch cost, so it
+    // reads as pure profit everywhere. Worth being able to list them.
+    if (noPriceOnly && Number(i.purchase_price || 0) > 0) return false;
     if (stockFilter === "in") return qty > 0;
     if (stockFilter === "out") return qty <= 0;
     return true;
   });
+
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    const va = a[sortBy], vb = b[sortBy];
+    if (sortBy === "name" || sortBy === "item_code") {
+      return String(va || "").localeCompare(String(vb || ""), undefined, { numeric: true }) * dir;
+    }
+    return ((Number(va) || 0) - (Number(vb) || 0)) * dir;
+  });
+
+  function sortOn(col) {
+    if (sortBy === col) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir("asc"); }
+  }
 
   const totalValue = items.reduce((sum, i) => sum + (i.qty_remaining || 0) * (i.purchase_price || 0), 0);
   const lowStockCount = items.filter((i) => (i.qty_remaining || 0) <= 5).length;
@@ -167,26 +189,44 @@ export default function StockCategoryPage({ category, title }) {
           {cellError}
         </p>
       )}
+      {/* 249 items is too many to read straight through, so the list can be
+          narrowed to the questions people actually ask of it: what is running
+          out, and what has no cost price and so shows a false margin. */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => setLowOnly(!lowOnly)} style={chip(lowOnly)}>Low stock (5 or fewer)</button>
+        <button onClick={() => setNoPriceOnly(!noPriceOnly)} style={chip(noPriceOnly)}>Missing purchase price</button>
+        {(lowOnly || noPriceOnly || stockFilter !== "in" || query) && (
+          <button
+            onClick={() => { setLowOnly(false); setNoPriceOnly(false); setStockFilter("in"); setQuery(""); }}
+            style={{ ...chip(false), border: "none", color: theme.gray, textDecoration: "underline" }}
+          >
+            Clear filters
+          </button>
+        )}
+        <span style={{ marginLeft: "auto", fontSize: 12, color: theme.gray }}>
+          Showing {sorted.length} of {items.length} items
+        </span>
+      </div>
       <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 10px" }}>
-        Click any name, code, quantity or price to edit it. Enter saves, Escape cancels.
+        Click any column heading to sort. Click any name, code, quantity or price to edit it &mdash; Enter saves, Escape cancels.
       </p>
       <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#faf9fb", textAlign: "left" }}>
               {category === "dental" && <Th>Image</Th>}
-              <Th>Item</Th>
-              <Th>Code</Th>
-              <Th>Qty Remaining</Th>
-              <Th>Purchase Price</Th>
-              <Th>Sale Price</Th>
+              <SortTh col="name" label="Item" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
+              <SortTh col="item_code" label="Code" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
+              <SortTh col="qty_remaining" label="Qty Remaining" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
+              <SortTh col="purchase_price" label="Purchase Price" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
+              <SortTh col="sale_price" label="Sale Price" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
               <Th>Profit</Th>
               <Th>Variance</Th>
               <Th></Th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((item) => {
+            {sorted.map((item) => {
               const profit = (item.sale_price || 0) - (item.purchase_price || 0);
               const profitPct = item.purchase_price ? ((profit / item.purchase_price) * 100).toFixed(0) : "\u2014";
               const variance = latestVariance(item);
@@ -276,7 +316,7 @@ export default function StockCategoryPage({ category, title }) {
             reloadKey={returnFor === null ? 1 : 0}
           />
         )}
-        {!loading && filtered.length === 0 && (
+        {!loading && sorted.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No items yet in {title}.</div>
         )}
       </div>
@@ -678,3 +718,30 @@ function ReturnModal({ batch, onClose, onSaved }) {
 
 const bth = { padding: "6px 8px", fontWeight: 600 };
 const btd = { padding: "7px 8px", color: theme.navy };
+
+function SortTh({ col, label, sortBy, sortDir, onSort }) {
+  const on = sortBy === col;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      style={{
+        padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 700,
+        color: on ? theme.navy : theme.gray, textTransform: "uppercase",
+        letterSpacing: "0.04em", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+      <span style={{ marginLeft: 6, color: on ? theme.gold : "#ccc" }}>
+        {on ? (sortDir === "asc" ? "\u25B2" : "\u25BC") : "\u25B4"}
+      </span>
+    </th>
+  );
+}
+
+const chip = (active) => ({
+  padding: "7px 14px", borderRadius: 999,
+  border: `1px solid ${active ? theme.navy : "#ddd"}`,
+  background: active ? theme.navy : "#fff",
+  color: active ? "#fff" : theme.navy,
+  fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+});
