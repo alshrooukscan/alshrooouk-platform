@@ -245,7 +245,7 @@ export default function DentalStockShopPage() {
       <div
         style={{
           background: "#fff", borderBottom: "1px solid #eceaf1", padding: "12px 24px",
-          display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+          display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap",
         }}
       >
         {[
@@ -320,7 +320,11 @@ export default function DentalStockShopPage() {
         </div>
       )}
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "24px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
+      {/* Was capped at 1000px, which left most of a desktop screen empty either
+          side while the catalogue ran to 246 items. It fills the width now, so
+          a wide screen gets more cards per row instead of more scrolling. The
+          220px minimum still holds, so a phone drops to one column. */}
+      <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
         {items.length === 0 && <p style={{ color: "#666" }}>No items in the catalogue yet.</p>}
         {items.length > 0 && shownItems.length === 0 && (
           <p style={{ color: "#666", gridColumn: "1 / -1" }}>
