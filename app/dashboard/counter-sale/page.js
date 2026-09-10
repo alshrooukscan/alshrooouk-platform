@@ -44,6 +44,7 @@ function CounterSalePageInner() {
   // an employee record has to say - previously the sale was simply refused,
   // with a message telling them to pick someone and nowhere to pick.
   const [selfEmployeeId, setSelfEmployeeId] = useState(null);
+  const [doctorSearch, setDoctorSearch] = useState("");
   const [collectedBy, setCollectedBy] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -86,6 +87,14 @@ function CounterSalePageInner() {
   const gross = lines.reduce((s, l) => s + l.line, 0);
 
   const chosen = staffList.find((s) => s.id === employeeId);
+  const doctorQuery = doctorSearch.trim().toLowerCase();
+  const matchingDoctors = doctorQuery
+    ? doctors.filter(
+        (d) =>
+          (d.name || "").toLowerCase().includes(doctorQuery) ||
+          String(d.clinic_code || "").toLowerCase().includes(doctorQuery)
+      )
+    : doctors;
   const discount = method === "staff_tab" && chosen ? chosen.discount_percent : 0;
   const net = gross * (1 - discount / 100);
   const overCap = method === "staff_tab" && chosen && net > chosen.remaining;
@@ -204,14 +213,28 @@ function CounterSalePageInner() {
               was invisible. Optional on a paid sale (a genuine walk-in has no
               account) and still required when the money is owed. */}
           <FieldLabel>Customer</FieldLabel>
-          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={inp}>
+          {/* 166 doctors is too many to scroll past at a counter with someone
+              waiting, so the list narrows as you type. Name or clinic code -
+              staff know some doctors by one and some by the other. */}
+          <input
+            value={doctorSearch}
+            onChange={(e) => setDoctorSearch(e.target.value)}
+            placeholder="Search by doctor name or clinic code"
+            style={{ ...inp, marginBottom: 6 }}
+          />
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={inp} size={doctorSearch ? 6 : undefined}>
             <option value="">Walk-in (no account)</option>
-            {doctors.map((d) => (
+            {matchingDoctors.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}{d.clinic_code ? ` - ${d.clinic_code}` : ""}
               </option>
             ))}
           </select>
+          {doctorSearch && matchingDoctors.length === 0 && (
+            <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
+              No doctor matches that. Clear the search to see the full list.
+            </p>
+          )}
 
           <FieldLabel>Payment</FieldLabel>
           <select value={method} onChange={(e) => setMethod(e.target.value)} style={inp}>
@@ -222,16 +245,14 @@ function CounterSalePageInner() {
             <>
               <FieldLabel>Who is taking the cash</FieldLabel>
               {selfEmployeeId ? (
-                // Resolved from the login, so the everyday case is one less
-                // thing to fill in. Still changeable: the person ringing up a
-                // sale is not always the one holding the drawer.
-                <select value={collectedBy} onChange={(e) => setCollectedBy(e.target.value)} style={inp}>
-                  {staffList.map((s2) => (
-                    <option key={s2.id} value={s2.id}>
-                      {s2.name}{s2.id === selfEmployeeId ? " (you)" : ""}
-                    </option>
-                  ))}
-                </select>
+                // The person signed in is the person holding the money. It was
+                // a dropdown of every employee, which invited the sale to be
+                // put on somebody else's hands - by accident or otherwise -
+                // and cash attributed to a colleague is exactly what the cash
+                // pages then have to unpick.
+                <div style={{ ...inp, display: "flex", alignItems: "center", background: "#f7f8fa", color: theme.navy, fontWeight: 600 }}>
+                  {staffList.find((s2) => s2.id === selfEmployeeId)?.name || "You"}
+                </div>
               ) : (
                 <>
                   <select value={collectedBy} onChange={(e) => setCollectedBy(e.target.value)} style={inp}>
