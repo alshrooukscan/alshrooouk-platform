@@ -56,8 +56,17 @@ export async function GET() {
   // debts run at clinic level - clinic 506 has four doctors - so the balance is
   // the clinic's and every doctor at it sees the same figure. Charges minus
   // payments, so a part payment shows the remainder rather than the original.
+  // Counted against the clinic AND against the doctor. Deliveries used to book
+  // the charge on the doctor while this only read clinic rows, so a delivered
+  // order left the balance unmoved - the money was recorded where nothing
+  // totalled it. Charges are booked to the clinic now, but only 59 of 166
+  // doctors have a clinic_code that resolves to one, so a doctor row is still
+  // the honest destination for the rest. Reading both means the amount is
+  // never invisible, whichever way it was written.
   let clinicOwes = 0;
   let clinicName = null;
+  const owners = [{ type: "doctor", id: doctor?.id }];
+
   if (doctor?.clinic_code) {
     const { data: clinic } = await supabaseAdmin
       .from("clinics")
@@ -66,16 +75,21 @@ export async function GET() {
       .maybeSingle();
     if (clinic) {
       clinicName = clinic.name;
-      const { data: ledger } = await supabaseAdmin
-        .from("customer_ar_ledger")
-        .select("direction, amount")
-        .eq("customer_type", "clinic")
-        .eq("customer_id", clinic.id);
-      clinicOwes = (ledger || []).reduce(
-        (sum, l) => sum + (l.direction === "charge" ? Number(l.amount) : -Number(l.amount)),
-        0
-      );
+      owners.push({ type: "clinic", id: clinic.id });
     }
+  }
+
+  for (const owner of owners) {
+    if (!owner.id) continue;
+    const { data: ledger } = await supabaseAdmin
+      .from("customer_ar_ledger")
+      .select("direction, amount")
+      .eq("customer_type", owner.type)
+      .eq("customer_id", owner.id);
+    clinicOwes += (ledger || []).reduce(
+      (sum, l) => sum + (l.direction === "charge" ? Number(l.amount) : -Number(l.amount)),
+      0
+    );
   }
 
   return NextResponse.json({
