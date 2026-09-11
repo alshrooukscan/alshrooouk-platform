@@ -57,6 +57,7 @@ export default function PatientProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showAddScan, setShowAddScan] = useState(false);
+  const [fixMethodFor, setFixMethodFor] = useState(null);
   const [editingVisit, setEditingVisit] = useState(null);
   const [payingVisitId, setPayingVisitId] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "Cash" });
@@ -316,7 +317,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(payment_method, created_by_name, created_at)")
+      .select("id, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       // Goes through a service-role route rather than querying patient_auth
@@ -981,7 +982,29 @@ export default function PatientProfilePage() {
                   {(v.visit_payments || []).length > 0 && (
                     <> · {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + ")}</>
                   )}
+                  {/* Admin only. A payment cannot be edited by anyone - this
+                      corrects the method and records who changed it and why,
+                      leaving the original method on the record. */}
+                  {isAdmin && (v.visit_payments || []).length > 0 && (
+                    <>
+                      {" "}
+                      <button
+                        onClick={() => setFixMethodFor(fixMethodFor === v.id ? null : v.id)}
+                        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.gold, fontSize: 12, fontWeight: 700, textDecoration: "underline" }}
+                      >
+                        Correct method
+                      </button>
+                    </>
+                  )}
                 </div>
+              )}
+              {fixMethodFor === v.id && (
+                <CorrectPaymentMethod
+                  payments={v.visit_payments || []}
+                  profile={profile}
+                  onClose={() => setFixMethodFor(null)}
+                  onSaved={() => { setFixMethodFor(null); load(); }}
+                />
               )}
               {v.doctor_id && (
                 <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>
@@ -2493,3 +2516,90 @@ const fileActionBtn = {
   fontWeight: 700,
   cursor: "pointer",
 };
+
+// Correcting a payment method, for admins only. The database refuses this for
+// anyone else and insists on a reason, so the form asks for both rather than
+// letting the save fail after the fact.
+function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
+  const [paymentId, setPaymentId] = useState(payments[0]?.id || "");
+  const [method, setMethod] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const current = payments.find((p) => p.id === paymentId);
+
+  async function save() {
+    setError("");
+    if (!method) return setError("Choose what the method should be.");
+    if (reason.trim().length < 5) return setError("Give a short reason - it stays on the record.");
+    setSaving(true);
+    const { error: err } = await supabase.rpc("correct_payment_method", {
+      p_payment_id: paymentId,
+      p_new_method: method,
+      p_reason: reason.trim(),
+      p_staff_id: profile?.id || null,
+      p_staff_name: profile?.name || null,
+    });
+    setSaving(false);
+    if (err) return setError(err.message);
+    onSaved();
+  }
+
+  const box = { padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, width: "100%" };
+
+  return (
+    <div style={{ marginTop: 8, padding: 12, borderRadius: 8, background: "#fbf7ec", border: "1px solid #e6d08a" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#8a6d00", marginBottom: 8 }}>
+        Correct the payment method. The original stays on the record with your name and reason.
+      </div>
+
+      {payments.length > 1 && (
+        <select value={paymentId} onChange={(e) => setPaymentId(e.target.value)} style={{ ...box, marginBottom: 6 }}>
+          {payments.map((p) => (
+            <option key={p.id} value={p.id}>
+              {Number(p.amount).toFixed(2)} EGP · {p.payment_method}
+            </option>
+          ))}
+        </select>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <select value={method} onChange={(e) => setMethod(e.target.value)} style={{ ...box, width: 130 }}>
+          <option value="">Change to...</option>
+          {["Cash", "Visa", "InstaPay", "Wallet"]
+            .filter((m) => m !== current?.payment_method)
+            .map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Why is it being corrected?"
+          style={{ ...box, flex: 1, minWidth: 200 }}
+        />
+      </div>
+
+      {method === "Cash" && (
+        <p style={{ fontSize: 11, color: "#8a6d00", margin: "6px 0 0" }}>
+          This puts the money into the hands of whoever logged the payment, and it will show in their cash.
+        </p>
+      )}
+      {current?.payment_method === "Cash" && method && method !== "Cash" && (
+        <p style={{ fontSize: 11, color: "#8a6d00", margin: "6px 0 0" }}>
+          This takes the money out of the hands of whoever logged it, and their cash total drops by {Number(current.amount).toFixed(2)} EGP.
+        </p>
+      )}
+
+      {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{error}</p>}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button onClick={save} disabled={saving} style={{ padding: "7px 14px", borderRadius: 6, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          {saving ? "Saving..." : "Correct it"}
+        </button>
+        <button onClick={onClose} style={{ padding: "7px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", fontSize: 13, cursor: "pointer" }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
