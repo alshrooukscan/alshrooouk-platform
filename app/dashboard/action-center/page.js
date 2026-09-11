@@ -112,10 +112,26 @@ export default function ActionCenterPage() {
     ];
     if (isAdmin) {
       promises.push(
+        // Approvals only. This filtered on status alone, so Confirmed returned
+        // every confirmed money row in the system - 408 of them, 392 being
+        // visit collections the payment trigger writes automatically and
+        // already confirmed. They never needed approving: a patient handing
+        // over 480 EGP is not a request anybody grants. They buried the ten
+        // rows a person actually did approve, and they belong in Brands Cash,
+        // which is where cash movements are meant to be read.
+        //
+        // Counter sales go with them: all six carry no reviewer at all, because
+        // nobody ever reviewed one. Both are money arriving, recorded as it
+        // arrives.
+        //
+        // Safe to exclude: neither type ever exists in pending status, so
+        // nothing awaiting a decision is hidden by this.
         supabase
           .from("expense_transactions")
           .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
           .eq("status", approvalFilter)
+          .is("source_payment_id", null)
+          .not("type", "in", "(visit_collection,stock_sale)")
           .order("created_at", { ascending: false })
       );
       promises.push(supabase.from("staff_profiles").select("id, name").order("name"));
@@ -417,7 +433,7 @@ export default function ActionCenterPage() {
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Pending Approvals</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
-            Every Cash Collection, every non-cash Cash Out, and every Brand Transfer that needs your confirmation.
+            Cash Outs, Cash Collections, Brand Transfers and Conversions that need your confirmation. Money taken from patients or over the counter is recorded automatically and appears in Brands Cash, not here.
           </p>
           <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
             {["pending", "confirmed", "rejected"].map((s) => (
@@ -454,7 +470,15 @@ export default function ActionCenterPage() {
                   {tx.note && <div style={{ fontSize: 12, color: theme.gray, fontStyle: "italic" }}>{tx.note}</div>}
                   <div style={{ fontSize: 11, color: theme.gray }}>
                     {tx.entry_date}{" \u00b7 "}logged by {tx.created_by_name || "unknown"}
-                    {tx.confirmed_by_name && ` \u00b7 reviewed by ${tx.confirmed_by_name}`}
+                    {/* A row confirmed by the same person who logged it was not
+                        reviewed by anybody - it was written already confirmed.
+                        Saying "reviewed by Nourhan" under a line saying "logged
+                        by Nourhan" claims an oversight step that never happened,
+                        which is worse than saying nothing. */}
+                    {tx.confirmed_by_name &&
+                      (tx.confirmed_by_name === tx.created_by_name
+                        ? " \u00b7 auto-confirmed"
+                        : ` \u00b7 reviewed by ${tx.confirmed_by_name}`)}
                   </div>
                 </div>
                 {tx.status === "pending" && tx.type === "cash_transfer" && (
