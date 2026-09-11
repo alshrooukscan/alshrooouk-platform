@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
@@ -36,6 +36,7 @@ export default function BranchesPage() {
     requires_report: true,
   });
   const [addingExam, setAddingExam] = useState(false);
+  const [stepsFor, setStepsFor] = useState(null);
 
   useEffect(() => {
     load();
@@ -576,6 +577,23 @@ export default function BranchesPage() {
                                 >
                                   Edit
                                 </button>
+                                {/* The stages this scan goes through, and how
+                                    long each should take. Paid and Invoice
+                                    Generated are not here - they bracket every
+                                    visit and are not the clinic's to rename. */}
+                                <button
+                                  onClick={() => setStepsFor(stepsFor === exam.id ? null : exam.id)}
+                                  style={{
+                                    fontSize: 12,
+                                    color: theme.navy,
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Steps
+                                </button>
                                 <label
                                   style={{
                                     display: "flex",
@@ -593,6 +611,11 @@ export default function BranchesPage() {
                                   />
                                 </label>
                               </>
+                            )}
+                            {stepsFor === exam.id && (
+                              <div style={{ flexBasis: "100%" }}>
+                                <ExamSteps examTypeId={exam.id} examName={exam.name} />
+                              </div>
                             )}
                           </div>
                         ))}
@@ -718,3 +741,161 @@ const smallInp = {
   fontSize: 13,
   boxSizing: "border-box",
 };
+
+// The stages a scan goes through between the money arriving and the invoice
+// leaving, in order, each with how long it ought to take. Steps carrying a
+// legacy_field are the three the platform has always had - their names can be
+// changed but they cannot be deleted, because years of visits store their
+// completion in dedicated columns on the visit itself.
+function ExamSteps({ examTypeId, examName }) {
+  const [steps, setSteps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState({ name: "", target_minutes: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from("exam_type_steps")
+      .select("*")
+      .eq("exam_type_id", examTypeId)
+      .order("sort_order");
+    setSteps(data || []);
+    setLoading(false);
+  }, [examTypeId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function addStep() {
+    if (!draft.name.trim()) return setError("Give the step a name.");
+    setSaving(true);
+    setError("");
+    const nextOrder = steps.length ? Math.max(...steps.map((s) => s.sort_order)) + 1 : 1;
+    const { error: err } = await supabase.from("exam_type_steps").insert({
+      exam_type_id: examTypeId,
+      name: draft.name.trim(),
+      sort_order: nextOrder,
+      target_minutes: draft.target_minutes === "" ? null : Number(draft.target_minutes),
+    });
+    setSaving(false);
+    if (err) return setError(err.message);
+    setDraft({ name: "", target_minutes: "" });
+    load();
+  }
+
+  async function updateStep(step, patch) {
+    await supabase.from("exam_type_steps").update(patch).eq("id", step.id);
+    load();
+  }
+
+  async function removeStep(step) {
+    if (step.legacy_field) return;
+    if (!confirm(`Remove "${step.name}" from ${examName}? Visits already past this step keep their record of it.`)) return;
+    await supabase.from("exam_type_steps").delete().eq("id", step.id);
+    load();
+  }
+
+  async function move(step, direction) {
+    const ordered = [...steps].sort((a, b) => a.sort_order - b.sort_order);
+    const i = ordered.findIndex((x) => x.id === step.id);
+    const j = i + direction;
+    if (j < 0 || j >= ordered.length) return;
+    await supabase.from("exam_type_steps").update({ sort_order: ordered[j].sort_order }).eq("id", step.id);
+    await supabase.from("exam_type_steps").update({ sort_order: step.sort_order }).eq("id", ordered[j].id);
+    load();
+  }
+
+  const box = { padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 };
+
+  return (
+    <div style={{ marginTop: 10, padding: 12, background: "#f7f8fa", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: theme.navy, marginBottom: 8 }}>
+        Steps for {examName} &middot; shown on every visit with this scan, between Paid and Invoice Generated
+      </div>
+
+      {loading ? (
+        <p style={{ fontSize: 12, color: theme.gray }}>Loading...</p>
+      ) : (
+        <>
+          {steps.map((st, idx) => (
+            <div key={st.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: theme.gray, width: 18 }}>{idx + 1}.</span>
+              <input
+                defaultValue={st.name}
+                onBlur={(e) => e.target.value.trim() && e.target.value !== st.name && updateStep(st, { name: e.target.value.trim() })}
+                style={{ ...box, width: 190 }}
+              />
+              <input
+                type="number"
+                min="0"
+                defaultValue={st.target_minutes ?? ""}
+                placeholder="mins"
+                onBlur={(e) => updateStep(st, { target_minutes: e.target.value === "" ? null : Number(e.target.value) })}
+                style={{ ...box, width: 80 }}
+              />
+              <span style={{ fontSize: 11, color: theme.gray }}>
+                {st.target_minutes ? humanMinutes(st.target_minutes) : "no target"}
+              </span>
+              <button onClick={() => move(st, -1)} disabled={idx === 0} style={arrowBtn}>&uarr;</button>
+              <button onClick={() => move(st, 1)} disabled={idx === steps.length - 1} style={arrowBtn}>&darr;</button>
+              {st.legacy_field ? (
+                <span style={{ fontSize: 10, color: theme.gray }} title="Built in - visits store this one directly, so it can be renamed but not removed">
+                  built in
+                </span>
+              ) : (
+                <button onClick={() => removeStep(st)} style={{ ...arrowBtn, color: "#b42318" }}>Remove</button>
+              )}
+            </div>
+          ))}
+
+          {steps.length === 0 && (
+            <p style={{ fontSize: 12, color: theme.gray }}>No steps yet. Visits will show only Paid and Invoice Generated.</p>
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <input
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder="New step name"
+              style={{ ...box, width: 190 }}
+            />
+            <input
+              type="number"
+              min="0"
+              value={draft.target_minutes}
+              onChange={(e) => setDraft({ ...draft, target_minutes: e.target.value })}
+              placeholder="mins"
+              style={{ ...box, width: 80 }}
+            />
+            <button
+              onClick={addStep}
+              disabled={saving}
+              style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+            >
+              Add step
+            </button>
+          </div>
+          {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{error}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+const arrowBtn = {
+  fontSize: 11,
+  padding: "3px 7px",
+  borderRadius: 5,
+  border: "1px solid #ddd",
+  background: "#fff",
+  cursor: "pointer",
+};
+
+// "90" reads as nothing in particular; "1h 30m" reads as a target.
+function humanMinutes(mins) {
+  const m = Number(mins) || 0;
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return rest ? `${h}h ${rest}m` : `${h}h`;
+}

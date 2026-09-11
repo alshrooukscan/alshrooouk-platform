@@ -58,6 +58,8 @@ export default function PatientProfilePage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showAddScan, setShowAddScan] = useState(false);
   const [fixMethodFor, setFixMethodFor] = useState(null);
+  const [examSteps, setExamSteps] = useState([]);
+  const [stepProgress, setStepProgress] = useState([]);
   const [editingVisit, setEditingVisit] = useState(null);
   const [payingVisitId, setPayingVisitId] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "Cash" });
@@ -313,11 +315,11 @@ export default function PatientProfilePage() {
     setLoading(true);
     // The patient, their visits and their login do not depend on each other, so
     // they are fetched together rather than in a chain of round trips.
-    const [{ data: p }, { data: v }, { data: auth }, { data: et }] = await Promise.all([
+    const [{ data: p }, { data: v }, { data: auth }, { data: et }, { data: steps }, { data: progress }] = await Promise.all([
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at)")
+      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       // Goes through a service-role route rather than querying patient_auth
@@ -355,9 +357,15 @@ export default function PatientProfilePage() {
       // Fetched in this first wave, not after render: visitNeedsReport defaults
       // to true while unknown, so loading it later made the "Report Done" row
       // flash in and then vanish on every no-report visit.
-      supabase.from("exam_types").select("name, requires_report, branch_id"),
+      supabase.from("exam_types").select("id, name, requires_report, branch_id"),
+      // Loaded in the same wave for the same reason: the timeline is built
+      // from these, and arriving late would rewrite every visit card on screen.
+      supabase.from("exam_type_steps").select("*").eq("is_active", true).order("sort_order"),
+      supabase.from("visit_step_progress").select("*"),
     ]);
     setExamTypes(et || []);
+    setExamSteps(steps || []);
+    setStepProgress(progress || []);
 
     // Per-visit Drive folders, so staff can jump straight to the folder for one
     // scan instead of opening the patient folder and hunting through visits.
@@ -391,6 +399,49 @@ export default function PatientProfilePage() {
   // A visit needs a report if ANY of its scan types is flagged requires_report
   // for that visit's own branch. Branch is matched loosely: rows with no branch
   // set (legacy) still count, so nothing silently stops requiring a report.
+  // The stages this visit actually goes through, taken from the scan types on
+  // it rather than the same hardcoded three for everybody. A visit with two
+  // scan types shows the union of their steps, in order, each named once.
+  // Steps carrying a legacy_field are stored on the visit itself and go through
+  // toggleStage. Everything the clinic has added since lives here instead.
+  async function toggleCustomStep(v, step, currentlyDone) {
+    const now = new Date().toISOString();
+    const { error: err } = await supabase.from("visit_step_progress").upsert(
+      {
+        visit_id: v.id,
+        step_id: step.id,
+        step_name: step.name,
+        done: !currentlyDone,
+        done_at: currentlyDone ? null : now,
+        done_by_id: currentlyDone ? null : profile?.id || null,
+        done_by_name: currentlyDone ? null : profile?.name || null,
+      },
+      { onConflict: "visit_id,step_id" }
+    );
+    if (err) return alert(err.message);
+    load();
+  }
+
+  function visitSteps(v) {
+    const ids = new Set(
+      (v.exam_type_ids || []).filter(Boolean).length
+        ? (v.exam_type_ids || []).filter(Boolean)
+        : examTypes
+            .filter((e) => (v.scan_types || []).includes(e.name))
+            .map((e) => e.id)
+    );
+    const seen = new Set();
+    return examSteps
+      .filter((st) => ids.has(st.exam_type_id) && st.is_active)
+      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+      .filter((st) => {
+        const key = st.legacy_field || st.name.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
   function visitNeedsReport(v) {
     const names = v.scan_types || [];
     if (!names.length || !examTypes.length) return true;
@@ -1037,38 +1088,42 @@ export default function PatientProfilePage() {
                   rows={[
                     {
                       label: "Paid",
-                      active: v.payment_status === "paid",
                       // Paid was never given its own owner column - the payment
                       // record already carries who took the money, so it is read
                       // from there rather than duplicated onto the visit.
+                      active: v.payment_status === "paid",
                       timestamp: v.paid_at || v.visit_payments?.[0]?.created_at,
                       byName: v.visit_payments?.[0]?.created_by_name,
                     },
-                    {
-                      label: "Scanned",
-                      active: v.scanned,
-                      timestamp: v.scanned_at,
-                      byName: v.scanned_by_name,
-                      onClick: () => toggleStage(v, "scanned"),
-                    },
-                    {
-                      label: "Raw Data Uploaded",
-                      active: v.raw_data_uploaded,
-                      timestamp: v.raw_data_uploaded_at,
-                      byName: v.raw_data_uploaded_by_name,
-                      onClick: () => toggleStage(v, "raw_data_uploaded"),
-                    },
-                    ...(visitNeedsReport(v)
-                      ? [
-                          {
-                            label: "Report Done",
-                            active: v.report_done,
-                            timestamp: v.report_done_at,
-                            byName: v.report_done_by_name,
-                            onClick: () => toggleStage(v, "report_done"),
-                          },
-                        ]
-                      : []),
+                    // The middle of the timeline is whatever this scan type is
+                    // configured to go through, in its own order, with its own
+                    // names. It used to be the same three rows for every visit.
+                    ...visitSteps(v).map((st, i, all) => {
+                      const legacy = st.legacy_field;
+                      const prog = stepProgress.find((x) => x.visit_id === v.id && x.step_id === st.id);
+                      const active = legacy ? !!v[legacy] : !!prog?.done;
+                      const timestamp = legacy ? v[`${legacy}_at`] : prog?.done_at;
+                      const byName = legacy ? v[`${legacy}_by_name`] : prog?.done_by_name;
+                      // A step's clock starts when the one before it finished,
+                      // which is when the work could actually have begun. The
+                      // first step counts from the visit itself.
+                      const prev = i > 0 ? all[i - 1] : null;
+                      const prevDone = prev
+                        ? prev.legacy_field
+                          ? v[`${prev.legacy_field}_at`]
+                          : stepProgress.find((x) => x.visit_id === v.id && x.step_id === prev.id)?.done_at
+                        : null;
+                      return {
+                        startedAt: prevDone || v.created_at,
+                        label: st.name,
+                        active,
+                        timestamp,
+                        byName,
+                        target: st.target_minutes,
+                        onClick: () =>
+                          legacy ? toggleStage(v, legacy) : toggleCustomStep(v, st, !!prog?.done),
+                      };
+                    }),
                     {
                       label: "Invoice Generated",
                       active: (v.invoices || []).length > 0,
@@ -2394,6 +2449,38 @@ function TotalRow({ label, value, bold, negative }) {
 // on hover, which meant the audit trail was effectively invisible on a touch
 // screen. Same data, same toggles, laid out as a table so Status / when / who
 // are all readable at a glance.
+// Minutes as something a person reads: "1h 30m", not "90".
+function readableMinutes(mins) {
+  const m = Math.max(Math.round(Number(mins) || 0), 0);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return rest ? `${h}h ${rest}m` : `${h}h`;
+}
+
+function minutesSince(ts) {
+  if (!ts) return null;
+  return (Date.now() - new Date(ts).getTime()) / 60000;
+}
+
+// Late means: still not done and already past its target. A finished step is
+// never late - it is simply however long it took.
+function stepLate(r) {
+  if (!r.target || r.active) return false;
+  const waited = minutesSince(r.startedAt) ?? null;
+  return waited !== null && waited > r.target;
+}
+
+function stepTargetLabel(r) {
+  const target = readableMinutes(r.target);
+  if (r.active) return `target ${target}`;
+  const waited = minutesSince(r.startedAt);
+  if (waited === null) return `target ${target}`;
+  return waited > r.target
+    ? `${readableMinutes(waited - r.target)} over ${target}`
+    : `target ${target}`;
+}
+
 function StageTable({ rows }) {
   const cell = { padding: "6px 10px", fontSize: 11, textAlign: "left", verticalAlign: "middle" };
   const head = { ...cell, fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4 };
@@ -2405,6 +2492,7 @@ function StageTable({ rows }) {
             <th style={head}>Status</th>
             <th style={head}>Date &amp; Time</th>
             <th style={head}>By</th>
+            <th style={head}>Target</th>
           </tr>
         </thead>
         <tbody>
@@ -2440,6 +2528,13 @@ function StageTable({ rows }) {
               </td>
               <td style={{ ...cell, color: r.active && r.byName ? "#27214D" : "#bbb" }}>
                 {r.active && r.byName ? r.byName : "\u2014"}
+              </td>
+              {/* The target is only worth showing against something real: how
+                  long the step actually took once it is done, and how long it
+                  has been waiting while it is not. A step with no target set
+                  says nothing rather than pretending to a standard. */}
+              <td style={{ ...cell, whiteSpace: "nowrap", color: stepLate(r) ? "#b42318" : "#8A8694", fontWeight: stepLate(r) ? 700 : 400 }}>
+                {r.target ? stepTargetLabel(r) : "\u2014"}
               </td>
             </tr>
           ))}
