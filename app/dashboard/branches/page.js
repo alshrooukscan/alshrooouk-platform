@@ -442,15 +442,13 @@ export default function BranchesPage() {
                           {CATEGORY_LABELS[cat]}
                         </div>
                         {items.map((exam) => (
+                          <div key={exam.id} style={{ borderBottom: "1px solid #f5f5f5", opacity: exam.is_active ? 1 : 0.5 }}>
                           <div
-                            key={exam.id}
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: 12,
                               padding: "8px 0",
-                              borderBottom: "1px solid #f5f5f5",
-                              opacity: exam.is_active ? 1 : 0.5,
                             }}
                           >
                             {editingExamId === exam.id ? (
@@ -585,14 +583,14 @@ export default function BranchesPage() {
                                   onClick={() => setStepsFor(stepsFor === exam.id ? null : exam.id)}
                                   style={{
                                     fontSize: 12,
-                                    color: theme.navy,
+                                    color: stepsFor === exam.id ? theme.gold : theme.navy,
                                     background: "none",
                                     border: "none",
                                     cursor: "pointer",
                                     fontWeight: 600,
                                   }}
                                 >
-                                  Steps
+                                  {stepsFor === exam.id ? "Hide steps" : "Steps"}
                                 </button>
                                 <label
                                   style={{
@@ -612,11 +610,14 @@ export default function BranchesPage() {
                                 </label>
                               </>
                             )}
-                            {stepsFor === exam.id && (
-                              <div style={{ flexBasis: "100%" }}>
-                                <ExamSteps examTypeId={exam.id} examName={exam.name} />
-                              </div>
-                            )}
+                          </div>
+                          {stepsFor === exam.id && (
+                            <ExamSteps
+                              examTypeId={exam.id}
+                              examName={exam.name}
+                              onClose={() => setStepsFor(null)}
+                            />
+                          )}
                           </div>
                         ))}
                       </div>
@@ -747,7 +748,7 @@ const smallInp = {
 // legacy_field are the three the platform has always had - their names can be
 // changed but they cannot be deleted, because years of visits store their
 // completion in dedicated columns on the visit itself.
-function ExamSteps({ examTypeId, examName }) {
+function ExamSteps({ examTypeId, examName, onClose }) {
   const [steps, setSteps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({ name: "", target_minutes: "" });
@@ -808,9 +809,34 @@ function ExamSteps({ examTypeId, examName }) {
   const box = { padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 };
 
   return (
-    <div style={{ marginTop: 10, padding: 12, background: "#f7f8fa", borderRadius: 8, border: "1px solid #e5e7eb" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: theme.navy, marginBottom: 8 }}>
-        Steps for {examName} &middot; shown on every visit with this scan, between Paid and Invoice Generated
+    <div style={{ margin: "0 0 12px", padding: 14, background: "#f7f8fa", borderRadius: 8, border: "1px solid #e5e7eb", width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: theme.navy }}>
+          Steps for {examName}
+          <div style={{ fontWeight: 400, color: theme.gray, marginTop: 2 }}>
+            Shown on every visit with this scan, between Paid and Invoice Generated.
+          </div>
+        </div>
+        {/* Opening the panel replaced the Steps button with nothing to press,
+            so the only way out was to find the button again behind it. */}
+        <button
+          onClick={onClose}
+          title="Close"
+          style={{
+            border: "1px solid #ddd",
+            background: "#fff",
+            borderRadius: 6,
+            width: 26,
+            height: 26,
+            lineHeight: "22px",
+            fontSize: 15,
+            color: theme.gray,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          &times;
+        </button>
       </div>
 
       {loading ? (
@@ -873,6 +899,12 @@ function ExamSteps({ examTypeId, examName }) {
               style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
             >
               Add step
+            </button>
+            <button
+              onClick={onClose}
+              style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", fontSize: 12, cursor: "pointer" }}
+            >
+              Done
             </button>
           </div>
           {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{error}</p>}
