@@ -59,7 +59,7 @@ const NAV = [
     items: [
       { href: "/dashboard/patients", label: "Patient", icon: User, key: "patients" },
       { href: "/dashboard/doctors", label: "Doctor", icon: Stethoscope, key: "doctors" },
-      { href: "/dashboard/reports", label: "Reports", icon: FileCheck2, key: "vendors" },
+      { href: "/dashboard/reports", label: "Reports", icon: FileCheck2, key: "vendors", badge: "reports" },
       { href: "/dashboard/branches", label: "Branch Management", icon: Building2, key: "settings" },
       { href: "/dashboard/clients", label: "Clients Management", icon: Handshake, key: "vendors" },
     ],
@@ -184,7 +184,7 @@ export default function Sidebar() {
   // the work. employees and staff_profiles are deliberately absent - Realtime
   // sends whole rows past the column grants on those two.
   useAutoRefresh(
-    ["bug_reports", "dental_orders", "expense_transactions", "excuse_submissions", "visit_edit_requests", "stock_item_requests", "tasks"],
+    ["bug_reports", "dental_orders", "expense_transactions", "excuse_submissions", "visit_edit_requests", "stock_item_requests", "tasks", "reports"],
     loadCounts
   );
 
