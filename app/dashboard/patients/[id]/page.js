@@ -1429,6 +1429,18 @@ function ScanPickerModal({ visits, onClose, onPick }) {
   );
 }
 
+// The clinic's own clock. new Date().toISOString() is UTC, which in Cairo
+// rolls the date over three hours early - a 10pm scan would save as tomorrow.
+function todayLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function nowLocalTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function AddScanModal({ patient, onClose, onSaved }) {
   const { profile } = usePermissions();
   const [branches, setBranches] = useState([]);
@@ -1545,8 +1557,11 @@ function AddScanModal({ patient, onClose, onSaved }) {
         // by id rather than by string match. Renaming a scan type in Settings
         // must never retroactively break a saved visit again.
         exam_type_ids: selectedExams.map((e) => e.id),
-        exam_date: form.exam_date || null,
-        exam_time: form.exam_time || null,
+        // Left blank means the scan is happening now, which is the normal
+        // case at a counter. Sending null instead overrode the column's own
+        // CURRENT_DATE default and saved a visit reading "No date recorded".
+        exam_date: form.exam_date || todayLocal(),
+        exam_time: form.exam_time || nowLocalTime(),
         // `sumAfterDiscount || null` turned a fully-discounted visit (0) into
         // NULL, which then read as "no amount set" and stayed pending forever.
         // Zero is a real, settled amount.
@@ -1954,8 +1969,9 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
     const finalReason = form.discount_reason === "Other" ? form.discount_reason_other : form.discount_reason;
 
     const requestedValues = {
-      exam_date: form.exam_date || null,
-      exam_time: form.exam_time || null,
+      // Same rule as Add Scan: a cleared date means now, not unknown.
+      exam_date: form.exam_date || todayLocal(),
+      exam_time: form.exam_time || nowLocalTime(),
       scan_types: scanNames,
       // Positionally aligned with scan_types: a null tail entry marks a legacy
       // name that still maps to no exam type, so the two arrays stay the same
