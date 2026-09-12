@@ -104,7 +104,8 @@ export async function POST(req) {
   }
 
   if (action === "apply") {
-    const { employeeId, ruleId, period, note, occurredOn, amountOverride } = body;
+    const { employeeId, ruleId, note, occurredOn, amountOverride } = body;
+    const period = normalizePeriod(body.period);
     if (!employeeId || !period) {
       return NextResponse.json({ error: "Employee and period are required." }, { status: 400 });
     }
@@ -173,6 +174,7 @@ export async function POST(req) {
     const { data, error } = await supabaseAdmin.rpc("generate_payslip", {
       p_employee_id: employeeId,
       p_period: p,
+      p_generated_by: staff.name || null,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
