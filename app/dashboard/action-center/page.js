@@ -58,11 +58,26 @@ export default function ActionCenterPage() {
   const [clockFixes, setClockFixes] = useState([]);
   const [alerts, setAlerts] = useState({ stockZero: 0, stockLow: 0, overdueReports: 0 });
   const [attExceptions, setAttExceptions] = useState([]);
+  // Card payments Paymob could not account for. They keep their method and
+  // wait here for a decision rather than being changed automatically.
+  const [cardReviews, setCardReviews] = useState([]);
 
   useEffect(() => {
     if (!permsLoading && profile) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permsLoading, profile, approvalFilter, visitEditFilter]);
+
+  async function decideCardReview(reviewId, action) {
+    setBusyId(reviewId);
+    const { data: sess } = await supabase.auth.getSession();
+    const res = await fetch("/api/paymob/reviews", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sess.session?.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId, action }),
+    });
+    setBusyId(null);
+    if (res.ok) load();
+  }
 
   async function decideSwap(requestId, action) {
     setBusyId(requestId);
@@ -202,6 +217,10 @@ export default function ActionCenterPage() {
         headers: { Authorization: `Bearer ${sess.session?.access_token}` },
       });
       if (fixRes.ok) setClockFixes((await fixRes.json()).requests || []);
+      const cardRes = await fetch("/api/paymob/reviews?status=pending", {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      });
+      if (cardRes.ok) setCardReviews((await cardRes.json()).reviews || []);
     }
     if (isAdmin) {
       // Unpacked by position in the order the promises were pushed above.
@@ -619,6 +638,44 @@ export default function ActionCenterPage() {
                   style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   Do not pay
                 </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Card Payments Awaiting Your Approval</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Recorded as card, but no matching charge was found on the card machine. Approving says the
+            money did arrive and puts your name to it. Rejecting changes nothing on its own - correct
+            the method on the visit itself, so the cash total moves with it.
+          </p>
+          {cardReviews.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Every card payment is accounted for.</p>}
+          {cardReviews.map((r) => (
+            <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 4 }}>
+                {formatMoney(r.amount)} &middot; {r.payment_method}
+              </div>
+              <div style={{ fontSize: 12, color: theme.gray }}>
+                Taken {new Date(r.paid_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <div style={{ fontSize: 12, color: "#8a6d00", margin: "6px 0 8px" }}>{r.reason}</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={() => decideCardReview(r.id, "approve")} disabled={busyId === r.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Approve
+                </button>
+                <button onClick={() => decideCardReview(r.id, "reject")} disabled={busyId === r.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Reject
+                </button>
+                {r.visit_id && (
+                  <a href={`/dashboard/patients?visit=${r.visit_id}`} style={{ color: theme.gold, fontSize: 12, fontWeight: 700 }}>
+                    Open visit
+                  </a>
+                )}
               </div>
             </div>
           ))}

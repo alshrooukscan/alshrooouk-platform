@@ -22,6 +22,19 @@ const LAUNCH_DATE = "2026-08-29";
 // minutes covers a busy counter without reaching into an unrelated patient.
 const MATCH_WINDOW_MINUTES = 30;
 
+// One swipe often pays for several visits at once - a parent bringing two
+// children, a doctor settling three scans together. Those payments are logged
+// as separate rows in the same minute and no single row will ever equal the
+// charge, so they are matched as a set whose total is exact.
+const GROUP_WINDOW_MINUTES = 30;
+const GROUP_MAX_PAYMENTS = 4;
+
+// A payment is sometimes written up the next day, long after the card cleared.
+// Those are still real, but a wide window makes coincidences likely, so a late
+// match is only accepted when the amount is UNIQUE among the unclaimed charges
+// in range - if two charges could explain it, neither is chosen.
+const LATE_ENTRY_HOURS = 36;
+
 // A card charge that never gets claimed by a payment stops being worth
 // chasing after a while, and a payment logged today may still be waiting for
 // Paymob to catch up. Both sides only look back this far.
@@ -42,6 +55,60 @@ function isoDaysAgo(days) {
  * later tick. Verification only ever adds proof; it never changes an amount,
  * never moves money, and never rewrites a method the staff chose.
  */
+
+// Smallest set of payments from `group` whose amounts total `target` exactly.
+// Kept small on purpose: beyond four payments the number of combinations that
+// happen to add up makes a coincidence more likely than a real shared swipe.
+function exactSubset(group, target) {
+  const n = Math.min(group.length, GROUP_MAX_PAYMENTS);
+  for (let size = 2; size <= n; size++) {
+    const found = combinations(group, size).find(
+      (set) => Math.abs(set.reduce((t, p) => t + Number(p.amount), 0) - target) < 0.009
+    );
+    if (found) return found;
+  }
+  return null;
+}
+
+function combinations(items, size, start = 0, current = [], out = []) {
+  if (current.length === size) { out.push([...current]); return out; }
+  for (let i = start; i < items.length; i++) {
+    current.push(items[i]);
+    combinations(items, size, i + 1, current, out);
+    current.pop();
+  }
+  return out;
+}
+
+
+// Writes the proof onto a payment and claims the charge. Guarded on
+// payment_verification still being null so a second run, or two passes racing
+// over the same payment, can never overwrite an existing verdict.
+async function applyMatch(payment, charge, gapMinutes, verification, shareOf) {
+  const { error } = await supabaseAdmin
+    .from("visit_payments")
+    .update({
+      payment_verification: verification,
+      paymob_transaction_id: shareOf ? null : charge.id, // a shared charge cannot be the unique key on several rows
+      paymob_shared_charge_id: shareOf ? charge.id : null,
+      paymob_terminal_id: charge.terminal_id,
+      paymob_card_brand: charge.card_brand,
+      paymob_card_last4: charge.card_last4,
+      paymob_fees: shareOf ? null : charge.fees,
+      paymob_match_gap_minutes: gapMinutes,
+      paymob_matched_at: new Date().toISOString(),
+    })
+    .eq("id", payment.id)
+    .is("payment_verification", null);
+  if (error) return false;
+
+  await supabaseAdmin
+    .from("paymob_transactions")
+    .update({ matched_payment_id: shareOf ? null : payment.id, matched_at: new Date().toISOString(), review_status: "matched" })
+    .eq("id", charge.id);
+  return true;
+}
+
 async function run() {
   const report = { fetched: 0, stored: 0, verified: 0, stillUnverified: 0, errors: [] };
 
@@ -113,6 +180,12 @@ async function run() {
 
   const usedPayments = new Set();
   const usedCharges = new Set();
+
+  // Pass 2 and 3 run after the clean one-to-one matches below have taken what
+  // they are entitled to, so a looser rule can never steal a charge from an
+  // exact match. Both are collected here and applied in the same loop.
+  const extraPairs = [];
+
   for (const { gapMinutes, p, c } of pairs) {
     if (usedPayments.has(p.id) || usedCharges.has(c.id)) continue;
 
@@ -147,6 +220,98 @@ async function run() {
     usedPayments.add(p.id);
     usedCharges.add(c.id);
     report.verified++;
+  }
+
+  // ---- Pass 2: one swipe, several visits ----------------------------------
+  // Payments logged together whose total is exactly one charge. This is the
+  // only rule that adds amounts rather than matching one-to-one, so the
+  // payments are tagged as a shared swipe and are never mistaken later for a
+  // clean single match.
+  const leftoverPayments = live.filter((p) => !usedPayments.has(p.id));
+  const leftoverCharges = (charges || []).filter((c) => !usedCharges.has(c.id));
+
+  const byMinute = new Map();
+  for (const p of leftoverPayments) {
+    const key = String(p.paid_at).slice(0, 16); // same minute at the counter
+    if (!byMinute.has(key)) byMinute.set(key, []);
+    byMinute.get(key).push(p);
+  }
+
+  for (const group of byMinute.values()) {
+    if (group.length < 2) continue;
+    for (const c of leftoverCharges) {
+      if (usedCharges.has(c.id)) continue;
+      const { ok, gapMinutes } = withinWindow(group[0].paid_at, c.created_at_paymob, GROUP_WINDOW_MINUTES);
+      if (!ok) continue;
+
+      const subset = exactSubset(group.filter((p) => !usedPayments.has(p.id)), Number(c.amount));
+      if (!subset) continue;
+
+      for (const p of subset) {
+        extraPairs.push({ p, c, gapMinutes, kind: "group", shareOf: subset.length });
+        usedPayments.add(p.id);
+      }
+      usedCharges.add(c.id);
+      break;
+    }
+  }
+
+  // ---- Pass 3: written up late --------------------------------------------
+  // Accepted only when exactly one unclaimed charge in range carries that
+  // amount. Two candidates means we cannot tell which one the patient paid,
+  // and a wrong link is worse than an unverified payment.
+  for (const p of live) {
+    if (usedPayments.has(p.id)) continue;
+    const candidates = (charges || []).filter((c) => {
+      if (usedCharges.has(c.id)) return false;
+      if (Math.abs(Number(c.amount) - Number(p.amount)) > 0.009) return false;
+      return withinWindow(p.paid_at, c.created_at_paymob, LATE_ENTRY_HOURS * 60).ok;
+    });
+    if (candidates.length !== 1) continue;
+    const c = candidates[0];
+    const { gapMinutes } = withinWindow(p.paid_at, c.created_at_paymob, LATE_ENTRY_HOURS * 60);
+    extraPairs.push({ p, c, gapMinutes, kind: "late" });
+    usedPayments.add(p.id);
+    usedCharges.add(c.id);
+  }
+
+  for (const { p, c, gapMinutes, kind, shareOf } of extraPairs) {
+    const ok = await applyMatch(p, c, gapMinutes, kind === "group" ? "verified_paymob_group" : "verified_paymob_late", shareOf);
+    if (ok) {
+      report.verified++;
+      report[kind === "group" ? "groupMatches" : "lateMatches"] = (report[kind === "group" ? "groupMatches" : "lateMatches"] || 0) + 1;
+    } else {
+      report.errors.push(`verify ${p.id}: apply failed`);
+    }
+  }
+
+  // ---- Anything still unproven goes to the admin -------------------------
+  // A card payment the gateway cannot account for is a question for a person,
+  // not something to decide automatically. It keeps its method and waits in
+  // the Action Center. Payments taken in the last few minutes are skipped -
+  // Paymob simply has not published them yet, and raising those would bury
+  // the real cases in noise.
+  const stillOpen = live.filter((p) => !usedPayments.has(p.id));
+  const settleMinutes = 60;
+  const ripe = stillOpen.filter(
+    (p) => Date.now() - new Date(p.paid_at).getTime() > settleMinutes * 60 * 1000
+  );
+
+  if (ripe.length) {
+    const { error: revErr } = await supabaseAdmin.from("paymob_verification_reviews").upsert(
+      ripe.map((p) => ({
+        payment_id: p.id,
+        visit_id: p.visit_id,
+        amount: p.amount,
+        payment_method: p.payment_method,
+        paid_at: p.paid_at,
+        reason: "No matching Paymob charge found on the scan terminal",
+        status: "pending",
+      })),
+      { onConflict: "payment_id", ignoreDuplicates: true } // never reopen one an admin already decided
+    );
+    if (revErr) report.errors.push(`review queue: ${revErr.message}`);
+    else report.sentToActionCenter = ripe.length;
   }
 
   report.stillUnverified = live.length - report.verified;

@@ -2743,7 +2743,7 @@ function PaymentProof({ payment }) {
     verticalAlign: "middle",
   };
 
-  if (v === "verified_paymob" || v === "verified_paymob_historical") {
+  if (["verified_paymob", "verified_paymob_historical", "verified_paymob_group", "verified_paymob_late"].includes(v)) {
     const card = [payment.paymob_card_brand, payment.paymob_card_last4 ? `····${payment.paymob_card_last4}` : null]
       .filter(Boolean)
       .join(" ");
@@ -2753,6 +2753,19 @@ function PaymentProof({ payment }) {
         title={`Paymob transaction ${payment.paymob_transaction_id}${payment.paymob_fees != null ? ` · fee ${Number(payment.paymob_fees).toFixed(2)} EGP` : ""}`}
       >
         Card confirmed{card ? ` · ${card}` : ""}
+        {v === "verified_paymob_group" ? " · shared swipe" : ""}
+      </span>
+    );
+  }
+
+  if (v === "approved_by_admin") {
+    // Deliberately not green. An admin vouching for a payment is a weaker
+    // claim than the gateway confirming it, and the two should never look the
+    // same at a glance.
+    return (
+      <span style={{ ...pill, background: "#f4f6fb", border: "1px solid #ccd6ea", color: "#31518f" }}
+        title="No Paymob charge was found. An admin confirmed the money arrived.">
+        Approved by admin
       </span>
     );
   }
