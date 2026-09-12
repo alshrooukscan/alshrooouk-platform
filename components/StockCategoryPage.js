@@ -401,10 +401,11 @@ function ImageUploadModal({ item, onClose, onSaved }) {
 
 function AddItemModal({ category, title, onClose, onSaved }) {
   const [form, setForm] = useState({
-    name: "", item_code: "", qty_remaining: "", purchase_price: "", sale_price: "",
-    reorder_level: "", image_url: "",
+    name: "", qty_remaining: "", purchase_price: "", sale_price: "", reorder_level: "",
   });
   const [nextCode, setNextCode] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -433,20 +434,47 @@ function AddItemModal({ category, title, onClose, onSaved }) {
     }
     setSaving(true);
     setError("");
-    const { error: err } = await supabase.from("stock_items").insert({
-      category,
-      name: form.name.trim(),
-      // Blank means the database assigns the next code in this stock's own
-      // sequence. Typing one over it is still allowed.
-      item_code: form.item_code.trim() || null,
-      qty_remaining: num(form.qty_remaining) ?? 0,
-      purchase_price: num(form.purchase_price),
-      sale_price: num(form.sale_price),
-      reorder_level: num(form.reorder_level) ?? 0,
-      image_url: form.image_url.trim() || null,
-    });
+    // The code is left out entirely rather than sent empty, so the database
+    // assigns the next one in this stock's sequence.
+    const { data: created, error: err } = await supabase
+      .from("stock_items")
+      .insert({
+        category,
+        name: form.name.trim(),
+        qty_remaining: num(form.qty_remaining) ?? 0,
+        purchase_price: num(form.purchase_price),
+        sale_price: num(form.sale_price),
+        reorder_level: num(form.reorder_level) ?? 0,
+      })
+      .select("id")
+      .single();
+
+    if (err) {
+      setSaving(false);
+      return setError(err.message);
+    }
+
+    // The image is named after the item, so it can only be uploaded once the
+    // item exists. If this fails the item is still saved - a picture can be
+    // added from the table afterwards, and losing the whole entry over it
+    // would be the worse outcome.
+    if (imageFile && created?.id) {
+      const ext = imageFile.name.split(".").pop();
+      const path = `${created.id}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("stock-item-images")
+        .upload(path, imageFile, { upsert: true });
+      if (!upErr) {
+        const { data: pub } = supabase.storage.from("stock-item-images").getPublicUrl(path);
+        await supabase.from("stock_items").update({ image_url: pub.publicUrl }).eq("id", created.id);
+      } else {
+        setSaving(false);
+        onSaved();
+        return setError(`Item saved, but the image did not upload: ${upErr.message}. Add it from the table.`);
+      }
+    }
+
     setSaving(false);
-    if (err) return setError(err.message);
     onSaved();
     onClose();
   }
@@ -460,14 +488,18 @@ function AddItemModal({ category, title, onClose, onSaved }) {
       <input style={inp} value={form.name} onChange={set("name")} placeholder="e.g., Lidocaine HCL 2%" />
 
       <FieldLabel>Item Code</FieldLabel>
+      {/* Filled in and not editable. Codes are a single running sequence per
+          stock and a typed one would either duplicate an existing line or
+          leave a hole; the number is the platform's to keep, not a decision
+          for whoever is standing at the counter. */}
       <input
-        style={inp}
-        value={form.item_code}
-        onChange={set("item_code")}
-        placeholder={nextCode ? `${nextCode} (assigned automatically)` : "assigned automatically"}
+        style={{ ...inp, background: "#f1f2f6", color: theme.gray, cursor: "not-allowed" }}
+        value={nextCode ?? "..."}
+        readOnly
+        disabled
       />
       <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-        Leave it blank and this item becomes {nextCode ? `code ${nextCode}` : "the next code"} in {title} stock.
+        Next code in {title} stock, assigned automatically.
       </p>
 
       <div style={half}>
@@ -492,10 +524,25 @@ function AddItemModal({ category, title, onClose, onSaved }) {
         </div>
       </div>
 
-      <FieldLabel>Image URL</FieldLabel>
-      <input style={inp} value={form.image_url} onChange={set("image_url")} placeholder="Optional" />
+      <FieldLabel>Image</FieldLabel>
+      {/* The same upload the table rows use, into the same bucket with the same
+          naming, so a picture added here sits alongside every other item's
+          rather than depending on someone having a URL to hand. */}
+      {imagePreview && (
+        <img src={imagePreview} alt="" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 8, marginBottom: 8 }} />
+      )}
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          setImageFile(f || null);
+          setImagePreview(f ? URL.createObjectURL(f) : null);
+        }}
+        style={{ fontSize: 13 }}
+      />
       <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-        Shown here and on the card doctors see when browsing {title} stock in their portal.
+        Optional. Shown here and on the card doctors see when browsing {title} stock in their portal.
       </p>
 
       {/* An opening quantity is a real movement: it opens a batch so the
