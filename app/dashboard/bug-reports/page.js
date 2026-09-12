@@ -27,6 +27,7 @@ export default function BugReportsPage() {
   const [reports, setReports] = useState([]);
   useAutoRefresh(["bug_reports"], () => { load(); });
   const [canTriage, setCanTriage] = useState(false);
+  const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
@@ -65,6 +66,7 @@ export default function BugReportsPage() {
       const j = await res.json();
       setReports(j.reports || []);
       setCanTriage(!!j.canTriage);
+      setInsights(j.insights || null);
 
       // Reading the reply is what clears the sidebar counter. This is the one
       // notification that behaves like news rather than work: everything else
@@ -212,6 +214,8 @@ export default function BugReportsPage() {
         </div>
       )}
 
+      {canTriage && insights && <SupportInsights data={insights} />}
+
       {canTriage && (
         <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
           {["all", "open", "in_progress", "resolved", "wont_fix"].map((f) => (
@@ -308,3 +312,94 @@ export default function BugReportsPage() {
 }
 
 const lbl = { display: "block", fontSize: 11, fontWeight: 700, color: "#48464E", marginBottom: 5 };
+
+// Trends over the support queue, for the one person who triages it. Deliberately
+// four small readings rather than a dashboard: what kind of thing breaks, where
+// it breaks, who is hitting it, and whether the rate is rising or falling.
+function SupportInsights({ data }) {
+  const [open, setOpen] = useState(false);
+  const label = (k) => (ERROR_TYPES.find((t) => t.key === k)?.label || k).replace(/ \/ .*/, "");
+  const max = (rows) => Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r[1] : r.raised)));
+
+  const Bar = ({ name, value, of, tone = theme.navy }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+      <div style={{ width: 200, fontSize: 12, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={name}>
+        {name}
+      </div>
+      <div style={{ flex: 1, height: 16, background: "#f1f2f6", borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ width: `${(value / of) * 100}%`, height: "100%", background: tone, borderRadius: 4 }} />
+      </div>
+      <div style={{ width: 28, textAlign: "right", fontSize: 12, fontWeight: 700, color: theme.navy }}>{value}</div>
+    </div>
+  );
+
+  const Stat = ({ label: l, value, tone }) => (
+    <div style={{ flex: "1 1 120px", background: "#fff", borderRadius: 10, padding: "12px 14px", boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>
+      <div style={{ fontSize: 11, color: theme.gray, marginBottom: 4 }}>{l}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: tone || theme.navy }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.gold, fontWeight: 700, fontSize: 13, marginBottom: 10 }}
+      >
+        {open ? "Hide trends" : "Show trends"}
+      </button>
+
+      {open && (
+        <div style={{ background: "#f7f8fa", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
+            <Stat label="Total raised" value={data.total} />
+            <Stat label="Open" value={data.open} tone={data.open ? "#a97c00" : theme.navy} />
+            <Stat label="In progress" value={data.inProgress} />
+            <Stat label="Resolved" value={data.resolved} tone="#1e7a3c" />
+            {/* Median, not average: one ticket left over a weekend drags a mean
+                far enough to make a good week look bad. */}
+            <Stat label="Typical time to resolve" value={data.medianHours === null ? "—" : `${data.medianHours}h`} />
+          </div>
+
+          <Section title="What kind of thing breaks">
+            {data.byType.map(([k, v]) => <Bar key={k} name={label(k)} value={v} of={max(data.byType)} />)}
+          </Section>
+
+          <Section title="Where it breaks">
+            {data.byPage.map(([k, v]) => <Bar key={k} name={k} value={v} of={max(data.byPage)} tone="#7a6cc4" />)}
+          </Section>
+
+          <Section title="Who is reporting">
+            {data.byReporter.map((r) => (
+              <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                <div style={{ width: 200, fontSize: 12, color: theme.navy }}>{r.name}</div>
+                <div style={{ flex: 1, height: 16, background: "#f1f2f6", borderRadius: 4, overflow: "hidden", display: "flex" }}>
+                  <div style={{ width: `${(r.resolved / max(data.byReporter)) * 100}%`, background: "#1e7a3c" }} />
+                  <div style={{ width: `${((r.raised - r.resolved) / max(data.byReporter)) * 100}%`, background: "#e0b84c" }} />
+                </div>
+                <div style={{ width: 70, textAlign: "right", fontSize: 11, color: theme.gray }}>
+                  {r.resolved}/{r.raised} done
+                </div>
+              </div>
+            ))}
+          </Section>
+
+          <Section title="By month">
+            {data.byMonth.map(([k, v]) => <Bar key={k} name={k} value={v} of={max(data.byMonth)} tone="#4a90d9" />)}
+          </Section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: theme.gray, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
