@@ -16,6 +16,10 @@ export default function PayslipsPage() {
   const [rules, setRules] = useState([]);
   const [selected, setSelected] = useState("");
   const [period, setPeriod] = useState(thisPeriod());
+  const [otHours, setOtHours] = useState("");
+  const [otAmount, setOtAmount] = useState("");
+  const [otNote, setOtNote] = useState("");
+  const [otBusy, setOtBusy] = useState(false);
   const [slip, setSlip] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -81,6 +85,41 @@ export default function PayslipsPage() {
     needs_review: { bg: "#fff8e1", fg: "#a97c00", label: "No sign-out" },
   };
 
+  async function decideOvertime(status) {
+    setOtBusy(true);
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        action: "decide_overtime",
+        employeeId: selected,
+        period,
+        status,
+        hours: otHours === "" ? slip?.overtimeHours : Number(otHours),
+        amount: Number(otAmount),
+        note: otNote || null,
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setOtBusy(false);
+    if (!res.ok) { alert(j.error || "Could not save that decision."); return; }
+    setOtHours(""); setOtAmount(""); setOtNote("");
+    loadSlip();
+  }
+
+  async function reopenOvertime() {
+    setOtBusy(true);
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "undo_overtime", employeeId: selected, period }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setOtBusy(false);
+    if (!res.ok) { alert(j.error || "Could not reopen that decision."); return; }
+    loadSlip();
+  }
+
   return (
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Payslips</h1>
@@ -140,6 +179,75 @@ export default function PayslipsPage() {
               </p>
             )}
           </div>
+
+          {slip.payBasis === "hourly" && (slip.overtimeHours > 0 || slip.overtimeDecision) && (
+            <div style={{ ...card, marginBottom: 18, borderLeft: `4px solid ${theme.gold}` }}>
+              <h3 style={{ color: theme.navy, marginTop: 0 }}>
+                Overtime
+                <span style={{ fontSize: 11, fontWeight: 400, color: theme.gray, marginLeft: 8 }}>
+                  Hours worked beyond the schedule. Never paid automatically.
+                </span>
+              </h3>
+
+              {slip.overtimeDecision ? (
+                <div style={{ fontSize: 13, color: theme.navy }}>
+                  {slip.overtimeDecision.status === "approved" ? (
+                    <p style={{ margin: "0 0 6px" }}>
+                      <strong>{Number(slip.overtimeDecision.hours_approved).toFixed(2)} h approved</strong> at{" "}
+                      <strong>{formatMoney(slip.overtimeDecision.amount)} EGP</strong>, added as a bonus below.
+                    </p>
+                  ) : (
+                    <p style={{ margin: "0 0 6px" }}>
+                      <strong>Waived.</strong> {Number(slip.overtimeHours).toFixed(2)} h were recorded and
+                      deliberately not paid.
+                    </p>
+                  )}
+                  <p style={{ margin: 0, fontSize: 12, color: theme.gray }}>
+                    Decided by {slip.overtimeDecision.decided_by}
+                    {slip.overtimeDecision.note ? ` · ${slip.overtimeDecision.note}` : ""}
+                  </p>
+                  <button onClick={reopenOvertime} disabled={otBusy}
+                    style={{ marginTop: 10, background: "transparent", color: theme.navy, border: `1px solid ${theme.gray}`,
+                             borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+                    Reopen
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13, color: theme.navy, margin: "0 0 10px" }}>
+                    <strong>{Number(slip.overtimeHours).toFixed(2)} hours</strong> recorded beyond the schedule.
+                    At the hourly rate that would be {formatMoney(slip.overtimeIndicativeValue)} EGP, shown only as
+                    a reference — enter whatever it is actually worth.
+                  </p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input type="number" step="0.01" placeholder={`Hours (max ${Number(slip.overtimeHours).toFixed(2)})`}
+                      value={otHours} onChange={(e) => setOtHours(e.target.value)}
+                      style={{ ...inp, width: 170 }} />
+                    <input type="number" step="0.01" placeholder="Amount in EGP"
+                      value={otAmount} onChange={(e) => setOtAmount(e.target.value)}
+                      style={{ ...inp, width: 150 }} />
+                    <input type="text" placeholder="Reason (optional)"
+                      value={otNote} onChange={(e) => setOtNote(e.target.value)}
+                      style={{ ...inp, flex: 1, minWidth: 180 }} />
+                    <button onClick={() => decideOvertime("approved")} disabled={otBusy || !otAmount}
+                      style={{ background: theme.navy, color: "#fff", border: "none", borderRadius: 8,
+                               padding: "9px 16px", fontWeight: 700, cursor: "pointer", opacity: otBusy || !otAmount ? 0.5 : 1 }}>
+                      Approve
+                    </button>
+                    <button onClick={() => decideOvertime("waived")} disabled={otBusy}
+                      style={{ background: "transparent", color: theme.navy, border: `1px solid ${theme.gray}`,
+                               borderRadius: 8, padding: "9px 16px", fontWeight: 700, cursor: "pointer" }}>
+                      Waive
+                    </button>
+                  </div>
+                  <p style={{ margin: "10px 0 0", fontSize: 12, color: theme.gray }}>
+                    Waiving still records the decision and who made it, so unpaid overtime is always a choice
+                    someone made rather than something that quietly disappeared.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
             <div style={card}>

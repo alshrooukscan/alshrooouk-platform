@@ -196,6 +196,60 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, payslip: data, period: p });
   }
 
+  // Overtime, CEO decision option A.
+  // Never paid automatically and never discarded. A named admin decides
+  // each balance once per period and sets the amount themselves, because
+  // the clinic values overtime its own way. Approving writes an ordinary
+  // bonus adjustment, so it travels through the same single engine.
+  if (action === "decide_overtime") {
+    const { employeeId, status, hours, amount, note } = body;
+    const period = normalizePeriod(body.period);
+    if (!employeeId) return NextResponse.json({ error: "Employee is required." }, { status: 400 });
+    if (status !== "approved" && status !== "waived") {
+      return NextResponse.json({ error: "A decision is either approved or waived." }, { status: 400 });
+    }
+    const { data, error } = await supabaseAdmin.rpc("overtime_decide", {
+      p_employee_id: employeeId,
+      p_period: period,
+      p_status: status,
+      p_hours: status === "approved" ? Number(hours || 0) : 0,
+      p_amount: status === "approved" ? Number(amount || 0) : 0,
+      p_note: note || null,
+      p_by_id: staff.id || null,
+      p_by_name: staff.name || "Unknown",
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    try {
+      await supabaseAdmin.from("activity_log").insert({
+        actor_type: staff.role === "admin" ? "admin" : "employee",
+        actor_id: staff.id || null,
+        actor_name: staff.name || "Unknown",
+        action: "overtime_decided",
+        entity_type: "employee",
+        entity_id: employeeId,
+        details: { period, status, hours: hours || 0, amount: amount || 0 },
+      });
+    } catch (e) {
+      console.error("overtime activity log failed", e);
+    }
+    return NextResponse.json({ ok: true, decision: data });
+  }
+
+  if (action === "undo_overtime") {
+    if (staff.role !== "admin") {
+      return NextResponse.json({ error: "Only an admin can reopen an overtime decision." }, { status: 403 });
+    }
+    const { employeeId } = body;
+    const period = normalizePeriod(body.period);
+    const { data, error } = await supabaseAdmin.rpc("overtime_undecide", {
+      p_employee_id: employeeId,
+      p_period: period,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true, reopened: data });
+  }
+
   if (action === "remove_adjustment") {
     const { id } = body;
     const { error } = await supabaseAdmin.from("payroll_adjustments").delete().eq("id", id);
