@@ -400,26 +400,117 @@ function ImageUploadModal({ item, onClose, onSaved }) {
 }
 
 function AddItemModal({ category, title, onClose, onSaved }) {
-  const [name, setName] = useState("");
-  const [itemCode, setItemCode] = useState("");
+  const [form, setForm] = useState({
+    name: "", item_code: "", qty_remaining: "", purchase_price: "", sale_price: "",
+    reorder_level: "", image_url: "",
+  });
+  const [nextCode, setNextCode] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  // Shown before saving so staff can see what the item will be called, rather
+  // than saving and then hunting for it in a list of 246.
+  useEffect(() => {
+    supabase
+      .from("stock_items")
+      .select("item_code")
+      .eq("category", category)
+      .then(({ data }) => {
+        const highest = (data || [])
+          .map((r) => parseInt(r.item_code, 10))
+          .filter((n) => Number.isFinite(n));
+        setNextCode(String((highest.length ? Math.max(...highest) : 0) + 1));
+      });
+  }, [category]);
+
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const num = (v) => (v === "" ? null : Number(v));
 
   async function handleSave() {
-    if (!name) return;
+    if (!form.name.trim()) return setError("The item needs a name.");
+    if (form.sale_price !== "" && form.purchase_price !== "" && Number(form.sale_price) < Number(form.purchase_price)) {
+      return setError("The sale price is below the purchase price. Correct it, or leave the sale price blank for now.");
+    }
     setSaving(true);
-    await supabase.from("stock_items").insert({ category, name, item_code: itemCode, qty_remaining: 0 });
+    setError("");
+    const { error: err } = await supabase.from("stock_items").insert({
+      category,
+      name: form.name.trim(),
+      // Blank means the database assigns the next code in this stock's own
+      // sequence. Typing one over it is still allowed.
+      item_code: form.item_code.trim() || null,
+      qty_remaining: num(form.qty_remaining) ?? 0,
+      purchase_price: num(form.purchase_price),
+      sale_price: num(form.sale_price),
+      reorder_level: num(form.reorder_level) ?? 0,
+      image_url: form.image_url.trim() || null,
+    });
     setSaving(false);
+    if (err) return setError(err.message);
     onSaved();
     onClose();
   }
 
+  const half = { display: "flex", gap: 10 };
+  const halfCol = { flex: 1, minWidth: 0 };
+
   return (
     <Modal title={`Add ${title} Item`} onClose={onClose}>
       <FieldLabel>Item Name</FieldLabel>
-      <input style={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Lidocaine HCL 2%" />
+      <input style={inp} value={form.name} onChange={set("name")} placeholder="e.g., Lidocaine HCL 2%" />
+
       <FieldLabel>Item Code</FieldLabel>
-      <input style={inp} value={itemCode} onChange={(e) => setItemCode(e.target.value)} placeholder="e.g., DEN-LD-001" />
-      <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Save Item"}</button>
+      <input
+        style={inp}
+        value={form.item_code}
+        onChange={set("item_code")}
+        placeholder={nextCode ? `${nextCode} (assigned automatically)` : "assigned automatically"}
+      />
+      <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+        Leave it blank and this item becomes {nextCode ? `code ${nextCode}` : "the next code"} in {title} stock.
+      </p>
+
+      <div style={half}>
+        <div style={halfCol}>
+          <FieldLabel>Opening Quantity</FieldLabel>
+          <input style={inp} type="number" min="0" value={form.qty_remaining} onChange={set("qty_remaining")} placeholder="0" />
+        </div>
+        <div style={halfCol}>
+          <FieldLabel>Reorder Level</FieldLabel>
+          <input style={inp} type="number" min="0" value={form.reorder_level} onChange={set("reorder_level")} placeholder="0" />
+        </div>
+      </div>
+
+      <div style={half}>
+        <div style={halfCol}>
+          <FieldLabel>Purchase Price</FieldLabel>
+          <input style={inp} type="number" min="0" step="0.01" value={form.purchase_price} onChange={set("purchase_price")} placeholder="EGP" />
+        </div>
+        <div style={halfCol}>
+          <FieldLabel>Sale Price</FieldLabel>
+          <input style={inp} type="number" min="0" step="0.01" value={form.sale_price} onChange={set("sale_price")} placeholder="EGP" />
+        </div>
+      </div>
+
+      <FieldLabel>Image URL</FieldLabel>
+      <input style={inp} value={form.image_url} onChange={set("image_url")} placeholder="Optional" />
+      <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+        Shown here and on the card doctors see when browsing {title} stock in their portal.
+      </p>
+
+      {/* An opening quantity is a real movement: it opens a batch so the
+          purchase ledger and the shelf count start life agreeing. */}
+      {Number(form.qty_remaining) > 0 && !form.purchase_price && (
+        <p style={{ fontSize: 11, color: "#8a6d00", margin: "8px 0 0" }}>
+          With no purchase price, this opening stock is recorded at zero cost and the item will show no value.
+        </p>
+      )}
+
+      {error && <p style={{ fontSize: 12, color: "#b42318", margin: "8px 0 0" }}>{error}</p>}
+
+      <button onClick={handleSave} disabled={saving} style={{ ...primaryBtn, marginTop: 12 }}>
+        {saving ? "Saving..." : "Save Item"}
+      </button>
     </Modal>
   );
 }
