@@ -15,6 +15,8 @@ import {
   patientRawDataWhatsAppLink, buildPatientRawDataMessage,
   directWhatsAppLink,
   doctorReportWhatsAppLink, buildDoctorReportMessage,
+  doctorPortalLinkWhatsAppLink, buildDoctorPortalLinkMessage2 as buildDoctorPortalLinkMessage,
+  doctorVisitInvoiceWhatsAppLink, buildDoctorVisitInvoiceMessage,
   doctorRawDataWhatsAppLink, buildDoctorRawDataMessage,
 } from "../../../../lib/whatsapp";
 import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
@@ -319,7 +321,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at)")
+      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       // Goes through a service-role route rather than querying patient_auth
@@ -556,12 +558,23 @@ export default function PatientProfilePage() {
     const args = { doctorName: doc.name, patientName: patient.name, scanTypes, examDate: visit.exam_date };
     let text, link;
 
-    if (type === "report") {
+    if (type === "greeting") {
+      // The doctor's own portal link, the counterpart of the patient Greeting.
+      // Every one of the 166 doctors already has an account, so this sends the
+      // link and their username - it never issues a new password, which would
+      // lock a doctor out of a portal they are already using.
+      const portalUrl = `${APP_URL}/portal`;
+      text = buildDoctorPortalLinkMessage({ doctorName: doc.name, portalUrl, username: doc.username });
+      link = doctorPortalLinkWhatsAppLink({ mobile: doc.phone, doctorName: doc.name, portalUrl, username: doc.username });
+    } else if (type === "report") {
       text = buildDoctorReportMessage(args);
       link = doctorReportWhatsAppLink({ mobile: doc.phone, ...args });
     } else if (type === "raw_data") {
       text = buildDoctorRawDataMessage(args);
       link = doctorRawDataWhatsAppLink({ mobile: doc.phone, ...args });
+    } else if (type === "invoice") {
+      text = buildDoctorVisitInvoiceMessage({ ...args, amount: visit.amount_due });
+      link = doctorVisitInvoiceWhatsAppLink({ mobile: doc.phone, ...args, amount: visit.amount_due });
     } else {
       link = directWhatsAppLink(doc.phone);
     }
@@ -1178,7 +1191,9 @@ export default function PatientProfilePage() {
                     label="Send WhatsApp Doctor"
                     buttonStyle={smallBtn}
                     options={[
+                      { label: "Greeting", onClick: () => sendDoctorWhatsApp(v, "greeting") },
                       { label: "Report", onClick: () => sendDoctorWhatsApp(v, "report") },
+                      { label: "Invoice", onClick: () => sendDoctorWhatsApp(v, "invoice") },
                       { label: "Raw Data", onClick: () => sendDoctorWhatsApp(v, "raw_data") },
                       { label: "Direct (empty)", onClick: () => sendDoctorWhatsApp(v, "direct") },
                     ]}
