@@ -21,6 +21,7 @@ import {
 } from "../../../../lib/whatsapp";
 import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
 import { usePermissions } from "../../../../lib/usePermissions";
+import { verifyPaymentSoon } from "../../../../lib/paymobClient";
 import { logActivity } from "../../../../lib/activityLog";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
@@ -177,6 +178,9 @@ export default function PatientProfilePage() {
       created_by_id: profile?.id || null,
       created_by_name: profile?.name || null,
     });
+    // Card payments prove themselves against Paymob a moment later, but only
+    // once the row actually saved.
+    if (!err) verifyPaymentSoon(paymentForm.method);
     setPaymentSaving(false);
     if (err) {
       setPaymentError(err.message);
@@ -321,7 +325,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at)")
+      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at, payment_verification, paymob_transaction_id, paymob_card_brand, paymob_card_last4, paymob_fees)")
       .eq("patient_id", id)
         .order("exam_date", { ascending: false }),
       // Goes through a service-role route rather than querying patient_auth
@@ -1046,6 +1050,12 @@ export default function PatientProfilePage() {
                   {(v.visit_payments || []).length > 0 && (
                     <> · {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + ")}</>
                   )}
+                  {/* A card payment is only a claim until the matching charge
+                      is found in Paymob, so the proof is shown next to it:
+                      which card was used and what the gateway kept. */}
+                  {(v.visit_payments || []).map((p) => (
+                    <PaymentProof key={`proof-${p.id}`} payment={p} />
+                  ))}
                   {/* Admin only. A payment cannot be edited by anyone - this
                       corrects the method and records who changed it and why,
                       leaving the original method on the record. */}
@@ -1689,6 +1699,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
         created_by_id: profile?.id || null,
         created_by_name: profile?.name || null,
       });
+      if (!pErr) verifyPaymentSoon(form.payment_method);
       if (pErr) {
         setError(`Scan was created, but recording the payment failed: ${pErr.message}`);
         return;
@@ -2132,6 +2143,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
           created_by_id: profile?.id || null,
           created_by_name: profile?.name || null,
         });
+        if (!payErr) verifyPaymentSoon(form.new_payment_method);
         if (payErr) {
           setSaving(false);
           setError(payErr.message);
@@ -2711,5 +2723,53 @@ function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// Shows what backs a payment: a real Paymob charge, an assumption, or nothing
+// yet. Card payments taken minutes ago legitimately sit unproven for a short
+// while, because Paymob publishes the charge a little after the tap.
+function PaymentProof({ payment }) {
+  const v = payment?.payment_verification;
+  if (!v && !["Visa", "Wallet"].includes(payment?.payment_method)) return null;
+
+  const pill = {
+    display: "inline-block",
+    marginLeft: 6,
+    padding: "1px 6px",
+    borderRadius: 999,
+    fontSize: 10,
+    fontWeight: 700,
+    verticalAlign: "middle",
+  };
+
+  if (v === "verified_paymob" || v === "verified_paymob_historical") {
+    const card = [payment.paymob_card_brand, payment.paymob_card_last4 ? `····${payment.paymob_card_last4}` : null]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <span
+        style={{ ...pill, background: "#f6faf7", border: "1px solid #dbe7de", color: "#1e7a3c" }}
+        title={`Paymob transaction ${payment.paymob_transaction_id}${payment.paymob_fees != null ? ` · fee ${Number(payment.paymob_fees).toFixed(2)} EGP` : ""}`}
+      >
+        Card confirmed{card ? ` · ${card}` : ""}
+      </span>
+    );
+  }
+
+  if (v === "assumed_pre_launch") {
+    return (
+      <span style={{ ...pill, background: "#f6f7f8", border: "1px solid #e3e6e9", color: "#5a6570" }}
+        title="Taken before the platform went live. No card charge matched it, so it is recorded as cash collected.">
+        Cash (before launch)
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ ...pill, background: "#fffaf0", border: "1px solid #eddcb4", color: "#8a6d00" }}
+      title="No matching card charge found in Paymob yet. A payment just taken will confirm itself shortly.">
+      Awaiting card proof
+    </span>
   );
 }

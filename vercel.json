@@ -1,1 +1,1 @@
-{"crons":[{"path":"/api/drive-backup/tick","schedule":"0 3 * * *"}]}
+{"crons": [{"path": "/api/drive-backup/tick", "schedule": "0 3 * * *"}, {"path": "/api/paymob/sync", "schedule": "45 23 * * *"}]}

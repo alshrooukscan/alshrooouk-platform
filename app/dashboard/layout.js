@@ -45,7 +45,7 @@ const OPEN_ROUTES = ["/dashboard/action-center", "/dashboard/bug-reports"];
 // them and the pages honour the key - but they were still listed here, so a
 // person granted the permission saw the link, clicked it, and was refused by
 // the layout. They are gated by their own keys now, like every other page.
-const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer"];
+const ADMIN_ROUTES = ["/dashboard/exports", "/dashboard/expenses/brand-transfer", "/dashboard/paymob"];
 
 function permissionForPath(pathname) {
   if (OPEN_ROUTES.some((p) => pathname.startsWith(p))) return null;

@@ -32,6 +32,7 @@ import {
   FileCheck2,
   LifeBuoy,
   Download,
+  CreditCard,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
