@@ -109,7 +109,7 @@ async function applyMatch(payment, charge, gapMinutes, verification, shareOf) {
   return true;
 }
 
-async function run() {
+async function run(lookbackDays) {
   const report = { fetched: 0, stored: 0, verified: 0, stillUnverified: 0, errors: [] };
 
   // 1. Mirror the newest transactions. Three pages of 100 is about ten days
@@ -131,7 +131,7 @@ async function run() {
   // 2. Candidate payments: card-style methods, still without proof, recent,
   //    and after launch. Pre-launch rows were settled in the one-off pass and
   //    must not be touched again.
-  const since = isoDaysAgo(LOOKBACK_DAYS);
+  const since = isoDaysAgo(lookbackDays || LOOKBACK_DAYS);
   const { data: payments, error: payErr } = await supabaseAdmin
     .from("visit_payments")
     .select("id, visit_id, amount, payment_method, paid_at")
@@ -332,7 +332,12 @@ export async function GET(req) {
   }
 
   try {
-    const report = await run();
+    // A wider window is occasionally needed - after a rule change, or when a
+    // stretch of days needs re-checking. Capped so a stray value cannot walk
+    // the entire history on one request and time the function out.
+    const requested = Number(new URL(req.url).searchParams.get("days") || 0);
+    const lookbackDays = Math.min(Math.max(requested, 0), 60);
+    const report = await run(lookbackDays);
     return NextResponse.json({ ok: true, ...report });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
