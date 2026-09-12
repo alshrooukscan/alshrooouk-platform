@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { requireStaff } from "../../../../lib/requireStaff";
-import { buildPayslip, resolveRuleAmount, hoursBetween } from "../../../../lib/payroll";
+import { buildPayslip, resolveRuleAmount, hoursBetween, normalizePeriod } from "../../../../lib/payroll";
 
 function canHr(staff) {
   return staff && (staff.role === "admin" || staff.permissions?.hr === true);
@@ -36,7 +36,7 @@ export async function GET(req) {
 
   const empId = url.searchParams.get("payslip");
   if (empId) {
-    const period = url.searchParams.get("period") || new Date().toISOString().slice(0, 7);
+    const period = normalizePeriod(url.searchParams.get("period"));
     const slip = await buildPayslip(empId, period);
     if (!slip) return NextResponse.json({ error: "Employee not found." }, { status: 404 });
     return NextResponse.json({ payslip: slip });
@@ -158,6 +158,40 @@ export async function POST(req) {
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true, amount: Math.round(amount * 100) / 100 });
+  }
+
+  if (action === "generate") {
+    // Committing a payslip writes to payroll, advances, the F&B tab and the
+    // cash ledger. It used to be called straight from the browser with the
+    // public key against a SECURITY DEFINER function, which meant anyone
+    // holding that key could commit a payslip for anyone. It now runs here,
+    // behind the HR permission check, with the service role.
+    const { employeeId, period } = body;
+    if (!employeeId) return NextResponse.json({ error: "Employee is required." }, { status: 400 });
+
+    const p = normalizePeriod(period);
+    const { data, error } = await supabaseAdmin.rpc("generate_payslip", {
+      p_employee_id: employeeId,
+      p_period: p,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    // Logging must never block payroll, so failures here are swallowed.
+    try {
+      await supabaseAdmin.from("activity_log").insert({
+        actor_type: staff.role === "admin" ? "admin" : "employee",
+        actor_id: staff.id || null,
+        actor_name: staff.name || "Unknown",
+        action: "payslip_generated",
+        entity_type: "employee",
+        entity_id: employeeId,
+        details: { period: p, net_total: data?.net_total ?? null },
+      });
+    } catch (e) {
+      console.error("payslip activity log failed", e);
+    }
+
+    return NextResponse.json({ ok: true, payslip: data, period: p });
   }
 
   if (action === "remove_adjustment") {

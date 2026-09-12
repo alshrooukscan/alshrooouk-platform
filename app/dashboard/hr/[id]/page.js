@@ -242,14 +242,36 @@ export default function EmployeeProfilePage() {
 
   async function handleGeneratePayslip() {
     setGenerating(true);
-    const period = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
-    const { data, error } = await supabase.rpc("generate_payslip", { p_employee_id: id, p_period: period });
-    setGenerating(false);
-    if (error) {
-      alert(error.message);
+    // Period is YYYY-MM everywhere. This used to send "September 2026",
+    // which matched nothing in payroll_adjustments, so every manual bonus
+    // and deduction was silently dropped from the committed payslip.
+    const period = new Date().toISOString().slice(0, 7);
+    // Committing goes through the server, not straight to the database.
+    // The RPC writes to payroll, advances, the F&B tab and the cash ledger,
+    // so it must sit behind the HR permission check.
+    let res;
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      res = await fetch("/api/hr/payroll", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.session?.access_token}`,
+        },
+        body: JSON.stringify({ action: "generate", employeeId: id, period }),
+      });
+    } catch (e) {
+      setGenerating(false);
+      alert("Could not reach the server. Nothing was committed.");
       return;
     }
-    setPayslip(data);
+    const j = await res.json().catch(() => ({}));
+    setGenerating(false);
+    if (!res.ok) {
+      alert(j.error || "Could not generate that payslip.");
+      return;
+    }
+    setPayslip(j.payslip);
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
