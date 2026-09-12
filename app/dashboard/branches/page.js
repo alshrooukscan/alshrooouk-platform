@@ -750,6 +750,7 @@ const smallInp = {
 // completion in dedicated columns on the visit itself.
 function ExamSteps({ examTypeId, examName, onClose }) {
   const [steps, setSteps] = useState([]);
+  const [hidden, setHidden] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({ name: "", target_minutes: "" });
   const [saving, setSaving] = useState(false);
@@ -761,7 +762,8 @@ function ExamSteps({ examTypeId, examName, onClose }) {
       .select("*")
       .eq("exam_type_id", examTypeId)
       .order("sort_order");
-    setSteps(data || []);
+    setSteps((data || []).filter((x) => x.is_active));
+    setHidden((data || []).filter((x) => !x.is_active));
     setLoading(false);
   }, [examTypeId]);
 
@@ -790,9 +792,27 @@ function ExamSteps({ examTypeId, examName, onClose }) {
   }
 
   async function removeStep(step) {
-    if (step.legacy_field) return;
-    if (!confirm(`Remove "${step.name}" from ${examName}? Visits already past this step keep their record of it.`)) return;
-    await supabase.from("exam_type_steps").delete().eq("id", step.id);
+    // Built-in steps are hidden rather than deleted. Their completions live in
+    // columns on the visit itself - 82 visits marked Scanned, 72 with a report
+    // done - and that data is untouched either way, but hiding means the step
+    // can be brought back with its history intact. Steps the clinic added
+    // themselves are deleted outright, since nothing else refers to them.
+    const built = !!step.legacy_field;
+    const msg = built
+      ? `Hide "${step.name}" from ${examName}? It stops appearing on visits. Completions already recorded are kept, and you can bring it back.`
+      : `Remove "${step.name}" from ${examName}? Visits already past this step keep their record of it.`;
+    if (!confirm(msg)) return;
+
+    if (built) {
+      await supabase.from("exam_type_steps").update({ is_active: false }).eq("id", step.id);
+    } else {
+      await supabase.from("exam_type_steps").delete().eq("id", step.id);
+    }
+    load();
+  }
+
+  async function restoreStep(step) {
+    await supabase.from("exam_type_steps").update({ is_active: true }).eq("id", step.id);
     load();
   }
 
@@ -864,15 +884,30 @@ function ExamSteps({ examTypeId, examName, onClose }) {
               </span>
               <button onClick={() => move(st, -1)} disabled={idx === 0} style={arrowBtn}>&uarr;</button>
               <button onClick={() => move(st, 1)} disabled={idx === steps.length - 1} style={arrowBtn}>&darr;</button>
-              {st.legacy_field ? (
-                <span style={{ fontSize: 10, color: theme.gray }} title="Built in - visits store this one directly, so it can be renamed but not removed">
+              {st.legacy_field && (
+                <span style={{ fontSize: 10, color: theme.gray }} title="Built in - completions are stored on the visit itself, so hiding this keeps them">
                   built in
                 </span>
-              ) : (
-                <button onClick={() => removeStep(st)} style={{ ...arrowBtn, color: "#b42318" }}>Remove</button>
               )}
+              <button onClick={() => removeStep(st)} style={{ ...arrowBtn, color: "#b42318" }}>
+                {st.legacy_field ? "Hide" : "Remove"}
+              </button>
             </div>
           ))}
+
+          {hidden.length > 0 && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ddd" }}>
+              <div style={{ fontSize: 11, color: theme.gray, marginBottom: 6 }}>
+                Hidden from visits. Completions already recorded are kept.
+              </div>
+              {hidden.map((st) => (
+                <div key={st.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, color: theme.gray, textDecoration: "line-through" }}>{st.name}</span>
+                  <button onClick={() => restoreStep(st)} style={arrowBtn}>Bring back</button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {steps.length === 0 && (
             <p style={{ fontSize: 12, color: theme.gray }}>No steps yet. Visits will show only Paid and Invoice Generated.</p>
