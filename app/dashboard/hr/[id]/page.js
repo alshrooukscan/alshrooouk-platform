@@ -36,6 +36,9 @@ export default function EmployeeProfilePage() {
   const [elevationResult, setElevationResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [skills, setSkills] = useState([]);
+  const [skillCash, setSkillCash] = useState([]);
+  const [skillBusy, setSkillBusy] = useState(null);
   const [savingShifts, setSavingShifts] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoBase64, setPhotoBase64] = useState(null);
@@ -274,6 +277,44 @@ export default function EmployeeProfilePage() {
     setPayslip(j.payslip);
   }
 
+
+  async function loadSkills() {
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch(`/api/hr/skills?employeeId=${id}`, {
+      headers: { Authorization: `Bearer ${session.session?.access_token}` },
+    });
+    if (!res.ok) return;
+    const j = await res.json();
+    setSkills(j.skills || []);
+    setSkillCash(j.cash_balances || []);
+  }
+
+  useEffect(() => { if (id) loadSkills(); }, [id]);
+
+  // A Cash Keeper skill is the only thing standing between this person and
+  // payroll sweeping their cash, so taking one away is confirmed out loud.
+  async function toggleSkill(skill) {
+    if (skill.held && skill.is_cash_keeper) {
+      const holding = skillCash.map((b) => `${b.brand}: ${formatMoney(b.balance)} EGP`).join(", ");
+      const ok = window.confirm(
+        `Remove "${skill.label}"?\n\nPayroll will start sweeping this person's cash for that business at the end of the month.` +
+        (holding ? `\n\nThey are currently holding ${holding}.` : "")
+      );
+      if (!ok) return;
+    }
+    setSkillBusy(skill.id);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/hr/skills", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ employeeId: id, skillId: skill.id, action: skill.held ? "revoke" : "grant" }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setSkillBusy(null);
+    if (!res.ok) { alert(j.error || "Could not change that skill."); return; }
+    loadSkills();
+  }
+
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
   if (!employee) return <p style={{ color: theme.gray }}>Employee not found.</p>;
 
@@ -447,6 +488,41 @@ export default function EmployeeProfilePage() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>
+          Skills
+          <span style={{ fontSize: 12, fontWeight: 400, color: theme.gray, marginLeft: 8 }}>
+            What this person is cleared to do. A Cash Keeper skill also decides whether payroll sweeps their cash.
+          </span>
+        </h3>
+        {skills.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No skills defined yet.</p>}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {skills.map((sk) => (
+            <button
+              key={sk.id}
+              onClick={() => toggleSkill(sk)}
+              disabled={skillBusy === sk.id}
+              title={sk.held && sk.granted_by_name ? `Granted by ${sk.granted_by_name}` : sk.description || ""}
+              style={{
+                padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                border: sk.held ? `1px solid ${sk.is_cash_keeper ? theme.gold : theme.navy}` : "1px solid #ddd",
+                background: sk.held ? (sk.is_cash_keeper ? "#FBF7EF" : theme.navy) : "#fff",
+                color: sk.held ? (sk.is_cash_keeper ? theme.navy : "#fff") : theme.gray,
+                opacity: skillBusy === sk.id ? 0.5 : 1,
+              }}
+            >
+              {sk.held ? "\u2713 " : "+ "}{sk.label}
+            </button>
+          ))}
+        </div>
+        {skillCash.length > 0 && (
+          <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#a97c00", fontWeight: 600 }}>
+            Currently holding {skillCash.map((b) => `${formatMoney(b.balance)} EGP for ${b.brand}`).join(", ")}.
+            Any business without a Cash Keeper skill above is swept at payroll.
+          </p>
+        )}
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
