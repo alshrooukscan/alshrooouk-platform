@@ -401,7 +401,7 @@ function ImageUploadModal({ item, onClose, onSaved }) {
 
 function AddItemModal({ category, title, onClose, onSaved }) {
   const [form, setForm] = useState({
-    name: "", qty_remaining: "", purchase_price: "", sale_price: "", reorder_level: "",
+    name: "", qty_remaining: "", purchase_price: "", sale_price: "",
   });
   const [nextCode, setNextCode] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -444,7 +444,6 @@ function AddItemModal({ category, title, onClose, onSaved }) {
         qty_remaining: num(form.qty_remaining) ?? 0,
         purchase_price: num(form.purchase_price),
         sale_price: num(form.sale_price),
-        reorder_level: num(form.reorder_level) ?? 0,
       })
       .select("id")
       .single();
@@ -502,16 +501,8 @@ function AddItemModal({ category, title, onClose, onSaved }) {
         Next code in {title} stock, assigned automatically.
       </p>
 
-      <div style={half}>
-        <div style={halfCol}>
-          <FieldLabel>Opening Quantity</FieldLabel>
-          <input style={inp} type="number" min="0" value={form.qty_remaining} onChange={set("qty_remaining")} placeholder="0" />
-        </div>
-        <div style={halfCol}>
-          <FieldLabel>Reorder Level</FieldLabel>
-          <input style={inp} type="number" min="0" value={form.reorder_level} onChange={set("reorder_level")} placeholder="0" />
-        </div>
-      </div>
+      <FieldLabel>Opening Quantity</FieldLabel>
+      <input style={inp} type="number" min="0" value={form.qty_remaining} onChange={set("qty_remaining")} placeholder="0" />
 
       <div style={half}>
         <div style={halfCol}>
