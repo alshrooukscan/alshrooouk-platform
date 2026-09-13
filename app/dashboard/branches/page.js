@@ -889,6 +889,19 @@ function ExamSteps({ examTypeId, examName, onClose }) {
                   built in
                 </span>
               )}
+              {/* A built-in step can be renamed but still writes the same column
+                  on the visit. One was renamed to "Photos Captured" while it
+                  went on recording the report as delivered, so what a renamed
+                  step actually stores is now said out loud. */}
+              {st.canonical_name && st.name !== st.canonical_name && (
+                <span
+                  title={`Whatever this is called, ticking it records "${st.canonical_name}" on the visit.`}
+                  style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#FBF7EF",
+                           border: "1px solid #E4D5B0", borderRadius: 999, padding: "2px 8px" }}
+                >
+                  records: {st.canonical_name}
+                </span>
+              )}
               <button onClick={() => removeStep(st)} style={{ ...arrowBtn, color: "#b42318" }}>
                 {st.legacy_field ? "Hide" : "Remove"}
               </button>
