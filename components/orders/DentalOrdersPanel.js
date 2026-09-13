@@ -61,6 +61,8 @@ export default function DentalOrdersPanel() {
   // there is no item, no price and nothing to reserve until someone decides
   // to stock it - so they are listed separately rather than mixed in.
   const [itemRequests, setItemRequests] = useState([]);
+  const [counterSales, setCounterSales] = useState([]);
+  const [saleLines, setSaleLines] = useState({});
 
   useEffect(() => { load(); }, []);
 
@@ -95,6 +97,31 @@ export default function DentalOrdersPanel() {
       .eq("status", "pending")
       .order("created_at", { ascending: false });
     setItemRequests(reqs || []);
+
+    // Counter sales belong on this page too. Doaa reported that an order she
+    // made never appeared in the orders - and it had not: this panel listed
+    // only what doctors place from their own portal, so a sale recorded at the
+    // desk was saved, took the stock, charged the clinic, and then showed
+    // nowhere. The el3awama panel already lists its counter sales; the dental
+    // one never did.
+    const { data: cs } = await supabase
+      .from("counter_sales")
+      .select("id, receipt_no, net_amount, payment_method, entry_date, created_by_name, customer_type, customer_id, created_at")
+      .eq("brand", "dental_stock")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    setCounterSales(cs || []);
+
+    const saleIds = (cs || []).map((x) => x.id);
+    if (saleIds.length) {
+      const { data: lines } = await supabase
+        .from("counter_sale_items")
+        .select("sale_id, item_name, quantity")
+        .in("sale_id", saleIds);
+      const grouped = {};
+      for (const l of lines || []) (grouped[l.sale_id] ||= []).push(l);
+      setSaleLines(grouped);
+    }
     setLoading(false);
   }
 
@@ -157,6 +184,7 @@ export default function DentalOrdersPanel() {
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Dental Stock Orders</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
         Orders doctors placed from their own portal — review, deliver, and record what was actually collected.
+        Sales recorded at the desk are listed underneath.
       </p>
 
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
@@ -430,6 +458,46 @@ export default function DentalOrdersPanel() {
                 <span style={{ fontSize: 11, color: theme.gray, width: "100%" }}>
                   Cash is added to your own Cash In Hand. Card, InstaPay and Wallet are recorded but never enter anyone&apos;s hand.
                 </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Recorded at the desk rather than through a doctor's portal. Same
+          money, same stock, so it belongs on the same page - a sale that
+          appears nowhere is one nobody can check or correct. */}
+      <h2 style={{ color: theme.navy, fontSize: 16, margin: "28px 0 4px" }}>Sales recorded at the desk</h2>
+      <p style={{ color: theme.gray, fontSize: 12, marginBottom: 12 }}>
+        Taken over the counter by staff. Stock comes off straight away, and anything on account is added to the clinic.
+      </p>
+
+      {counterSales.length === 0 && (
+        <p style={{ color: theme.gray, fontSize: 13 }}>No counter sales yet.</p>
+      )}
+
+      {counterSales.map((cs) => {
+        const lines = saleLines[cs.id] || [];
+        const onAccount = cs.payment_method === "postponed";
+        return (
+          <div key={cs.id} style={{ ...card, marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <span style={{ fontWeight: 800, color: theme.navy }}>{cs.receipt_no}</span>
+                <span style={{ color: theme.gray, fontSize: 12 }}>
+                  {" · "}{cs.entry_date}{cs.created_by_name ? ` · by ${cs.created_by_name}` : ""}
+                </span>
+              </div>
+              <div style={{ fontWeight: 800, color: onAccount ? "#a97c00" : "#1e7a3c" }}>
+                {formatMoney(cs.net_amount)} EGP
+                <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6 }}>
+                  {onAccount ? "on account" : cs.payment_method}
+                </span>
+              </div>
+            </div>
+            {lines.length > 0 && (
+              <div style={{ color: theme.gray, fontSize: 12, marginTop: 6 }}>
+                {lines.map((l) => `${l.item_name} ×${Number(l.quantity)}`).join(", ")}
               </div>
             )}
           </div>
