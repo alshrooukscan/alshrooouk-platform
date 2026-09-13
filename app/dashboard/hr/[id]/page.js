@@ -154,6 +154,14 @@ export default function EmployeeProfilePage() {
       variable_salary: employee.variable_salary ?? "",
       hourly_rate: employee.hourly_rate ?? "",
       max_cash_threshold: employee.max_cash_threshold ?? "",
+      enable_hybrid_variable_pay: !!employee.enable_hybrid_variable_pay,
+      shift_baseline_value: employee.shift_baseline_value ?? "",
+      scan_commission_percentage: employee.scan_commission_percentage ?? "",
+      minimum_shift_earning: employee.minimum_shift_earning ?? "",
+      report_bonus_rate: employee.report_bonus_rate ?? "",
+      report_daily_threshold: employee.report_daily_threshold ?? 5,
+      short_notice_leave_ratio: employee.short_notice_leave_ratio ?? 2,
+      staff_discount_percent: employee.staff_discount_percent ?? "",
     });
     setInfoError("");
     setEditingInfo(true);
@@ -183,6 +191,19 @@ export default function EmployeeProfilePage() {
         hourly_rate: infoDraft.hourly_rate === "" ? null : Number(infoDraft.hourly_rate),
         max_cash_threshold:
           infoDraft.max_cash_threshold === "" ? null : Number(infoDraft.max_cash_threshold),
+        enable_hybrid_variable_pay: !!infoDraft.enable_hybrid_variable_pay,
+        shift_baseline_value:
+          infoDraft.shift_baseline_value === "" ? null : Number(infoDraft.shift_baseline_value),
+        scan_commission_percentage:
+          infoDraft.scan_commission_percentage === "" ? null : Number(infoDraft.scan_commission_percentage),
+        minimum_shift_earning:
+          infoDraft.minimum_shift_earning === "" ? null : Number(infoDraft.minimum_shift_earning),
+        report_bonus_rate:
+          infoDraft.report_bonus_rate === "" ? null : Number(infoDraft.report_bonus_rate),
+        report_daily_threshold: Number(infoDraft.report_daily_threshold || 5),
+        short_notice_leave_ratio: Number(infoDraft.short_notice_leave_ratio || 2),
+        staff_discount_percent:
+          infoDraft.staff_discount_percent === "" ? null : Number(infoDraft.staff_discount_percent),
       }),
     });
     setSavingInfo(false);
@@ -409,6 +430,52 @@ export default function EmployeeProfilePage() {
                 <label style={editLabel}>Cash Limit (EGP)</label>
                 <input style={editInp} type="number" value={infoDraft.max_cash_threshold} onChange={(e) => setInfoDraft({ ...infoDraft, max_cash_threshold: e.target.value })} placeholder="e.g., 5000" />
               </div>
+              <div>
+                <label style={editLabel}>Short-Notice Leave Ratio</label>
+                <input style={editInp} type="number" step="0.5" min="1" max="10" value={infoDraft.short_notice_leave_ratio} onChange={(e) => setInfoDraft({ ...infoDraft, short_notice_leave_ratio: e.target.value })} placeholder="2" />
+                <p style={editHint}>2 means a day taken at short notice costs two days. Set it by how much their absence hurts, and raise it if it repeats.</p>
+              </div>
+              <div>
+                <label style={editLabel}>Staff F&amp;B Discount (%)</label>
+                <input style={editInp} type="number" step="1" min="0" max="100" value={infoDraft.staff_discount_percent} onChange={(e) => setInfoDraft({ ...infoDraft, staff_discount_percent: e.target.value })} />
+              </div>
+              <div>
+                <label style={editLabel}>Report Bonus Rate (EGP per report)</label>
+                <input style={editInp} type="number" step="0.01" value={infoDraft.report_bonus_rate} onChange={(e) => setInfoDraft({ ...infoDraft, report_bonus_rate: e.target.value })} placeholder="leave empty for none" />
+                <p style={editHint}>Paid on reports past the daily count below, and on any report finished off shift.</p>
+              </div>
+              <div>
+                <label style={editLabel}>Reports Expected Per Day</label>
+                <input style={editInp} type="number" step="1" min="0" value={infoDraft.report_daily_threshold} onChange={(e) => setInfoDraft({ ...infoDraft, report_daily_threshold: e.target.value })} placeholder="5" />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 18, padding: 14, borderRadius: 12, background: "#FBF7EF", border: `1px solid ${theme.gold}` }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 700, color: theme.navy, fontSize: 14 }}>
+                <input type="checkbox" checked={!!infoDraft.enable_hybrid_variable_pay} onChange={(e) => setInfoDraft({ ...infoDraft, enable_hybrid_variable_pay: e.target.checked })} />
+                Hybrid pay: shift baseline plus scan commission
+              </label>
+              <p style={{ ...editHint, marginTop: 6 }}>
+                Off by default. While it is off this person is paid exactly as they are today. Switching it on
+                replaces their shift pay with the baseline below plus a share of the scans they personally performed.
+              </p>
+              {infoDraft.enable_hybrid_variable_pay && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
+                  <div>
+                    <label style={editLabel}>Shift Baseline (EGP)</label>
+                    <input style={editInp} type="number" step="0.01" value={infoDraft.shift_baseline_value} onChange={(e) => setInfoDraft({ ...infoDraft, shift_baseline_value: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={editLabel}>Scan Commission (%)</label>
+                    <input style={editInp} type="number" step="0.01" min="0" max="100" value={infoDraft.scan_commission_percentage} onChange={(e) => setInfoDraft({ ...infoDraft, scan_commission_percentage: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={editLabel}>Minimum Per Shift (EGP)</label>
+                    <input style={editInp} type="number" step="0.01" value={infoDraft.minimum_shift_earning} onChange={(e) => setInfoDraft({ ...infoDraft, minimum_shift_earning: e.target.value })} placeholder="optional" />
+                    <p style={editHint}>Optional floor. A quiet shift can otherwise pay a fraction of a normal one.</p>
+                  </div>
+                </div>
+              )}
             </div>
             {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -673,3 +740,4 @@ function Row({ label, value, negative }) {
 const primaryBtn = { padding: "12px 24px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" };
 const editLabel = { display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 };
 const editInp = { width: "100%", padding: "9px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" };
+const editHint = { fontSize: 11, color: "#6b6875", margin: "4px 0 0", lineHeight: 1.45 };

@@ -68,6 +68,27 @@ const WRITABLE = [
   // already read it, but no screen could write it - so a new employee was
   // created with no limit at all and showed permanently as "No limit set".
   "max_cash_threshold",
+  // Compensation settings, added from the client's own answers. They are
+  // values a human turns, not models: hybrid pay is opt-in per person, the
+  // report bonus has one rate covering both of his triggers, and short-notice
+  // leave is a single ratio set by business criticality rather than a tier
+  // engine keyed to notice period.
+  "enable_hybrid_variable_pay",
+  "shift_baseline_value",
+  "scan_commission_percentage",
+  "minimum_shift_earning",
+  "report_bonus_rate",
+  "report_daily_threshold",
+  "short_notice_leave_ratio",
+  "staff_discount_percent",
+];
+
+// Money fields arrive from number inputs, where an emptied box is "" rather
+// than null. Written through untouched that becomes 0, which silently means
+// "no commission" or "no floor" instead of "not set".
+const NULLABLE_NUMERIC = [
+  "shift_baseline_value", "scan_commission_percentage",
+  "minimum_shift_earning", "report_bonus_rate",
 ];
 
 // Only ever copies the fields a screen is allowed to set. Anything else in the
@@ -76,7 +97,9 @@ const WRITABLE = [
 function pickWritable(body) {
   const out = {};
   for (const k of WRITABLE) {
-    if (Object.prototype.hasOwnProperty.call(body, k)) out[k] = body[k];
+    if (!Object.prototype.hasOwnProperty.call(body, k)) continue;
+    const v = body[k];
+    out[k] = NULLABLE_NUMERIC.includes(k) && (v === "" || v === undefined) ? null : v;
   }
   return out;
 }
