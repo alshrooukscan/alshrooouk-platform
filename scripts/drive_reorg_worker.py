@@ -31,8 +31,28 @@ def S():
 def GH(): return {"Authorization": f"Bearer {tok()}"}
 
 def setting(k, d=None):
-    r = requests.get(f"{SB}/drive_reorg_settings", headers=H, params={"select": "value", "key": f"eq.{k}"}, timeout=30).json()
-    return r[0]["value"] if r else d
+    # Same fault the backup worker actually hit: Supabase answers an error with
+    # an object rather than a list, and r[0] on that raises "KeyError: 0",
+    # killing the run. This one had not been unlucky yet.
+    #
+    # Retried rather than defaulted: the kill switch is read first, and
+    # defaulting it to "false" would print "PAUSED" and exit 0 - stopping the
+    # work while reporting success.
+    last = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(f"{SB}/drive_reorg_settings", headers=H,
+                                params={"select": "value", "key": f"eq.{k}"}, timeout=30)
+            body = resp.json()
+            if isinstance(body, list):
+                return body[0]["value"] if body else d
+            last = f"HTTP {resp.status_code}: {str(body)[:200]}"
+        except Exception as e:
+            last = str(e)[:200]
+        if attempt < 2:
+            time.sleep(2 * (attempt + 1))
+    print(f"could not read setting '{k}' after 3 attempts - {last}", file=sys.stderr)
+    sys.exit(1)
 
 if str(setting("enabled", "false")) != "true":
     print("PAUSED via kill switch - exiting"); sys.exit(0)

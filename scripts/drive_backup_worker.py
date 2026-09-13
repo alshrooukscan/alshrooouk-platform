@@ -29,9 +29,31 @@ def S():
     return tls.s
 
 def setting(k, d=None):
-    r = requests.get(f"{SB}/drive_backup_settings", headers=H,
-                     params={"select": "value", "key": f"eq.{k}"}, timeout=60).json()
-    return r[0]["value"] if r else d
+    # Supabase answers an error with an object, not a list, and the old version
+    # went straight to r[0] - so a momentary blip raised "KeyError: 0" and took
+    # the whole run down. It happened at 15:00 on 13 September; the runs either
+    # side of it were fine, which is exactly the shape of a transient fault.
+    #
+    # Retried rather than defaulted, deliberately. The first thing this reads is
+    # the kill switch, and quietly defaulting it to "false" would make the
+    # worker announce "PAUSED via kill switch" and exit 0 - a backup that
+    # silently stops while reporting success is far worse than one that fails
+    # loudly.
+    last = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(f"{SB}/drive_backup_settings", headers=H,
+                                params={"select": "value", "key": f"eq.{k}"}, timeout=60)
+            body = resp.json()
+            if isinstance(body, list):
+                return body[0]["value"] if body else d
+            last = f"HTTP {resp.status_code}: {str(body)[:200]}"
+        except Exception as e:
+            last = str(e)[:200]
+        if attempt < 2:
+            time.sleep(2 * (attempt + 1))
+    print(f"could not read setting '{k}' after 3 attempts - {last}", file=sys.stderr)
+    sys.exit(1)
 
 def page(params):
     out, off = [], 0
