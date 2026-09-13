@@ -410,6 +410,31 @@ export default function PatientProfilePage() {
   // scan types shows the union of their steps, in order, each named once.
   // Steps carrying a legacy_field are stored on the visit itself and go through
   // toggleStage. Everything the clinic has added since lives here instead.
+  // Paymob publishes a charge within minutes, but the sync that matches it runs
+  // on a schedule - so a payment taken a moment ago is genuinely unconfirmed
+  // until the next run. This lets whoever took it check straight away rather
+  // than waiting, which is precisely when they want to know.
+  const [recheck, setRecheck] = useState({ busy: false, message: "" });
+
+  async function recheckCards() {
+    setRecheck({ busy: true, message: "" });
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const res = await fetch("/api/paymob/sync", {
+        headers: { Authorization: `Bearer ${sess?.session?.access_token || ""}` },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j.ok === false) {
+        setRecheck({ busy: false, message: j.error || "Could not reach Paymob just now. Try again shortly." });
+        return;
+      }
+      await load();
+      setRecheck({ busy: false, message: "" });
+    } catch (e) {
+      setRecheck({ busy: false, message: e.message });
+    }
+  }
+
   async function toggleCustomStep(v, step, currentlyDone) {
     const now = new Date().toISOString();
     const { error: err } = await supabase.from("visit_step_progress").upsert(
@@ -1054,7 +1079,7 @@ export default function PatientProfilePage() {
                       is found in Paymob, so the proof is shown next to it:
                       which card was used and what the gateway kept. */}
                   {(v.visit_payments || []).map((p) => (
-                    <PaymentProof key={`proof-${p.id}`} payment={p} />
+                    <PaymentProof key={`proof-${p.id}`} payment={p} onRecheck={recheckCards} recheckState={recheck} />
                   ))}
                   {/* Admin only. A payment cannot be edited by anyone - this
                       corrects the method and records who changed it and why,
@@ -2729,7 +2754,7 @@ function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
 // Shows what backs a payment: a real Paymob charge, an assumption, or nothing
 // yet. Card payments taken minutes ago legitimately sit unproven for a short
 // while, because Paymob publishes the charge a little after the tap.
-function PaymentProof({ payment }) {
+function PaymentProof({ payment, onRecheck, recheckState }) {
   const v = payment?.payment_verification;
   if (!v && !["Visa", "Wallet"].includes(payment?.payment_method)) return null;
 
@@ -2779,10 +2804,34 @@ function PaymentProof({ payment }) {
     );
   }
 
+  // Only offered on a card payment with no proof yet. On a cash payment or one
+  // already confirmed there is nothing to look for, and a button that usually
+  // does nothing stops being read.
+  const looksLikeCard = ["Visa", "InstaPay", "Wallet"].includes(payment.payment_method);
+
   return (
-    <span style={{ ...pill, background: "#fffaf0", border: "1px solid #eddcb4", color: "#8a6d00" }}
-      title="No matching card charge found in Paymob yet. A payment just taken will confirm itself shortly.">
-      Awaiting card proof
-    </span>
+    <>
+      <span style={{ ...pill, background: "#fffaf0", border: "1px solid #eddcb4", color: "#8a6d00" }}
+        title="No matching card charge found in Paymob yet.">
+        Awaiting card proof
+      </span>
+      {looksLikeCard && onRecheck && (
+        <button
+          onClick={onRecheck}
+          disabled={recheckState?.busy}
+          style={{
+            marginLeft: 6, background: "none", border: "none", padding: 0,
+            cursor: recheckState?.busy ? "default" : "pointer",
+            color: "#8a6d00", fontSize: 10, fontWeight: 700, textDecoration: "underline",
+            verticalAlign: "middle",
+          }}
+        >
+          {recheckState?.busy ? "Checking Paymob..." : "Check now"}
+        </button>
+      )}
+      {recheckState?.message && (
+        <span style={{ marginLeft: 6, fontSize: 10, color: "#b42318" }}>{recheckState.message}</span>
+      )}
+    </>
   );
 }
