@@ -142,7 +142,7 @@ export default function PayslipsPage() {
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
             {[
-              { l: "Base pay", v: `${formatMoney(slip.basePay)} EGP`, c: theme.navy },
+              { l: slip.payBasis === "hybrid" ? "Shifts + commission" : "Base pay", v: `${formatMoney(slip.basePay)} EGP`, c: theme.navy },
               { l: "Bonuses", v: `+${formatMoney(slip.totalBonuses)}`, c: "#1e7a3c" },
               { l: "Deductions", v: `−${formatMoney(slip.totalDeductions)}`, c: "#ba1a1a" },
               { l: "Net pay", v: `${formatMoney(slip.net)} EGP`, c: theme.gold },
@@ -179,6 +179,28 @@ export default function PayslipsPage() {
               </p>
             )}
           </div>
+
+          {(slip.reportBonus > 0 || slip.scanCommission > 0) && (
+            <div style={{ ...card, marginBottom: 18 }}>
+              <h3 style={{ color: theme.navy, marginTop: 0 }}>Earned on top of the shift</h3>
+              {slip.scanCommission > 0 && (
+                <p style={{ fontSize: 13, color: theme.navy, margin: "0 0 8px" }}>
+                  <strong>Scan commission {formatMoney(slip.scanCommission)} EGP</strong> across {slip.commissionDays}{" "}
+                  {slip.commissionDays === 1 ? "day" : "days"}. Calculated on what the patient actually paid after
+                  discount, and only once the visit is settled.
+                </p>
+              )}
+              {slip.reportBonus > 0 && (
+                <p style={{ fontSize: 13, color: theme.navy, margin: 0 }}>
+                  <strong>Report bonus {formatMoney(slip.reportBonus)} EGP</strong> — {slip.reportsQualifying} of{" "}
+                  {slip.reportsTotal} reports qualified at {formatMoney(slip.reportRate)} each.{" "}
+                  {slip.reportsBeyondThreshold} past the daily count, {slip.reportsOffShift} finished off shift.
+                  {slip.reportsBeyondThreshold + slip.reportsOffShift > slip.reportsQualifying &&
+                    " Reports meeting both only count once."}
+                </p>
+              )}
+            </div>
+          )}
 
           {slip.payBasis === "hourly" && (slip.overtimeHours > 0 || slip.overtimeDecision) && (
             <div style={{ ...card, marginBottom: 18, borderLeft: `4px solid ${theme.gold}` }}>
