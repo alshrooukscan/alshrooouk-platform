@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
-import { formatMoney } from "../../../lib/format";
+import { formatMoney, formatVisitDateTime } from "../../../lib/format";
 import { logActivity } from "../../../lib/activityLog";
 import { syncPatientLastVisitDate } from "../../../lib/syncPatientLastVisitDate";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
@@ -655,12 +655,43 @@ export default function ActionCenterPage() {
           {cardReviews.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Every card payment is accounted for.</p>}
           {cardReviews.map((r) => (
             <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 4 }}>
+              {/* This carried the amount, the method and the time captured and
+                  nothing else, so a reviewer could not tell whose payment it
+                  was or what it paid for - which is everything needed to judge
+                  whether a missing card charge is a real problem. */}
+              <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 2 }}>
                 {formatMoney(r.amount)} &middot; {r.payment_method}
+                {r.patient_name ? <> &middot; {r.patient_name}</> : null}
               </div>
+
+              {(r.scan_types || []).length > 0 && (
+                <div style={{ fontSize: 12, color: theme.navy, marginBottom: 2 }}>
+                  {(r.scan_types || []).join(", ")}
+                  {r.doctor_name ? <span style={{ color: theme.gray }}> &middot; referred by {r.doctor_name}</span> : null}
+                </div>
+              )}
+
               <div style={{ fontSize: 12, color: theme.gray }}>
-                Taken {new Date(r.paid_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {/* Both times, deliberately. The visit is when the patient was
+                    seen; the capture is when the payment was keyed in, and the
+                    two drifting apart is often the reason no charge matched. */}
+                Visit {r.exam_date ? formatVisitDateTime(r.exam_date, r.exam_time) : "date not recorded"}
+                {" · "}captured {new Date(r.paid_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </div>
+
+              {r.visit_amount_due != null && (
+                <div style={{ fontSize: 12, color: theme.gray }}>
+                  Visit charged {formatMoney(r.visit_amount_due)} EGP, paid {formatMoney(r.visit_amount_paid)} EGP
+                  {Number(r.amount) !== Number(r.visit_amount_due) && (
+                    <span style={{ color: "#8a6d00" }}> &middot; this payment is part of it</span>
+                  )}
+                </div>
+              )}
+
+              {r.patient_mobile && (
+                <div style={{ fontSize: 12, color: theme.gray }}>{r.patient_mobile}</div>
+              )}
+
               <div style={{ fontSize: 12, color: "#8a6d00", margin: "6px 0 8px" }}>{r.reason}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button onClick={() => decideCardReview(r.id, "approve")} disabled={busyId === r.id}
@@ -671,8 +702,17 @@ export default function ActionCenterPage() {
                   style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   Reject
                 </button>
-                {r.visit_id && (
-                  <a href={`/dashboard/patients?visit=${r.visit_id}`} style={{ color: theme.gold, fontSize: 12, fontWeight: 700 }}>
+                {/* This pointed at /dashboard/patients?visit=<id> - the patient
+                    list, which ignores the parameter - so the reviewer landed
+                    on a list of every patient rather than the visit in
+                    question. It now opens that patient's record at that visit. */}
+                {r.patient_id && (
+                  <a
+                    href={`/dashboard/patients/${r.patient_id}?visit=${r.visit_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: theme.gold, fontSize: 12, fontWeight: 700 }}
+                  >
                     Open visit
                   </a>
                 )}

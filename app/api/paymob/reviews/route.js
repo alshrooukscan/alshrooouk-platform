@@ -32,7 +32,37 @@ export async function GET(req) {
     .limit(100);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ reviews: data || [] });
+
+  // A review carried only an amount, a method and the time it was captured,
+  // which is not enough to decide anything: the reviewer could not tell whose
+  // payment it was or what it was for. The visit is already on the row, so the
+  // patient, the scan and the visit's own date are one join away.
+  const reviews = data || [];
+  const visitIds = [...new Set(reviews.map((r) => r.visit_id).filter(Boolean))];
+
+  if (visitIds.length) {
+    const { data: visits } = await supabaseAdmin
+      .from("visits")
+      .select("id, patient_id, exam_date, exam_time, scan_types, amount_due, amount_paid, doctor_id, patients(name, mobile), doctors(name)")
+      .in("id", visitIds);
+
+    const byId = Object.fromEntries((visits || []).map((v) => [v.id, v]));
+    for (const r of reviews) {
+      const v = byId[r.visit_id];
+      if (!v) continue;
+      r.patient_id = v.patient_id;
+      r.patient_name = v.patients?.name || null;
+      r.patient_mobile = v.patients?.mobile || null;
+      r.doctor_name = v.doctors?.name || null;
+      r.exam_date = v.exam_date;
+      r.exam_time = v.exam_time;
+      r.scan_types = v.scan_types || [];
+      r.visit_amount_due = v.amount_due;
+      r.visit_amount_paid = v.amount_paid;
+    }
+  }
+
+  return NextResponse.json({ reviews });
 }
 
 export async function POST(req) {

@@ -61,6 +61,21 @@ export default function PatientProfilePage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showAddScan, setShowAddScan] = useState(false);
   const [fixMethodFor, setFixMethodFor] = useState(null);
+  // A visit named in the address bar, so links from elsewhere - a card review,
+  // a WhatsApp follow-up - can point at one visit rather than the whole record.
+  const [highlightVisitId, setHighlightVisitId] = useState(null);
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("visit");
+    if (!wanted || !visits.length) return;
+    setHighlightVisitId(wanted);
+    // After paint, or the row is not on the page yet to scroll to.
+    const t = setTimeout(() => {
+      document.getElementById(`visit-${wanted}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [visits]);
+
   const [examSteps, setExamSteps] = useState([]);
   const [stepProgress, setStepProgress] = useState([]);
   const [editingVisit, setEditingVisit] = useState(null);
@@ -1056,7 +1071,21 @@ export default function PatientProfilePage() {
             <p style={{ color: theme.gray, fontSize: 14 }}>No scans match this filter.</p>
           )}
           {filteredVisits.map((v) => (
-            <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
+            // Anchored and highlighted so a link that names a visit lands on
+            // that visit. Arriving from a card review onto a record with
+            // fifteen scans and having to find the right one by eye is how the
+            // wrong payment gets approved.
+            <div
+              key={v.id}
+              id={`visit-${v.id}`}
+              style={{
+                borderBottom: "1px solid #f0f0f0",
+                padding: "12px 0",
+                ...(highlightVisitId === v.id
+                  ? { background: "#fffaf0", boxShadow: "inset 3px 0 0 " + theme.gold, paddingLeft: 12, borderRadius: 6 }
+                  : null),
+              }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: theme.goldLight, color: theme.navy, whiteSpace: "nowrap" }}>
                   {formatVisitDateTime(v.exam_date, v.exam_time)}
