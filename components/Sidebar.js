@@ -33,6 +33,7 @@ import {
   LifeBuoy,
   Download,
   CreditCard,
+  Timer,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -61,6 +62,9 @@ const NAV = [
       { href: "/dashboard/patients", label: "Patient", icon: User, key: "patients" },
       { href: "/dashboard/doctors", label: "Doctor", icon: Stethoscope, key: "doctors" },
       { href: "/dashboard/reports", label: "Reports", icon: FileCheck2, key: "vendors", badge: "reports" },
+      // Read-only. How long each step of a visit actually takes against the
+      // target set for it, read from visits that already exist.
+      { href: "/dashboard/workflow", label: "Workflow", icon: Timer, key: "patients" },
       { href: "/dashboard/branches", label: "Branch Management", icon: Building2, key: "settings" },
       { href: "/dashboard/clients", label: "Clients Management", icon: Handshake, key: "vendors" },
     ],
