@@ -36,6 +36,23 @@ export async function GET(req) {
 
   const empId = url.searchParams.get("payslip");
   if (empId) {
+    // The parallel run. Same arithmetic as generate_payslip, no consequences:
+    // it repays no advance, clears no tab and sweeps no cash, so a month can
+    // be checked against the manual payroll without settling it.
+    if (url.searchParams.get("trial")) {
+      const trialPeriod = normalizePeriod(url.searchParams.get("trial"));
+      const [{ data: rows, error }, { data: settings }] = await Promise.all([
+        supabaseAdmin.rpc("payroll_trial_run", { p_period: trialPeriod }),
+        supabaseAdmin.from("payroll_settings").select("trial_period").maybeSingle(),
+      ]);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({
+        period: trialPeriod,
+        is_locked_trial: settings?.trial_period === trialPeriod,
+        rows: rows || [],
+      });
+    }
+
     const period = normalizePeriod(url.searchParams.get("period"));
     const slip = await buildPayslip(empId, period);
     if (!slip) return NextResponse.json({ error: "Employee not found." }, { status: 404 });

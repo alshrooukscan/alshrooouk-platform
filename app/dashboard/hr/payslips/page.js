@@ -20,6 +20,8 @@ export default function PayslipsPage() {
   const [otAmount, setOtAmount] = useState("");
   const [otNote, setOtNote] = useState("");
   const [otBusy, setOtBusy] = useState(false);
+  const [trial, setTrial] = useState(null);
+  const [trialBusy, setTrialBusy] = useState(false);
   const [slip, setSlip] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -120,6 +122,33 @@ export default function PayslipsPage() {
     loadSlip();
   }
 
+
+  async function runTrial() {
+    setTrialBusy(true);
+    const res = await fetch(`/api/hr/payroll?trial=${period}`, {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    const j = await res.json().catch(() => ({}));
+    setTrialBusy(false);
+    if (!res.ok) { alert(j.error || "Could not run the parallel payroll."); return; }
+    setTrial(j);
+  }
+
+  // Downloaded so it can be laid beside the manual payroll line by line.
+  // That comparison is the entire point of a parallel month.
+  function downloadTrial() {
+    if (!trial?.rows?.length) return;
+    const cols = ["employee_name","hr_id","pay_basis","paid_days","paid_hours","overtime_hours",
+      "gross","scan_commission","report_bonus","bonuses","rule_deductions","penalty_deductions",
+      "deferred_to_next","advance_taken","tab_taken","cash_swept","still_held","indicative_net","flags"];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [cols.join(","), ...trial.rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `payroll-parallel-${trial.period}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Payslips</h1>
@@ -136,6 +165,82 @@ export default function PayslipsPage() {
       </div>
 
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      <div style={{ ...card, marginBottom: 18, borderLeft: `4px solid ${theme.navy}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h3 style={{ color: theme.navy, margin: 0 }}>Parallel run</h3>
+            <p style={{ fontSize: 12, color: theme.gray, margin: "4px 0 0", maxWidth: 640 }}>
+              Runs the whole month for everyone using the same arithmetic as a real payslip, and settles nothing.
+              No advance is repaid, no tab is cleared, no cash is swept. Put it beside the manual payroll and
+              look for the rows that disagree.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={runTrial} disabled={trialBusy}
+              style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: theme.navy,
+                       color: "#fff", fontWeight: 700, cursor: "pointer", opacity: trialBusy ? 0.5 : 1 }}>
+              {trialBusy ? "Running..." : `Run ${period}`}
+            </button>
+            {trial?.rows?.length > 0 && (
+              <button onClick={downloadTrial}
+                style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`,
+                         background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer" }}>
+                Download
+              </button>
+            )}
+          </div>
+        </div>
+
+        {trial?.is_locked_trial && (
+          <p style={{ marginTop: 12, marginBottom: 0, padding: 10, borderRadius: 8, background: "#FBF7EF",
+                      fontSize: 12, color: theme.navy }}>
+            <strong>{trial.period} is the trial month.</strong> A payslip cannot be committed for it. Clear the trial
+            month in payroll settings when the comparison is done and the system is ready to be the record.
+          </p>
+        )}
+
+        {trial?.rows?.length > 0 && (
+          <div style={{ marginTop: 14, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: theme.navy, color: "#fff", textAlign: "left" }}>
+                  {["Employee","Basis","Days","Hours","Gross","Commission","Reports","Deductions","Net"].map((h) => (
+                    <th key={h} style={{ padding: "7px 9px", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {trial.rows.map((r) => (
+                  <tr key={r.employee_id} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "7px 9px" }}>
+                      <div style={{ fontWeight: 700, color: theme.navy }}>{r.employee_name}</div>
+                      {r.flags && <div style={{ color: "#a97c00", fontSize: 11, marginTop: 2 }}>{r.flags}</div>}
+                    </td>
+                    <td style={{ padding: "7px 9px" }}>{r.pay_basis}</td>
+                    <td style={{ padding: "7px 9px" }}>{r.paid_days}</td>
+                    <td style={{ padding: "7px 9px" }}>{Number(r.paid_hours).toFixed(1)}</td>
+                    <td style={{ padding: "7px 9px" }}>{formatMoney(r.gross)}</td>
+                    <td style={{ padding: "7px 9px" }}>{formatMoney(r.scan_commission)}</td>
+                    <td style={{ padding: "7px 9px" }}>{formatMoney(r.report_bonus)}</td>
+                    <td style={{ padding: "7px 9px", color: "#ba1a1a" }}>
+                      {formatMoney(Number(r.rule_deductions) + Number(r.penalty_deductions) +
+                                   Number(r.advance_taken) + Number(r.tab_taken) + Number(r.cash_swept))}
+                    </td>
+                    <td style={{ padding: "7px 9px", fontWeight: 800, color: theme.navy }}>{formatMoney(r.indicative_net)}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: "#F4F6F9", fontWeight: 800 }}>
+                  <td style={{ padding: "8px 9px" }} colSpan={8}>Total payroll for {trial.period}</td>
+                  <td style={{ padding: "8px 9px", color: theme.navy }}>
+                    {formatMoney(trial.rows.reduce((t, r) => t + Number(r.indicative_net), 0))} EGP
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {loading && <p style={{ color: theme.gray }}>Loading...</p>}
 
       {slip && !loading && (
