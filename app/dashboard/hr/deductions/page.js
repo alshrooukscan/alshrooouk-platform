@@ -18,6 +18,10 @@ export default function DeductionsAndExcusesPage() {
   const [statusFilter, setStatusFilter] = useState("pending");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [queue, setQueue] = useState([]);
+  const [dedSettings, setDedSettings] = useState(null);
+  const [queueBusy, setQueueBusy] = useState(null);
+  const [detecting, setDetecting] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -111,6 +115,52 @@ export default function DeductionsAndExcusesPage() {
   const filteredSubmissions = statusFilter === "all" ? submissions : submissions.filter((s) => s.status === statusFilter);
   const pendingCount = submissions.filter((s) => s.status === "pending").length;
 
+
+  async function loadQueue() {
+    const res = await fetch("/api/hr/deductions?status=pending", {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    if (!res.ok) return;
+    const j = await res.json();
+    setQueue(j.deductions || []);
+    setDedSettings(j.settings || null);
+  }
+
+  useEffect(() => { loadQueue(); }, []);
+
+  async function runDetectors() {
+    setDetecting(true);
+    const res = await fetch("/api/hr/deductions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "detect" }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setDetecting(false);
+    if (!res.ok) { alert(j.error || "Could not run the check."); return; }
+    loadQueue();
+  }
+
+  async function decideDeduction(row, status) {
+    const note = window.prompt(
+      status === "approved"
+        ? `Approving ${Number(row.amount).toFixed(2)} EGP against ${row.employee_name}. Add a note for the record (optional).`
+        : `Rejecting this deduction. Why? (optional)`,
+      ""
+    );
+    if (note === null) return;
+    setQueueBusy(row.id);
+    const res = await fetch("/api/hr/deductions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "decide", id: row.id, status, note: note || null }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setQueueBusy(null);
+    if (!res.ok) { alert(j.error || "Could not save that decision."); return; }
+    loadQueue();
+  }
+
   return (
     <div>
       <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>
@@ -118,6 +168,82 @@ export default function DeductionsAndExcusesPage() {
       </p>
       <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Deductions and Excuses</h1>
       <p style={{ color: theme.gray, margin: "0 0 24px" }}>Configure the rule types used across payroll, and review excuses employees submit.</p>
+
+      <div style={{ ...cardStyle, marginBottom: 20, borderLeft: `4px solid ${theme.gold}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h3 style={{ color: theme.navy, margin: 0 }}>Detected Deductions</h3>
+            <p style={{ fontSize: 12, color: theme.gray, margin: "4px 0 0", maxWidth: 620 }}>
+              Unconfirmed card payments, stock shortfalls and short-notice leave, found automatically.
+              Nothing here has cost anyone anything yet. Approving a line is what puts it on a payslip,
+              and your name goes on it.
+            </p>
+          </div>
+          <button onClick={runDetectors} disabled={detecting}
+            style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`,
+                     background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer",
+                     opacity: detecting ? 0.5 : 1 }}>
+            {detecting ? "Checking..." : "Run check"}
+          </button>
+        </div>
+
+        {!dedSettings?.deduction_go_live && (
+          <p style={{ marginTop: 14, marginBottom: 0, padding: 12, borderRadius: 8, background: "#FBF7EF",
+                      fontSize: 13, color: theme.navy }}>
+            <strong>The engine is off.</strong> No start date is set, so nothing is being detected against anyone.
+            An admin sets that date when the clinic is ready to begin. Until then this stays empty on purpose.
+          </p>
+        )}
+
+        {dedSettings?.deduction_go_live && queue.length === 0 && (
+          <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: theme.gray }}>
+            Nothing waiting. Running since {dedSettings.deduction_go_live}.
+          </p>
+        )}
+
+        {queue.length > 0 && (
+          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {queue.map((row) => (
+              <div key={row.id} style={{ border: "1px solid #e6e6ea", borderRadius: 10, padding: 12,
+                                         display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 260 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.navy }}>
+                    {row.employee_name}
+                    <span style={{ fontWeight: 400, color: theme.gray, fontSize: 12, marginLeft: 8 }}>
+                      {row.hr_id} · {row.period} · {row.kind}
+                    </span>
+                  </div>
+                  <p style={{ margin: "4px 0 0", fontSize: 13, color: theme.navy }}>{row.reason}</p>
+                  {row.acknowledgement_on_file === false && (
+                    <p style={{ margin: "6px 0 0", fontSize: 12, color: "#a97c00", fontWeight: 600 }}>
+                      This employee has not signed the pay and deduction acknowledgement.
+                    </p>
+                  )}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#ba1a1a", marginBottom: 8 }}>
+                    −{Number(row.amount).toFixed(2)} EGP
+                  </div>
+                  <button onClick={() => decideDeduction(row, "approved")} disabled={queueBusy === row.id}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: theme.navy,
+                             color: "#fff", fontWeight: 700, cursor: "pointer", marginRight: 6 }}>
+                    Approve
+                  </button>
+                  <button onClick={() => decideDeduction(row, "rejected")} disabled={queueBusy === row.id}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff",
+                             color: theme.navy, fontWeight: 700, cursor: "pointer" }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+            <p style={{ margin: 0, fontSize: 12, color: theme.gray }}>
+              No payslip loses more than {dedSettings?.penalty_cap_percent || 25}% of what was earned that month.
+              Anything above the line moves to the next payslip rather than being forgiven or forced through.
+            </p>
+          </div>
+        )}
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
         <div style={cardStyle}>
