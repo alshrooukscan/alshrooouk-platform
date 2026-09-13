@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/paymob/sync",
-      "schedule": "0 * * * *"
+      "schedule": "45 23 * * *"
     }
   ]
 }
