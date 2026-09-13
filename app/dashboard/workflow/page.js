@@ -43,9 +43,17 @@ export default function WorkflowBoardPage() {
         <Link href="/dashboard" style={{ color: theme.gray }}>Dashboard</Link> &gt; Workflow
       </p>
       <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Workflow</h1>
-      <p style={{ color: theme.gray, margin: "0 0 20px", maxWidth: 720 }}>
+      <p style={{ color: theme.gray, margin: "0 0 8px", maxWidth: 720 }}>
         Every step a visit goes through, how long it took, and how that compares to the target set for it.
         This reads the visits you already have. It changes nothing and asks nothing of anybody.
+      </p>
+      {/* Said plainly because the longer windows return the same figures: there
+          is nothing before 29 August to show. Visits brought over in the import
+          never passed through these steps, so counting them would read as
+          hundreds of overdue jobs that nobody can act on. */}
+      <p style={{ color: theme.gray, margin: "0 0 20px", maxWidth: 720, fontSize: 12 }}>
+        Covers visits recorded in the platform from go-live on 29 August 2026. Earlier visits came across
+        from the old files and never went through these steps, so they are not counted here.
       </p>
 
       <div style={{ marginBottom: 16 }}>
