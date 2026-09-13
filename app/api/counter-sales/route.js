@@ -39,7 +39,10 @@ export async function GET(req) {
       .select("id, name, role, fnb_tab_enabled, staff_discount_percent, tab_pin_hash")
       .eq("is_active", true)
       .order("name"),
-    supabaseAdmin.from("doctors").select("id, name, clinic_name").order("name"),
+    // clinic_code, not just clinic_name. Every one of the 166 doctors has a
+    // code and only 126 have a clinic name, so the code is what reception can
+    // rely on - and it is what they are given when a clinic phones in an order.
+    supabaseAdmin.from("doctors").select("id, name, clinic_code, clinic_name").order("name"),
   ]);
 
   // Capacity is per employee and changes through the day as they work, so it

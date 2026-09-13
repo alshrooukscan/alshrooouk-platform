@@ -89,11 +89,22 @@ function CounterSalePageInner() {
   const chosen = staffList.find((s) => s.id === employeeId);
   const doctorQuery = doctorSearch.trim().toLowerCase();
   const matchingDoctors = doctorQuery
-    ? doctors.filter(
-        (d) =>
-          (d.name || "").toLowerCase().includes(doctorQuery) ||
-          String(d.clinic_code || "").toLowerCase().includes(doctorQuery)
-      )
+    ? doctors
+        .filter(
+          (d) =>
+            (d.name || "").toLowerCase().includes(doctorQuery) ||
+            String(d.clinic_code || "").toLowerCase().includes(doctorQuery) ||
+            (d.clinic_name || "").toLowerCase().includes(doctorQuery)
+        )
+        // A code typed in full should be the first thing on the list, not
+        // somewhere inside it: typing 506 puts clinic 506 at the top, ahead of
+        // 1506 and 5061.
+        .sort((a, b) => {
+          const ac = String(a.clinic_code || "");
+          const bc = String(b.clinic_code || "");
+          const rank = (c) => (c === doctorQuery ? 0 : c.startsWith(doctorQuery) ? 1 : 2);
+          return rank(ac) - rank(bc) || ac.localeCompare(bc, undefined, { numeric: true });
+        })
     : doctors;
   const discount = method === "staff_tab" && chosen ? chosen.discount_percent : 0;
   const net = gross * (1 - discount / 100);
@@ -219,14 +230,17 @@ function CounterSalePageInner() {
           <input
             value={doctorSearch}
             onChange={(e) => setDoctorSearch(e.target.value)}
-            placeholder="Search by doctor name or clinic code"
+            placeholder="Type the clinic number, or the doctor's name"
             style={{ ...inp, marginBottom: 6 }}
           />
           <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={inp} size={doctorSearch ? 6 : undefined}>
             <option value="">Walk-in (no account)</option>
             {matchingDoctors.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.name}{d.clinic_code ? ` - ${d.clinic_code}` : ""}
+                {/* Number first. Reception is handed a clinic number, so that
+                    is what they scan the list for - the name is confirmation. */}
+                {d.clinic_code ? `${d.clinic_code} · ` : ""}{d.name}
+                {d.clinic_name ? ` · ${d.clinic_name}` : ""}
               </option>
             ))}
           </select>
