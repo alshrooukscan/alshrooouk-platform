@@ -221,10 +221,15 @@ function AddEntryModal({ supplier, onClose, onSaved }) {
             .update({ qty_remaining: (fresh?.qty_remaining || 0) + qty, purchase_price: unitPrice || undefined })
             .eq("id", li.itemId);
         } else if (li.mode === "new" && li.newName) {
-          const code = `${li.newCategory === "dental" ? "DEN" : "EL"}-${Date.now().toString().slice(-5)}`;
+          // No code invented here. This built one from a timestamp -
+          // DEN-09026 - and because it supplied item_code the sequence trigger
+          // never ran, so an item added while recording a purchase came out
+          // with a code unlike every other item on the shelf. Doaa reported
+          // exactly that. Leaving item_code out lets the trigger assign the
+          // next number in the category, which is what the Add Item form
+          // already relies on.
           await supabase.from("stock_items").insert({
             category: li.newCategory,
-            item_code: code,
             name: li.newName,
             purchase_price: unitPrice,
             qty_remaining: qty,
