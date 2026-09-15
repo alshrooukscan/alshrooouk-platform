@@ -25,7 +25,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary, permissions, staff_account_email, must_change_password").eq("id", session.id).single();
+  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary, hourly_rate, permissions, staff_account_email, must_change_password").eq("id", session.id).single();
   const { data: payslips } = await supabaseAdmin
     .from("payroll_runs")
     .select("*")
@@ -90,7 +90,22 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(30);
 
+  // What this person has earned so far this month, from their own shifts and
+  // their own sign-ins. The portal only ever showed fixed_salary, so the five
+  // staff paid by the hour saw zero - their pay is all in hours worked, which
+  // that field never carries. Scoped to the signed-in employee: the trial run
+  // returns every employee, so their row is picked out here and the rest is
+  // never sent to the browser.
+  let accrued = null;
+  const accruedPeriod = new Date().toISOString().slice(0, 7);
+  try {
+    const { data: trialRows } = await supabaseAdmin.rpc("payroll_trial_run", { p_period: accruedPeriod });
+    accrued = (trialRows || []).find((r) => r.employee_id === session.id) || null;
+  } catch { /* the portal is still worth serving without it */ }
+
   return NextResponse.json({
+    accrued,
+    accruedPeriod,
     employee,
     cashBalances: myCash || [],
     cashMovements: myMovements || [],

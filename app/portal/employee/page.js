@@ -272,19 +272,85 @@ export default function EmployeePortalPage() {
               </button>
             )}
 
+            {/* Earned so far leads, because it is the question a person opens
+                this page to answer: what have I made this month. The salary
+                below is the arrangement; this is the money. It matters most for
+                the five staff paid by the hour, whose salary fields are zero
+                and who therefore saw nothing here at all. */}
+            {data.accrued && (
+              <div style={{ background: "#fff", border: "1px solid #eceaf1", borderRadius: 14, padding: 18, marginBottom: 14 }}>
+                <div style={{ color: theme.gray, fontSize: 13, marginBottom: 6 }}>
+                  Earned so far &middot; {data.accruedPeriod}
+                </div>
+                <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
+                  {formatMoney(data.accrued.indicative_net, { decimals: 2 })}{" "}
+                  <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>EGP</span>
+                </div>
+
+                <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ color: theme.gray, fontSize: 11 }}>Hours worked</div>
+                    <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
+                      {formatMoney(data.accrued.paid_hours, { decimals: 2 })}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: theme.gray, fontSize: 11 }}>Days paid</div>
+                    <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>{data.accrued.paid_days}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: theme.gray, fontSize: 11 }}>Gross</div>
+                    <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
+                      {formatMoney(data.accrued.gross, { decimals: 2 })}
+                    </div>
+                  </div>
+                  {Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions) > 0 && (
+                    <div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>Deductions</div>
+                      <div style={{ color: "#ba1a1a", fontSize: 14, fontWeight: 600 }}>
+                        {formatMoney(Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions), { decimals: 2 })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {Number(data.accrued.overtime_hours) > 0 && (
+                  // Shown but excluded from the figure above, and said so. A
+                  // person should not read a total that includes hours nobody
+                  // has approved yet and plan around it.
+                  <div style={{ fontSize: 11, color: "#8a6d00", marginTop: 10 }}>
+                    {formatMoney(data.accrued.overtime_hours, { decimals: 2 })} overtime hour(s) recorded, still to be approved - not included above.
+                  </div>
+                )}
+
+                <div style={{ fontSize: 11, color: theme.gray, marginTop: 8 }}>
+                  Updates as you sign in and out. Final pay is confirmed on your payslip.
+                </div>
+              </div>
+            )}
+
             {/* Three equal rows made the monthly figure - the one anybody
                 actually checks - no more prominent than a derived annual total.
                 The monthly pay leads; the rest supports it. */}
             <div style={{ background: "#fff", border: "1px solid #eceaf1", borderRadius: 14, padding: 18, marginBottom: 20 }}>
-              <div style={{ color: theme.gray, fontSize: 13, marginBottom: 6 }}>Monthly salary</div>
-              <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
-                {formatMoney(
-                  Number(data.employee?.fixed_salary || 0) + Number(data.employee?.variable_salary || 0),
-                  { decimals: 2 }
-                )}{" "}
-                <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>EGP</span>
+              {/* An hourly employee has no fixed or variable salary, so this
+                  card showed 0 EGP and an annual base of 0 - which reads as an
+                  error about their own pay. It now states their rate instead. */}
+              <div style={{ color: theme.gray, fontSize: 13, marginBottom: 6 }}>
+                {data.employee?.hourly_rate ? "Your hourly rate" : "Monthly salary"}
               </div>
-              <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
+              <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
+                {data.employee?.hourly_rate
+                  ? formatMoney(data.employee.hourly_rate, { decimals: 2 })
+                  : formatMoney(
+                      Number(data.employee?.fixed_salary || 0) + Number(data.employee?.variable_salary || 0),
+                      { decimals: 2 }
+                    )}{" "}
+                <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>
+                  {data.employee?.hourly_rate ? "EGP per hour" : "EGP"}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }} hidden={!!data.employee?.hourly_rate}>
                 <div>
                   <div style={{ color: theme.gray, fontSize: 11 }}>Fixed</div>
                   <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
