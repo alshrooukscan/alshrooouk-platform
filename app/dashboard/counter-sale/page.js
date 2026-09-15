@@ -39,6 +39,8 @@ function CounterSalePageInner() {
   const [employeeId, setEmployeeId] = useState("");
   const [tabPin, setTabPin] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [recent, setRecent] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(false);
   // Who physically takes the cash. Resolved from the login where possible, so
   // the usual case needs no input at all. An admin whose login is not tied to
   // an employee record has to say - previously the sale was simply refused,
@@ -62,6 +64,25 @@ function CounterSalePageInner() {
       headers: { ...(opts.headers || {}), "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token}` },
     });
   }
+
+  // What this clinic has already taken, pulled the moment one is chosen.
+  // Without it nothing stops the same order being entered twice, which has
+  // already happened: clinic 407 has two identical 260 EGP sales twelve
+  // minutes apart.
+  useEffect(() => {
+    if (!customerId) { setRecent([]); return; }
+    let cancelled = false;
+    (async () => {
+      setRecentLoading(true);
+      try {
+        const res = await authed(`/api/counter-sales?brand=${brand}&customer=${customerId}`);
+        const j = await res.json();
+        if (!cancelled && res.ok) setRecent(j.recentForCustomer || []);
+      } catch { /* the sale can still be recorded without this */ }
+      if (!cancelled) setRecentLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [customerId, brand]);
 
   async function load() {
     setLoading(true); setError("");
@@ -244,6 +265,48 @@ function CounterSalePageInner() {
               </option>
             ))}
           </select>
+          {customerId && (
+            <div style={{ marginTop: 10, background: "#faf9fb", borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: theme.navy, marginBottom: 6 }}>
+                What this clinic has already taken
+              </div>
+              {/* Said plainly rather than left to be noticed. A quiet marker in
+                  a list is not much use to somebody working at a counter with a
+                  clinic on the phone, and the duplicate that already happened
+                  was twelve minutes apart - well inside one shift. */}
+              {!recentLoading && recent.some((r) => r.entry_date === new Date().toISOString().slice(0, 10)) && (
+                <div style={{ fontSize: 12, color: "#8a6d00", fontWeight: 700, marginBottom: 6 }}>
+                  This clinic already has a sale recorded today. Check it is not the same one before saving.
+                </div>
+              )}
+              {recentLoading && <div style={{ fontSize: 12, color: theme.gray }}>Checking...</div>}
+              {!recentLoading && recent.length === 0 && (
+                <div style={{ fontSize: 12, color: theme.gray }}>Nothing recorded for them yet.</div>
+              )}
+              {!recentLoading && recent.map((r) => {
+                // A sale for the same clinic earlier today is the one worth
+                // catching: that is what a double entry looks like, and it is
+                // exactly the pair already sitting in the data for clinic 407.
+                const today = r.entry_date === new Date().toISOString().slice(0, 10);
+                return (
+                  <div key={r.id} style={{ fontSize: 12, color: theme.navy, padding: "4px 0", borderTop: "1px solid #eee" }}>
+                    <span style={{ fontWeight: 700 }}>{formatMoney(r.net_amount)} EGP</span>
+                    <span style={{ color: theme.gray }}>
+                      {" · "}{r.entry_date}
+                      {today && <span style={{ color: "#8a6d00", fontWeight: 700 }}> · today</span>}
+                      {r.payment_method === "postponed" ? " · on account" : ` · ${r.payment_method}`}
+                    </span>
+                    {r.items?.length > 0 && (
+                      <div style={{ color: theme.gray, fontSize: 11 }}>
+                        {r.items.map((l) => `${l.item_name} \u00d7${Number(l.quantity)}`).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {doctorSearch && matchingDoctors.length === 0 && (
             <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
               No doctor matches that. Clear the search to see the full list.

@@ -45,6 +45,34 @@ export async function GET(req) {
     supabaseAdmin.from("doctors").select("id, name, clinic_code, clinic_name").order("name"),
   ]);
 
+  // What this clinic has already taken. Doaa cannot see a clinic's recent
+  // purchases while recording a sale, so nothing stops her entering the same
+  // order twice - and clinic 407 already has two identical 260 EGP sales
+  // twelve minutes apart. Returned only when a customer is being served, so
+  // the usual page load is unaffected.
+  const forCustomer = searchParams.get("customer");
+  let recentForCustomer = [];
+  if (forCustomer) {
+    const { data: recent } = await supabaseAdmin
+      .from("counter_sales")
+      .select("id, receipt_no, net_amount, payment_method, entry_date, created_at, created_by_name")
+      .eq("brand", brand)
+      .eq("customer_id", forCustomer)
+      .order("created_at", { ascending: false })
+      .limit(8);
+
+    const ids = (recent || []).map((r) => r.id);
+    let byLine = {};
+    if (ids.length) {
+      const { data: lines } = await supabaseAdmin
+        .from("counter_sale_items")
+        .select("sale_id, item_name, quantity")
+        .in("sale_id", ids);
+      for (const l of lines || []) (byLine[l.sale_id] ||= []).push(l);
+    }
+    recentForCustomer = (recent || []).map((r) => ({ ...r, items: byLine[r.id] || [] }));
+  }
+
   // Capacity is per employee and changes through the day as they work, so it
   // is computed live rather than cached.
   const staffRows = [];
@@ -75,6 +103,7 @@ export async function GET(req) {
     items: items || [],
     staff: staffRows,
     doctors: doctors || [],
+    recentForCustomer,
     selfEmployeeId: selfEmployeeId || null,
   });
 }
