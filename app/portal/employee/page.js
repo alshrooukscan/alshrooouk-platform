@@ -32,6 +32,104 @@ export default function EmployeePortalPage() {
   const [punching, setPunching] = useState(false);
   const [geoError, setGeoError] = useState("");
   const [tab, setTab] = useState("overview");
+
+  // Hidden on arrival, every time. Nothing is remembered between visits: the
+  // point is that opening the app never puts a salary on screen.
+  const [revealed, setRevealed] = useState(false);
+  const [askPassword, setAskPassword] = useState(false);
+  const [pwDraft, setPwDraft] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
+  // Leaving the screen hides it again. Switching tabs counts as leaving, and so
+  // does putting the phone down - a page left open on a desk should not still
+  // be showing somebody's pay when it is picked up.
+  useEffect(() => { setRevealed(false); setAskPassword(false); setPwDraft(""); }, [tab]);
+  useEffect(() => {
+    function onHide() { if (document.hidden) { setRevealed(false); setAskPassword(false); setPwDraft(""); } }
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
+
+  // Defined once and rendered on every tab that shows money, so the control
+  // cannot exist on one screen and be missing on another.
+  const payGate = (
+    <>
+            {/* One control for the whole screen rather than one per figure:
+        the decision is "show me my pay", not "show me this number". */}
+    {!data.impersonatedBy && (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={() => (revealed ? setRevealed(false) : setAskPassword(true))}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            background: "#fff", border: "1px solid #e2e0e8", borderRadius: 999,
+            padding: "8px 14px", cursor: "pointer", color: theme.navy,
+            fontWeight: 700, fontSize: 13,
+          }}
+        >
+          <span style={{ fontSize: 15, lineHeight: 1 }}>{revealed ? "\u{1F648}" : "\u{1F441}"}</span>
+          {revealed ? "Hide my pay" : "Show my pay"}
+        </button>
+        {!revealed && (
+          <span style={{ fontSize: 11, color: theme.gray }}>
+            Hidden until you enter your password.
+          </span>
+        )}
+      </div>
+    )}
+
+    {askPassword && (
+      <div style={{ background: "#fff", border: "1px solid #e2e0e8", borderRadius: 14, padding: 16, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 2 }}>
+          Enter your password
+        </div>
+        <div style={{ fontSize: 11, color: theme.gray, marginBottom: 10 }}>
+          The same one you use to sign in. This confirms it is you before your pay is shown.
+        </div>
+        <input
+          type="password"
+          value={pwDraft}
+          autoFocus
+          onChange={(e) => setPwDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && pwDraft && !pwBusy) submitPassword(); }}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
+        />
+        {pwError && <div style={{ color: "#ba1a1a", fontSize: 12, marginTop: 8 }}>{pwError}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button
+            onClick={submitPassword}
+            disabled={pwBusy || !pwDraft}
+            style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: pwBusy ? "default" : "pointer" }}
+          >
+            {pwBusy ? "Checking..." : "Show"}
+          </button>
+          <button
+            onClick={() => { setAskPassword(false); setPwDraft(""); setPwError(""); }}
+            style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )}
+    </>
+  );
+
+  async function submitPassword() {
+    setPwBusy(true); setPwError("");
+    try {
+      const res = await fetch("/api/portal/employee/reveal-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwDraft }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setPwError(j.error || "That did not work."); setPwBusy(false); return; }
+      setRevealed(true); setAskPassword(false); setPwDraft("");
+    } catch (e) { setPwError(e.message); }
+    setPwBusy(false);
+  }
   const router = useRouter();
 
   useEffect(() => {
@@ -103,7 +201,22 @@ export default function EmployeePortalPage() {
   const shiftStartLabel = lastEvent
     ? new Date(lastEvent.event_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
-  const annualBase = formatMoney(Number(data.employee?.fixed_salary || 0) * 12);
+  // Money is hidden until the person shows it is them. Being signed in is not
+  // the same as choosing to show your salary to whoever is standing behind you
+  // or picks up the phone you left on the desk.
+  //
+  // money() is used for every figure that is money. Hours and days are not
+  // money and stay visible - hiding them would say nothing about pay and only
+  // make the page harder to read.
+  // An admin looking through Login as sees the figures without a password, as
+  // agreed - their own session authorises it, and ImpersonationBanner above
+  // makes plain on screen that this is not the employee looking.
+  const payShown = revealed || !!data.impersonatedBy;
+
+  const money = (v, opts) =>
+    payShown ? formatMoney(v, opts) : "\u2022\u2022\u2022\u2022\u2022";
+
+  const annualBase = payShown ? formatMoney(Number(data.employee?.fixed_salary || 0) * 12) : "\u2022\u2022\u2022\u2022\u2022";
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
@@ -272,6 +385,8 @@ export default function EmployeePortalPage() {
               </button>
             )}
 
+            {payGate}
+
             {/* Earned so far leads, because it is the question a person opens
                 this page to answer: what have I made this month. The salary
                 below is the arrangement; this is the money. It matters most for
@@ -283,7 +398,7 @@ export default function EmployeePortalPage() {
                   Earned so far &middot; {data.accruedPeriod}
                 </div>
                 <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
-                  {formatMoney(data.accrued.indicative_net, { decimals: 2 })}{" "}
+                  {money(data.accrued.indicative_net, { decimals: 2 })}{" "}
                   <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>EGP</span>
                 </div>
 
@@ -301,14 +416,14 @@ export default function EmployeePortalPage() {
                   <div>
                     <div style={{ color: theme.gray, fontSize: 11 }}>Gross</div>
                     <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
-                      {formatMoney(data.accrued.gross, { decimals: 2 })}
+                      {money(data.accrued.gross, { decimals: 2 })}
                     </div>
                   </div>
                   {Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions) > 0 && (
                     <div>
                       <div style={{ color: theme.gray, fontSize: 11 }}>Deductions</div>
                       <div style={{ color: "#ba1a1a", fontSize: 14, fontWeight: 600 }}>
-                        {formatMoney(Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions), { decimals: 2 })}
+                        {money(Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions), { decimals: 2 })}
                       </div>
                     </div>
                   )}
@@ -341,8 +456,8 @@ export default function EmployeePortalPage() {
               </div>
               <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
                 {data.employee?.hourly_rate
-                  ? formatMoney(data.employee.hourly_rate, { decimals: 2 })
-                  : formatMoney(
+                  ? money(data.employee.hourly_rate, { decimals: 2 })
+                  : money(
                       Number(data.employee?.fixed_salary || 0) + Number(data.employee?.variable_salary || 0),
                       { decimals: 2 }
                     )}{" "}
@@ -354,13 +469,13 @@ export default function EmployeePortalPage() {
                 <div>
                   <div style={{ color: theme.gray, fontSize: 11 }}>Fixed</div>
                   <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
-                    {formatMoney(data.employee?.fixed_salary, { decimals: 2 })}
+                    {money(data.employee?.fixed_salary, { decimals: 2 })}
                   </div>
                 </div>
                 <div>
                   <div style={{ color: theme.gray, fontSize: 11 }}>Variable</div>
                   <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
-                    {formatMoney(data.employee?.variable_salary, { decimals: 2 })}
+                    {money(data.employee?.variable_salary, { decimals: 2 })}
                   </div>
                 </div>
                 <div>
@@ -398,17 +513,18 @@ export default function EmployeePortalPage() {
 
         {tab === "payslips" && (
           <>
+            {payGate}
             {data.payslips.length === 0 && <div style={cardStyle}>No payslips generated yet.</div>}
             {data.payslips.map((p) => (
               <div key={p.id} style={cardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontWeight: 600, color: theme.navy }}>{p.period}</span>
-                  <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(p.net_total, { decimals: 2 })} EGP</span>
+                  <span style={{ fontWeight: 700, color: theme.navy }}>{money(p.net_total, { decimals: 2 })} EGP</span>
                 </div>
                 {(p.deductions || []).length > 0 && (
                   <div style={{ marginTop: 6 }}>
                     {p.deductions.map((d, i) => (
-                      <div key={i} style={{ fontSize: 11, color: "#ba1a1a" }}>- {d.name}: {formatMoney(d.amount, { decimals: 2 })} EGP</div>
+                      <div key={i} style={{ fontSize: 11, color: "#ba1a1a" }}>- {d.name}: {money(d.amount, { decimals: 2 })} EGP</div>
                     ))}
                   </div>
                 )}
