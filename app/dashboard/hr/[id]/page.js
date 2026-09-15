@@ -28,6 +28,8 @@ export default function EmployeeProfilePage() {
   const [savingInfo, setSavingInfo] = useState(false);
   const [infoError, setInfoError] = useState("");
   const [payslip, setPayslip] = useState(null);
+  const [accrued, setAccrued] = useState(null);
+  const [accruedPeriod, setAccruedPeriod] = useState("");
   const [events, setEvents] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [shifts, setShifts] = useState([]);
@@ -88,6 +90,23 @@ export default function EmployeeProfilePage() {
     setEmployee(emp);
     setPermissions(emp?.permissions || {});
     setPayslip(latestPayslip);
+
+    // What this person has earned so far this month, worked out from their
+    // shifts, their sign-ins and sign-outs and the deduction rules. The page
+    // only ever showed a finalised payslip from payroll_runs, and since no
+    // payroll has been run that table is empty - so a page that had every
+    // ingredient sitting behind it reported nothing at all.
+    const period = new Date().toISOString().slice(0, 7);
+    try {
+      const tRes = await fetch(`/api/hr/payroll?payslip=${id}&trial=${period}`, {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      });
+      if (tRes.ok) {
+        const tj = await tRes.json();
+        setAccrued((tj.rows || []).find((r) => r.employee_id === id) || null);
+        setAccruedPeriod(tj.period || period);
+      }
+    } catch { /* the rest of the page is still worth showing */ }
     setEvents(tc || []);
     setLeaveRequests(lr || []);
     setShifts(shiftMap);
@@ -514,6 +533,52 @@ export default function EmployeeProfilePage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          {/* Earned so far, before anything is finalised. This is the figure
+              somebody actually wants when they open an employee mid-month:
+              what the person has accrued since the period began, net of
+              deductions. The payslip below is the settled version. */}
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Earned so far</h3>
+          {!accrued && (
+            <p style={{ color: theme.gray, fontSize: 13 }}>
+              Nothing recorded for this period yet.
+            </p>
+          )}
+          {accrued && (
+            <div style={{ marginBottom: 22 }}>
+              <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 10px" }}>
+                {accruedPeriod} to date · {accrued.pay_basis === "hourly" ? "paid hourly" : "monthly salary"}
+              </p>
+              <Row label="Days paid" value={`${accrued.paid_days}${Number(accrued.absent_days) ? ` · ${accrued.absent_days} absent` : ""}`} />
+              <Row label="Hours worked" value={`${formatMoney(accrued.paid_hours, { decimals: 2 })} hrs`} />
+              {Number(accrued.overtime_hours) > 0 && (
+                <Row label="Overtime (not yet decided)" value={`${formatMoney(accrued.overtime_hours, { decimals: 2 })} hrs`} />
+              )}
+              <Row label="Gross" value={`${formatMoney(accrued.gross, { decimals: 2 })} EGP`} />
+              {Number(accrued.scan_commission) > 0 && <Row label="Scan commission" value={`${formatMoney(accrued.scan_commission, { decimals: 2 })} EGP`} />}
+              {Number(accrued.report_bonus) > 0 && <Row label="Report bonus" value={`${formatMoney(accrued.report_bonus, { decimals: 2 })} EGP`} />}
+              {Number(accrued.bonuses) > 0 && <Row label="Bonuses" value={`${formatMoney(accrued.bonuses, { decimals: 2 })} EGP`} />}
+              {Number(accrued.rule_deductions) > 0 && <Row label="Deductions" value={`- ${formatMoney(accrued.rule_deductions, { decimals: 2 })} EGP`} negative />}
+              {Number(accrued.penalty_deductions) > 0 && <Row label="Penalties" value={`- ${formatMoney(accrued.penalty_deductions, { decimals: 2 })} EGP`} negative />}
+              {Number(accrued.advance_taken) > 0 && <Row label="Advance to repay" value={`- ${formatMoney(accrued.advance_taken, { decimals: 2 })} EGP`} negative />}
+              {Number(accrued.tab_taken) > 0 && <Row label="Tab to settle" value={`- ${formatMoney(accrued.tab_taken, { decimals: 2 })} EGP`} negative />}
+              <div style={{ borderTop: `2px solid ${theme.navy}`, marginTop: 12, paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontWeight: 700, color: theme.navy }}>Earned to date</span>
+                <span style={{ fontWeight: 700, color: theme.navy, fontSize: 20 }}>
+                  {formatMoney(accrued.indicative_net, { decimals: 2 })} EGP
+                </span>
+              </div>
+              {accrued.flags && (
+                // Said out loud rather than folded silently into the number:
+                // an undecided overtime hour or an unreviewed day will move
+                // this figure, and whoever reads it should know that.
+                <p style={{ fontSize: 11, color: "#8a6d00", marginTop: 8 }}>{accrued.flags}</p>
+              )}
+              <p style={{ fontSize: 11, color: theme.gray, marginTop: 6 }}>
+                Indicative. Nothing is settled until a payslip is generated.
+              </p>
+            </div>
+          )}
+
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Current Payslip</h3>
           {!payslip && <p style={{ color: theme.gray, fontSize: 14 }}>No payslip generated yet.</p>}
           {payslip && (
