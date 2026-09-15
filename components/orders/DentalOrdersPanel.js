@@ -63,6 +63,7 @@ export default function DentalOrdersPanel() {
   const [itemRequests, setItemRequests] = useState([]);
   const [counterSales, setCounterSales] = useState([]);
   const [saleLines, setSaleLines] = useState({});
+  const [saleClinic, setSaleClinic] = useState({});
 
   useEffect(() => { load(); }, []);
 
@@ -93,7 +94,10 @@ export default function DentalOrdersPanel() {
 
     const { data: reqs } = await supabase
       .from("stock_item_requests")
-      .select("*, doctors(name, clinic_name)")
+      // clinic_code was already being printed on the card below and was always
+      // blank, because this select never fetched it. Doaa asked for the clinic
+      // number and the card had been trying to show it all along.
+      .select("*, doctors(name, clinic_name, clinic_code)")
       .eq("status", "pending")
       .order("created_at", { ascending: false });
     setItemRequests(reqs || []);
@@ -121,6 +125,15 @@ export default function DentalOrdersPanel() {
       const grouped = {};
       for (const l of lines || []) (grouped[l.sale_id] ||= []).push(l);
       setSaleLines(grouped);
+
+      const docIds = [...new Set((cs || []).filter((x) => x.customer_type === "doctor" && x.customer_id).map((x) => x.customer_id))];
+      if (docIds.length) {
+        const { data: docs } = await supabase.from("doctors").select("id, name, clinic_code").in("id", docIds);
+        const byDoc = Object.fromEntries((docs || []).map((d) => [d.id, d]));
+        const perSale = {};
+        for (const x of cs || []) if (byDoc[x.customer_id]) perSale[x.id] = byDoc[x.customer_id];
+        setSaleClinic(perSale);
+      }
     }
     setLoading(false);
   }
@@ -284,8 +297,16 @@ export default function DentalOrdersPanel() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
+                  {/* Number first, the same order as the counter sale screen.
+                      Reception is handed a clinic number, so that is what they
+                      scan a list for - and with a debt on the line, knowing
+                      which clinic owes it is the whole point. */}
+                  {o.doctors?.clinic_code && (
+                    <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, marginRight: 8 }}>
+                      {o.doctors.clinic_code}
+                    </span>
+                  )}
                   {o.doctors?.name || "Unknown doctor"}
-                  {o.doctors?.clinic_code && <span style={{ color: theme.gold, fontSize: 11, marginLeft: 6 }}>{o.doctors.clinic_code}</span>}
                   {isBackorder && (
                     // Nothing is reserved for this one - there was no stock to
                     // hold. It cannot be delivered until the items arrive.
@@ -306,10 +327,19 @@ export default function DentalOrdersPanel() {
               </div>
             </div>
 
-            {owed > 0 && (
+            {/* Doaa asked for the clinic number on a debt "or even when the
+                account is settled". A settled order said nothing at all, so
+                there was no way to tell a paid one from a row still being
+                worked out - silence read as missing information rather than as
+                nothing owed. It now says so. */}
+            {owed > 0 ? (
               <div style={{ fontSize: 12, color: "#ba1a1a", fontWeight: 700, marginTop: 6 }}>
-                Outstanding: {formatMoney(owed)} EGP
+                Clinic {o.doctors?.clinic_code || "not recorded"} owes {formatMoney(owed)} EGP
                 {Number(o.amount_paid) > 0 && <span style={{ color: theme.gray, fontWeight: 400 }}> (paid {formatMoney(o.amount_paid)})</span>}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#1e7a3c", fontWeight: 700, marginTop: 6 }}>
+                Settled{o.doctors?.clinic_code ? ` · clinic ${o.doctors.clinic_code}` : ""}
               </div>
             )}
 
@@ -483,8 +513,17 @@ export default function DentalOrdersPanel() {
           <div key={cs.id} style={{ ...card, marginBottom: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <div>
+                {/* Whose sale it was. I listed these yesterday with the receipt
+                    and the amount but no customer, which left the same question
+                    Doaa is asking: which clinic is this? */}
+                {saleClinic[cs.id]?.clinic_code && (
+                  <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, marginRight: 8 }}>
+                    {saleClinic[cs.id].clinic_code}
+                  </span>
+                )}
                 <span style={{ fontWeight: 800, color: theme.navy }}>{cs.receipt_no}</span>
                 <span style={{ color: theme.gray, fontSize: 12 }}>
+                  {saleClinic[cs.id]?.name ? ` · ${saleClinic[cs.id].name}` : ""}
                   {" · "}{cs.entry_date}{cs.created_by_name ? ` · by ${cs.created_by_name}` : ""}
                 </span>
               </div>
