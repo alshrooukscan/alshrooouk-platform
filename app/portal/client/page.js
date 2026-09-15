@@ -112,8 +112,13 @@ export default function ClientPortalPage() {
       <ImpersonationBanner impersonatedBy={data.impersonatedBy} name={data.client?.name} />
       <div style={{ background: theme.navy, padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />
-          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Al Shrooouk Scan &amp; Lab</span>
+          {/* White label. This portal is where the client's own patients see
+              their results, so it carries the client's mark and name. Ours
+              only appears when they have not given us one. */}
+          <img src={data?.client?.logo_url || "/logo-mark.png"} alt="" style={{ height: 32, width: "auto", maxWidth: 140, objectFit: "contain" }} />
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>
+            {data?.client?.name || "Al Shrooouk Scan & Lab"}
+          </span>
         </div>
         <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
           Log Out

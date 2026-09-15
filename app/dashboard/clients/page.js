@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { resolveUniqueUsername } from "../../../lib/uniqueUsername";
+import Link from "next/link";
 import LoginAsButton from "../../../components/LoginAsButton";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 
@@ -20,6 +21,7 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [createdAccount, setCreatedAccount] = useState(null);
+  const [logoFile, setLogoFile] = useState(null);
 
   useEffect(() => {
     load();
@@ -49,6 +51,19 @@ export default function ClientsPage() {
       setError(err.message);
       return;
     }
+    // The logo is uploaded after the insert because the file is named after
+    // the client id, which only exists once the row does. A failed upload does
+    // not fail the client: they can add it later from the client's page.
+    if (logoFile) {
+      const ext = (logoFile.name.split(".").pop() || "png").toLowerCase();
+      const path = `${data.id}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("client-logos").upload(path, logoFile, { upsert: true });
+      if (!upErr) {
+        const { data: pub } = supabase.storage.from("client-logos").getPublicUrl(path);
+        await supabase.from("clients").update({ logo_url: pub.publicUrl }).eq("id", data.id);
+      }
+    }
+
     const baseUsername = phone.replace(/\D/g, "") || name.toLowerCase().replace(/\s+/g, "");
     const username = await resolveUniqueUsername(supabase, "clients", baseUsername);
     const { data: pwd } = await supabase.rpc("create_client_credentials", { p_client_id: data.id, p_username: username });
@@ -57,6 +72,7 @@ export default function ClientsPage() {
     setName("");
     setPhone("");
     setEmail("");
+    setLogoFile(null);
     setShowAdd(false);
     load();
   }
@@ -82,6 +98,12 @@ export default function ClientsPage() {
             <input style={inp} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01xxxxxxxxx" />
             <label style={lbl}>Contact Email (optional)</label>
             <input style={inp} value={email} onChange={(e) => setEmail(e.target.value)} />
+            <label style={lbl}>Their logo (optional)</label>
+            <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} style={{ fontSize: 12 }} />
+            <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
+              Shown on their portal in place of ours. Their patients see that page. Can be added later.
+            </p>
+
             {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
             <button onClick={handleAdd} disabled={saving} style={{ marginTop: 8, padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
               {saving ? "Creating..." : "Create Client & Generate Login"}
@@ -93,12 +115,20 @@ export default function ClientsPage() {
         <div style={{ display: "grid", gap: 8 }}>
           {clients.map((c) => (
             <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <div>
-                <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{c.name}</div>
-                <div style={{ fontSize: 12, color: theme.gray }}>
-                  {c.contact_phone && `${c.contact_phone} \u00b7 `}Username: {c.username || "not set"}
+              {/* The name opens the client, the way a patient or a doctor does.
+                  Until now this list was the whole of client management, so a
+                  changed phone or a lost password had nowhere to be handled. */}
+              <Link href={`/dashboard/clients/${c.id}`} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                {c.logo_url ? (
+                  <img src={c.logo_url} alt="" style={{ height: 32, width: 32, objectFit: "contain", borderRadius: 6, border: "1px solid #eee" }} />
+                ) : null}
+                <div>
+                  <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{c.name}</div>
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    {c.contact_phone && `${c.contact_phone} \u00b7 `}Username: {c.username || "not set"}
+                  </div>
                 </div>
-              </div>
+              </Link>
               {c.username && <LoginAsButton type="client" id={c.id} name={c.name} size="small" />}
             </div>
           ))}
