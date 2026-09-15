@@ -368,10 +368,16 @@ export default function EmployeeProfilePage() {
               <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
               <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
                 {formatPhone(employee.phone)} {employee.national_id ? `· ID ${employee.national_id}` : ""}
-                {employee.hourly_rate ? ` · ${formatMoney(employee.hourly_rate, { decimals: 2 })} EGP/hr` : ""}
               </p>
               <p style={{ color: theme.gray, margin: "4px 0 0", fontSize: 13 }}>
-                Fixed: {formatMoney(employee.fixed_salary)} EGP &middot; Variable: {formatMoney(employee.variable_salary)} EGP
+                {/* Five of the eight staff are paid by the hour, and for them
+                    fixed and variable salary are genuinely zero - so this line
+                    read "Fixed: 0 EGP - Variable: 0 EGP" and looked like
+                    payroll had failed. It now states how the person is
+                    actually paid. */}
+                {employee.hourly_rate
+                  ? `Paid hourly at ${formatMoney(employee.hourly_rate, { decimals: 2 })} EGP/hr`
+                  : `Fixed: ${formatMoney(employee.fixed_salary)} EGP \u00b7 Variable: ${formatMoney(employee.variable_salary)} EGP`}
               </p>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
