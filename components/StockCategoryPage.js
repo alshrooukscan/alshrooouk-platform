@@ -9,6 +9,8 @@ import { usePermissions } from "../lib/usePermissions";
 
 // One dedicated page per stock category (Dental, El3awama) - no in-page toggle,
 // each is its own real route matching its own sidebar entry.
+const LABEL = { qty_remaining: "quantity", purchase_price: "purchase price", sale_price: "sale price" };
+
 export default function StockCategoryPage({ category, title }) {
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
@@ -70,15 +72,41 @@ export default function StockCategoryPage({ category, title }) {
     }
     if (String(item[field] ?? "") === String(value ?? "")) return true;
 
+    // Quantity, purchase price and sale price decide what the stock is worth,
+    // what a shortfall costs an employee, and what a clinic is charged. They
+    // are proposed here, not changed: an admin approves them in the Action
+    // Center. Everything else about an item still saves directly.
+    const needsApproval = ["qty_remaining", "purchase_price", "sale_price"].includes(field);
+    if (needsApproval) {
+      const { data: sess } = await supabase.auth.getSession();
+      const { error: reqErr } = await supabase.rpc("request_stock_change", {
+        p_item_id: item.id,
+        p_field: field,
+        p_new_value: value,
+        p_by_id: sess.session?.user?.id || null,
+        p_by_name: profile?.name || "Unknown",
+        p_reason: null,
+      });
+      if (reqErr) {
+        setCellError(reqErr.message);
+        return false;
+      }
+      setCellError(
+        `Sent for approval: ${item.name} ${LABEL[field]} ${item[field] ?? "-"} to ${value}. It changes once an admin approves it.`
+      );
+      // The old value stays on screen deliberately, because that is still what
+      // the item is worth until somebody decides otherwise.
+      return true;
+    }
+
     const { error } = await supabase.from("stock_items").update({ [field]: value }).eq("id", item.id);
     if (error) {
       setCellError(error.message);
       return false;
     }
 
-    // A quantity change here is a stock adjustment that never went through a
-    // purchase, sale or count, so it leaves no trace anywhere else. Recorded
-    // so a shelf count that moved by hand can still be explained later.
+    // Kept for any path that still writes a quantity directly. An approved
+    // change carries its own record on the request itself.
     if (field === "qty_remaining") {
       const { data: sess } = await supabase.auth.getSession();
       await supabase.from("activity_log").insert({

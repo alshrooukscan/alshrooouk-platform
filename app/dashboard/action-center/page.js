@@ -4,6 +4,8 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney, formatVisitDateTime } from "../../../lib/format";
+
+const STOCK_FIELD_LABEL = { qty_remaining: "Quantity", purchase_price: "Purchase price", sale_price: "Sale price" };
 import { logActivity } from "../../../lib/activityLog";
 import { syncPatientLastVisitDate } from "../../../lib/syncPatientLastVisitDate";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
@@ -61,11 +63,26 @@ export default function ActionCenterPage() {
   // Card payments Paymob could not account for. They keep their method and
   // wait here for a decision rather than being changed automatically.
   const [cardReviews, setCardReviews] = useState([]);
+  const [stockChanges, setStockChanges] = useState([]);
 
   useEffect(() => {
     if (!permsLoading && profile) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permsLoading, profile, approvalFilter, visitEditFilter]);
+
+  async function decideStockChange(id, status) {
+    setBusyId(id);
+    const { error } = await supabase.rpc("decide_stock_change", {
+      p_id: id,
+      p_status: status,
+      p_by_id: profile?.id || null,
+      p_by_name: profile?.name || "",
+      p_note: null,
+    });
+    setBusyId(null);
+    if (error) { alert(error.message); return; }
+    load();
+  }
 
   async function decideCardReview(reviewId, action) {
     setBusyId(reviewId);
@@ -221,6 +238,16 @@ export default function ActionCenterPage() {
         headers: { Authorization: `Bearer ${sess.session?.access_token}` },
       });
       if (cardRes.ok) setCardReviews((await cardRes.json()).reviews || []);
+
+      // Proposed changes to what stock is worth. These numbers set what a
+      // clinic is charged and what a missing item costs an employee, so a
+      // change to one waits for a decision rather than taking effect.
+      const { data: sc } = await supabase
+        .from("stock_change_requests")
+        .select("*, stock_items(name, item_code, category)")
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+      setStockChanges(sc || []);
     }
     if (isAdmin) {
       // Unpacked by position in the order the promises were pushed above.
@@ -637,6 +664,45 @@ export default function ActionCenterPage() {
                 <button onClick={() => decideException(x.id, false)} disabled={busyId === x.id}
                   style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   Do not pay
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Stock Value Changes Awaiting Your Approval</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Quantity, purchase price and sale price decide what the stock is worth, what a clinic is
+            charged, and what a missing item costs an employee. Nothing changes until you approve it.
+          </p>
+          {stockChanges.length === 0 && (
+            <p style={{ color: theme.gray, fontSize: 13 }}>Nothing waiting.</p>
+          )}
+          {stockChanges.map((c) => (
+            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
+                  {c.stock_items?.item_code ? `${c.stock_items.item_code} · ` : ""}{c.stock_items?.name || "Item"}
+                </div>
+                <div style={{ fontSize: 12, color: theme.gray }}>
+                  {STOCK_FIELD_LABEL[c.field] || c.field}{" "}
+                  <span style={{ color: "#ba1a1a" }}>{formatMoney(c.old_value)}</span>
+                  {" \u2192 "}
+                  <span style={{ color: "#1e7a3c", fontWeight: 700 }}>{formatMoney(c.new_value)}</span>
+                  {c.requested_by_name ? ` · asked by ${c.requested_by_name}` : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => decideStockChange(c.id, "approved")} disabled={busyId === c.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  {busyId === c.id ? "..." : "Approve"}
+                </button>
+                <button onClick={() => decideStockChange(c.id, "rejected")} disabled={busyId === c.id}
+                  style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: "#ba1a1a", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Reject
                 </button>
               </div>
             </div>
