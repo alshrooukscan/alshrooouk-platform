@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
-import { formatMoney } from "../../../lib/format";
+import { formatMoney, formatVisitDateTime } from "../../../lib/format";
 
 const BRANDS = [
   { key: "scan", label: "Scan Center" },
@@ -25,6 +25,7 @@ const PAYMENT_METHODS = [
 export default function DebtCollectionPage() {
   const { can, isAdmin, loading: permsLoading } = usePermissions();
   const [customers, setCustomers] = useState([]);
+  const [patientDebts, setPatientDebts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [target, setTarget] = useState(null);
@@ -57,6 +58,7 @@ export default function DebtCollectionPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load outstanding balances.");
       setCustomers(json.customers || []);
+      setPatientDebts(json.patientDebts || []);
       setStaffList(json.staff || []);
       setSelfEmployeeId(json.selfEmployeeId || null);
     } catch (e) {
@@ -124,9 +126,24 @@ export default function DebtCollectionPage() {
                     </div>
                     <div style={{ fontSize: 12, color: theme.gray }}>
                       {BRAND_LABEL[c.brand] || c.brand}
+                      {c.doctors?.length > 0 && ` · ${c.doctors.slice(0, 3).join(", ")}`}
                       {c.credit_limit_enabled && ` · limit ${formatMoney(c.credit_limit)} EGP`}
                       {over && <strong style={{ color: "#ba1a1a" }}> · over limit</strong>}
                     </div>
+                    {/* What the balance is made of. A clinic owing 9,920 EGP is
+                        not something reception can discuss on the phone without
+                        knowing which orders it came from. */}
+                    {c.charges?.length > 0 && (
+                      <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
+                        {c.charges.slice(0, 4).map((ch, i) => (
+                          <span key={i}>
+                            {i > 0 && " · "}
+                            {ch.reference || ch.note || ch.reference_type || "charge"} {formatMoney(ch.amount)}
+                          </span>
+                        ))}
+                        {c.charges.length > 4 && ` · +${c.charges.length - 4} more`}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ fontWeight: 800, color: over ? "#ba1a1a" : theme.navy, whiteSpace: "nowrap" }}>
@@ -140,6 +157,60 @@ export default function DebtCollectionPage() {
           </div>
         )}
       </div>
+
+      {/* Patients who owe the centre for a scan. None of this appeared on the
+          page before - 13,920 EGP across two dozen visits was uncollectable
+          because nobody could see it. It is not in the AR ledger: a visit
+          carries its own charge and what has been paid against it, so the debt
+          is the difference, and it belongs to a visit rather than an account.
+          Shown with the scan and the date, and the name opens the patient. */}
+      {(brandFilter === "all" || brandFilter === "scan") && patientDebts.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginTop: 20 }}>
+          <h3 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 16 }}>Patients owing for a scan</h3>
+          <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 14px" }}>
+            {patientDebts.length} visit{patientDebts.length === 1 ? "" : "s"} not fully paid, {" "}
+            {formatMoney(patientDebts.reduce((t, v) => t + v.balance, 0))} EGP outstanding. Payment is recorded on the visit itself.
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {patientDebts.map((v) => (
+              <div
+                key={v.visit_id}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                  padding: "12px 14px", borderRadius: 10, border: "1px solid #eceff1", background: "#fafbfc",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <a
+                    href={`/dashboard/patients/${v.patient_id}?visit=${v.visit_id}`}
+                    style={{ fontWeight: 700, color: theme.navy, textDecoration: "none" }}
+                  >
+                    {v.name}
+                  </a>
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    {(v.scan_types || []).join(", ") || "scan"}
+                    {v.exam_date ? ` · ${formatVisitDateTime(v.exam_date, v.exam_time)}` : ""}
+                  </div>
+                  <div style={{ fontSize: 11, color: theme.gray }}>
+                    charged {formatMoney(v.amount_due)} · paid {formatMoney(v.amount_paid)}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ fontWeight: 800, color: theme.navy, whiteSpace: "nowrap" }}>
+                    {formatMoney(v.balance)} EGP
+                  </div>
+                  <a
+                    href={`/dashboard/patients/${v.patient_id}?visit=${v.visit_id}`}
+                    style={{ ...primaryBtn, textDecoration: "none", display: "inline-block" }}
+                  >
+                    Open visit
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {target && (
         <PaymentModal
@@ -164,7 +235,9 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
   // Cash has to be attributed to whoever is physically holding it. Taken from
   // the login when it maps to an employee; asked for when it does not, instead
   // of failing the collection after the fact.
-  const [collectedBy, setCollectedBy] = useState(selfEmployeeId || "");
+  // Always the signed-in employee. Kept as state only because the submit path
+  // reads it; nothing sets it to anybody else.
+  const collectedBy = selfEmployeeId || "";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -176,7 +249,8 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
     if (!amt || amt <= 0) return setError("Enter the amount collected.");
     if (amt > customer.balance) return setError(`That is more than the ${formatMoney(customer.balance)} EGP outstanding.`);
     if (paymentMethod === "cash" && !acknowledged) return setError("Please confirm the cash has been received.");
-    if (paymentMethod === "cash" && !collectedBy) return setError("Choose who is taking the cash.");
+    if (paymentMethod === "cash" && !collectedBy)
+      return setError("Your login isn't linked to an employee record, so cash can't be recorded against you. Ask an admin to link it, or record this as a card or transfer payment.");
 
     setSaving(true);
     try {
@@ -225,27 +299,28 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
         ))}
       </select>
 
+      {/* The cash goes to whoever is signed in. It was a dropdown of every
+          employee, which let one person's collection be recorded against
+          another - the same thing that was closed on the counter sale screen.
+          Nobody should be able to put money in a colleague's hands by choosing
+          their name from a list. */}
       {paymentMethod === "cash" && (
         <div style={{ marginTop: 12 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 6 }}>
             Who is taking the cash
           </label>
-          <select
-            value={collectedBy}
-            onChange={(e) => setCollectedBy(e.target.value)}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
-          >
-            {!selfEmployeeId && <option value="">Select employee...</option>}
-            {staffList.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}{e.id === selfEmployeeId ? " (you)" : ""}
-              </option>
-            ))}
-          </select>
-          {!selfEmployeeId && (
-            <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
-              Your login isn&apos;t linked to an employee record, so this can&apos;t be attributed to you
-              automatically. Choose whoever is actually taking the money.
+          {selfEmployeeId ? (
+            <div style={{ padding: "10px 12px", borderRadius: 8, background: "#faf9fb", border: "1px solid #eee", fontSize: 14, color: theme.navy, fontWeight: 600 }}>
+              {staffList.find((e) => e.id === selfEmployeeId)?.name || "You"}
+              <span style={{ color: theme.gray, fontWeight: 400, fontSize: 12 }}> · it goes into your cash in hand</span>
+            </div>
+          ) : (
+            // Not a dropdown by choice: a login with no employee record cannot
+            // take cash at all, and picking somebody else would only move the
+            // problem onto them.
+            <p style={{ fontSize: 12, color: "#ba1a1a", margin: 0 }}>
+              Your login isn&apos;t linked to an employee record, so cash can&apos;t be attributed to you.
+              Ask an admin to link it, or record this as a card or transfer payment.
             </p>
           )}
         </div>

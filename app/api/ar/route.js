@@ -53,15 +53,37 @@ export async function GET(req) {
   }
 
   // Everyone who currently owes something, with their limit alongside.
-  const [{ data: balances }, { data: doctors }, { data: clients }] = await Promise.all([
+  // Clinics were missing, and every balance on the page is a clinic - so every
+  // row read "Unknown". That is mine: when counter sales and deliveries were
+  // moved onto the clinic rather than the doctor, this lookup was never told.
+  const [{ data: balances }, { data: doctors }, { data: clients }, { data: clinics }] = await Promise.all([
     supabaseAdmin.from("customer_ar_balances").select("*"),
-    supabaseAdmin.from("doctors").select("id, name, clinic_name, phone, credit_limit_enabled, credit_limit"),
+    supabaseAdmin.from("doctors").select("id, name, clinic_name, phone, clinic_code, credit_limit_enabled, credit_limit"),
     supabaseAdmin.from("clients").select("id, name, credit_limit_enabled, credit_limit"),
+    supabaseAdmin.from("clinics").select("id, name, code"),
   ]);
 
   const byId = new Map();
   (doctors || []).forEach((d) => byId.set(d.id, { ...d, customer_type: "doctor" }));
   (clients || []).forEach((c) => byId.set(c.id, { ...c, customer_type: "client" }));
+  // A clinic often has no name recorded - 237 and 129 among them - so the code
+  // carries the identity. "Clinic 237" is something reception can act on;
+  // "Unknown" is not.
+  (clinics || []).forEach((c) =>
+    byId.set(c.id, {
+      name: c.name || (c.code ? `Clinic ${c.code}` : null),
+      clinic_code: c.code,
+      customer_type: "clinic",
+    })
+  );
+
+  // Which doctors sit behind each clinic, so a debt can be chased by name.
+  const doctorsByClinicCode = new Map();
+  (doctors || []).forEach((d) => {
+    if (!d.clinic_code) return;
+    if (!doctorsByClinicCode.has(d.clinic_code)) doctorsByClinicCode.set(d.clinic_code, []);
+    doctorsByClinicCode.get(d.clinic_code).push(d.name);
+  });
 
   const rows = (balances || [])
     .filter((b) => Number(b.balance) !== 0)
@@ -74,12 +96,76 @@ export async function GET(req) {
         brand: b.brand,
         balance: Number(b.balance),
         name: c.name || b.internal_brand || "Unknown",
+        clinic_code: c.clinic_code || null,
+        doctors: c.clinic_code ? doctorsByClinicCode.get(c.clinic_code) || [] : [],
         clinic_name: c.clinic_name || null,
         phone: c.phone || null,
         credit_limit_enabled: !!c.credit_limit_enabled,
         credit_limit: Number(c.credit_limit || 0),
       };
     })
+    .sort((a, b) => b.balance - a.balance);
+
+  // What each debt is actually made of. A clinic owing 9,920 EGP is not
+  // something reception can discuss without knowing which orders it came from,
+  // and the ledger already carries the reference on every charge.
+  const owingIds = rows.map((r) => r.customer_id);
+  const detailByCustomer = {};
+  if (owingIds.length) {
+    const { data: charges } = await supabaseAdmin
+      .from("customer_ar_ledger")
+      .select("customer_id, brand, amount, direction, reference_type, reference_id, note, entry_date")
+      .in("customer_id", owingIds)
+      .eq("direction", "charge")
+      .order("entry_date", { ascending: false })
+      .limit(400);
+
+    // Receipt numbers for counter sales, so a line reads as something that
+    // exists on paper rather than an internal id.
+    const saleIds = [...new Set((charges || []).filter((c) => c.reference_type === "counter_sale" && c.reference_id).map((c) => c.reference_id))];
+    let receiptById = {};
+    if (saleIds.length) {
+      const { data: sales } = await supabaseAdmin.from("counter_sales").select("id, receipt_no").in("id", saleIds);
+      receiptById = Object.fromEntries((sales || []).map((x) => [x.id, x.receipt_no]));
+    }
+
+    for (const c of charges || []) {
+      (detailByCustomer[c.customer_id] ||= []).push({
+        brand: c.brand,
+        amount: Number(c.amount),
+        entry_date: c.entry_date,
+        reference: receiptById[c.reference_id] || null,
+        reference_type: c.reference_type,
+        note: c.note,
+      });
+    }
+  }
+  rows.forEach((r) => { r.charges = (detailByCustomer[r.customer_id] || []).filter((c) => c.brand === r.brand).slice(0, 8); });
+
+  // Patients who owe the centre for a scan. This never appeared here at all -
+  // 13,920 EGP across 24 visits was uncollectable simply because nobody could
+  // see it. It does not live in the AR ledger: a visit carries its own charge
+  // and what has been paid against it, so the debt is the difference.
+  const { data: unpaidVisits } = await supabaseAdmin
+    .from("visits")
+    .select("id, patient_id, exam_date, exam_time, scan_types, amount_due, amount_paid, patients(name, mobile)")
+    .order("exam_date", { ascending: false })
+    .limit(500);
+
+  const patientDebts = (unpaidVisits || [])
+    .map((v) => ({
+      visit_id: v.id,
+      patient_id: v.patient_id,
+      name: v.patients?.name || "Unknown patient",
+      phone: v.patients?.mobile || null,
+      exam_date: v.exam_date,
+      exam_time: v.exam_time,
+      scan_types: v.scan_types || [],
+      amount_due: Number(v.amount_due || 0),
+      amount_paid: Number(v.amount_paid || 0),
+      balance: Number(v.amount_due || 0) - Number(v.amount_paid || 0),
+    }))
+    .filter((v) => v.balance > 0)
     .sort((a, b) => b.balance - a.balance);
 
   // Same reasoning as the counter: the page has to know before the collection
@@ -92,7 +178,7 @@ export async function GET(req) {
     .eq("is_active", true)
     .order("name");
 
-  return NextResponse.json({ customers: rows, staff: staffRows || [], selfEmployeeId: selfEmployeeId || null });
+  return NextResponse.json({ customers: rows, patientDebts, staff: staffRows || [], selfEmployeeId: selfEmployeeId || null });
 }
 
 export async function POST(req) {
