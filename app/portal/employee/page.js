@@ -445,6 +445,49 @@ export default function EmployeePortalPage() {
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 8 }}>
                   Updates as you sign in and out. Final pay is confirmed on your payslip.
                 </div>
+
+                {/* Every scheduled day of the month and whether it counted.
+                    Nourhan could only see the last ten clock events - five
+                    days - and reasonably concluded her attendance was being
+                    counted from the 10th. Her pay was right all along; she had
+                    no way to check it. A person should be able to see the days
+                    their own pay is built from without asking anybody. */}
+                {data.attendanceDays?.length > 0 && (
+                  <div style={{ marginTop: 12, borderTop: "1px solid #eceaf1", paddingTop: 10 }}>
+                    <div style={{ fontSize: 11, color: theme.gray, marginBottom: 6 }}>
+                      Your scheduled days this month &middot;{" "}
+                      {data.attendanceDays.filter((d) => d.counted).length} of {data.attendanceDays.length} counted
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {data.attendanceDays.map((d) => {
+                        const missingOut = d.signed_in && !d.signed_out;
+                        return (
+                          <span
+                            key={d.date}
+                            title={
+                              d.counted
+                                ? `${d.date} - signed in and out, counted`
+                                : missingOut
+                                ? `${d.date} - signed in but no sign-out, so it is not counted yet`
+                                : `${d.date} - no sign-in recorded`
+                            }
+                            style={{
+                              fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
+                              background: d.counted ? "#e8f5ec" : missingOut ? "#fffaf0" : "#fdecec",
+                              color: d.counted ? "#1e7a3c" : missingOut ? "#8a6d00" : "#ba1a1a",
+                            }}
+                          >
+                            {Number(d.date.slice(8, 10))}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 10, color: theme.gray, marginTop: 6 }}>
+                      Green counted &middot; amber signed in but no sign-out &middot; red no sign-in.
+                      A day counts once both are recorded.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

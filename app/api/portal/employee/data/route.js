@@ -32,12 +32,51 @@ export async function GET() {
     .eq("employee_id", session.id)
     .order("generated_at", { ascending: false })
     .limit(6);
+  // The whole of the current pay period, not the last ten events. Ten events
+  // is five days of signing in and out, so on the 16th Nourhan could see
+  // nothing before the 11th and reasonably concluded her attendance was only
+  // being counted from the 10th. Her pay was right - all fourteen days were
+  // counted - but she had no way to see that, and an employee who cannot check
+  // their own attendance has to take payroll on trust.
+  const periodStart = `${new Date().toISOString().slice(0, 7)}-01`;
   const { data: events } = await supabaseAdmin
     .from("timeclock_events")
     .select("*")
     .eq("employee_id", session.id)
+    .gte("event_time", periodStart)
     .order("event_time", { ascending: false })
-    .limit(10);
+    .limit(400);
+
+  // A day-by-day account of the month: every day they were scheduled, whether
+  // they signed in and out, and so which days their pay is built from. This is
+  // the thing that answers "why does it say ten days" without anybody having
+  // to ask.
+  const { data: scheduled } = await supabaseAdmin
+    .from("employee_schedule_days")
+    .select("work_date, is_day_off")
+    .eq("employee_id", session.id)
+    .gte("work_date", periodStart)
+    .order("work_date");
+
+  const dayIn = new Set();
+  const dayOut = new Set();
+  for (const ev of events || []) {
+    const d = String(ev.event_time).slice(0, 10);
+    if (ev.event_type === "login") dayIn.add(d);
+    if (ev.event_type === "logout") dayOut.add(d);
+  }
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const attendanceDays = (scheduled || [])
+    .filter((d) => !d.is_day_off && d.work_date <= todayIso)
+    .map((d) => ({
+      date: d.work_date,
+      signed_in: dayIn.has(d.work_date),
+      signed_out: dayOut.has(d.work_date),
+      // A day only counts once both halves are there, which is the rule pay is
+      // calculated on - so it is the rule shown here too.
+      counted: dayIn.has(d.work_date) && dayOut.has(d.work_date),
+    }));
   const { data: leaveRequests } = await supabaseAdmin
     .from("leave_requests")
     .select("*")
@@ -113,6 +152,7 @@ export async function GET() {
     spendCapacity: myCapacity || null,
     payslips: payslips || [],
     events: events || [],
+    attendanceDays,
     leaveRequests: leaveRequests || [],
     schedule: schedule || [],
     excuseRules: excuseRules || [],
