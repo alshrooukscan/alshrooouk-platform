@@ -306,6 +306,30 @@ export default function Sidebar() {
           >
             {profile.role}
           </div>
+
+          {/* Signing out belongs beside the name of the account being signed
+              out of. At the foot of the sidebar it was a button with no
+              subject - which matters most on a shared machine, where leaving
+              somebody else logged in is the whole problem Ahmed raised. */}
+          <button
+            onClick={handleLogout}
+            title="Log Out"
+            style={{
+              marginTop: 10,
+              width: "100%",
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "#fff",
+              borderRadius: 8,
+              padding: "8px 10px",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <LogOut size={13} /> Log Out
+            </span>
+          </button>
         </div>
       )}
 
@@ -331,6 +355,27 @@ export default function Sidebar() {
             .join("")
             .toUpperCase()}
         </div>
+      )}
+
+      {profile && collapsed && (
+        // Kept with the initials for the same reason, rather than left alone at
+        // the foot of an icon strip.
+        <button
+          onClick={handleLogout}
+          title="Log Out"
+          style={{
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.2)",
+            color: "#fff",
+            borderRadius: 8,
+            padding: "10px",
+            cursor: "pointer",
+            width: 40,
+            marginBottom: 16,
+          }}
+        >
+          <LogOut size={16} />
+        </button>
       )}
 
       <nav style={{ flex: 1, width: "100%" }}>
@@ -407,26 +452,33 @@ export default function Sidebar() {
           {switchingPortal ? "Opening..." : "Employee Dashboard"}
         </button>
       )}
-      <button
-        onClick={handleLogout}
-        title="Log Out"
-        style={{
-          background: "transparent",
-          border: "1px solid rgba(255,255,255,0.2)",
-          color: "#fff",
-          borderRadius: 8,
-          padding: collapsed ? "10px" : "10px 12px",
-          cursor: "pointer",
-          fontSize: collapsed ? 16 : 13,
-          width: collapsed ? 40 : "100%",
-        }}
-      >
-        {collapsed ? <LogOut size={16} /> : (
-          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            <LogOut size={14} /> Log Out
-          </span>
-        )}
-      </button>
+
+      {/* Both buttons above live inside the identity card, so without a profile
+          there would be no way to sign out at all - and somebody whose profile
+          failed to load is exactly who needs to get out and back in. Kept at
+          the foot, where it used to be. */}
+      {!profile && (
+        <button
+          onClick={handleLogout}
+          title="Log Out"
+          style={{
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.2)",
+            color: "#fff",
+            borderRadius: 8,
+            padding: collapsed ? "10px" : "10px 12px",
+            cursor: "pointer",
+            fontSize: collapsed ? 16 : 13,
+            width: collapsed ? 40 : "100%",
+          }}
+        >
+          {collapsed ? <LogOut size={16} /> : (
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <LogOut size={14} /> Log Out
+            </span>
+          )}
+        </button>
+      )}
     </aside>
   );
 }
