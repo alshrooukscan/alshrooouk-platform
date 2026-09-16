@@ -57,7 +57,11 @@ export default function EmployeePortalPage() {
     <>
             {/* One control for the whole screen rather than one per figure:
         the decision is "show me my pay", not "show me this number". */}
-    {!data.impersonatedBy && (
+    {/* data? , not data. - this is built at the top of the component, before
+        the fetch has returned, so on the very first render data is still null.
+        Dereferencing it there threw and took the whole portal down for every
+        employee. The guard below reads the same either way once loaded. */}
+    {!data?.impersonatedBy && (
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <button
           onClick={() => (revealed ? setRevealed(false) : setAskPassword(true))}
