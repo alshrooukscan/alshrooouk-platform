@@ -71,7 +71,19 @@ export default function DebtCollectionPage() {
   if (!hasAccess) return <p style={{ color: theme.gray }}>You don&apos;t have access to this page.</p>;
 
   const shown = brandFilter === "all" ? customers : customers.filter((c) => c.brand === brandFilter);
-  const total = shown.reduce((s, c) => s + c.balance, 0);
+
+  // The patient debts I added yesterday were listed but never counted, so the
+  // Scan Center tab read 0 EGP above a list of nine patients owing 8,590. A
+  // total that contradicts the rows beneath it is worse than no total: it
+  // teaches people not to trust either.
+  const scanShown = brandFilter === "all" || brandFilter === "scan" ? patientDebts : [];
+  const scanTotal = scanShown.reduce((s, v) => s + v.balance, 0);
+
+  const total = shown.reduce((s, c) => s + c.balance, 0) + scanTotal;
+
+  // A patient owing on two visits is one customer, not two.
+  const customersOwing = shown.length + new Set(scanShown.map((v) => v.patient_id)).size;
+
   const overLimit = shown.filter((c) => c.credit_limit_enabled && c.balance > c.credit_limit);
 
   return (
@@ -84,7 +96,7 @@ export default function DebtCollectionPage() {
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard label="Total Outstanding" value={`${formatMoney(total)} EGP`} tone={theme.navy} />
-        <StatCard label="Customers Owing" value={shown.length} tone={theme.navy} />
+        <StatCard label="Customers Owing" value={customersOwing} tone={theme.navy} />
         <StatCard label="Over Credit Limit" value={overLimit.length} tone={overLimit.length ? "#ba1a1a" : theme.navy} />
       </div>
 
@@ -104,7 +116,9 @@ export default function DebtCollectionPage() {
           <p style={{ color: theme.gray, margin: 0 }}>Loading...</p>
         ) : shown.length === 0 ? (
           <p style={{ color: theme.gray, margin: 0 }}>
-            Nobody is carrying a balance right now. Postponed orders will appear here once they are recorded.
+            {/* "Nobody is carrying a balance" sat directly above nine patients
+                who were. Scoped to what this card is actually about. */}
+            No clinic or account balance for this business. Postponed orders will appear here once they are recorded.
           </p>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
@@ -193,6 +207,12 @@ export default function DebtCollectionPage() {
                   </div>
                   <div style={{ fontSize: 11, color: theme.gray }}>
                     charged {formatMoney(v.amount_due)} · paid {formatMoney(v.amount_paid)}
+                    {v.discount_pct > 0 && (
+                      <span style={{ color: "#8a6d00", fontWeight: 700 }}>
+                        {" · "}after {v.discount_pct}% discount
+                        {v.discount_reason ? ` (${v.discount_reason})` : ""}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

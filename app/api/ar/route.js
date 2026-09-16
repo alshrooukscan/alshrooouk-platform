@@ -148,7 +148,7 @@ export async function GET(req) {
   // and what has been paid against it, so the debt is the difference.
   const { data: unpaidVisits } = await supabaseAdmin
     .from("visits")
-    .select("id, patient_id, exam_date, exam_time, scan_types, amount_due, amount_paid, patients(name, mobile)")
+    .select("id, patient_id, exam_date, exam_time, scan_types, amount_due, amount_paid, discount_pct, discount_reason, patients(name, mobile)")
     .order("exam_date", { ascending: false })
     .limit(500);
 
@@ -163,6 +163,13 @@ export async function GET(req) {
       scan_types: v.scan_types || [],
       amount_due: Number(v.amount_due || 0),
       amount_paid: Number(v.amount_paid || 0),
+      // amount_due is already net of the discount - a 2,500 scan at 20% is
+      // stored as 2,000 - so the balance needs no further adjustment. The
+      // percentage is sent so the page can show it: a discount that is applied
+      // but never displayed cannot be checked by anyone, which is exactly how a
+      // wrong one survives.
+      discount_pct: Number(v.discount_pct || 0),
+      discount_reason: v.discount_reason || null,
       balance: Number(v.amount_due || 0) - Number(v.amount_paid || 0),
     }))
     .filter((v) => v.balance > 0)
