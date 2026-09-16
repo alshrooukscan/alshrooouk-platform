@@ -157,6 +157,14 @@ export default function StockCategoryPage({ category, title }) {
   }
 
   const totalValue = items.reduce((sum, i) => sum + (i.qty_remaining || 0) * (i.purchase_price || 0), 0);
+  // Counts quantity of five or fewer, which is not the same thing as "below
+  // its restock level" - the Action Center counts that and reports a different
+  // number, so the two screens appeared to disagree about the same stock. The
+  // label below now says what this actually counts.
+  //
+  // Neither figure means much yet: every one of the 313 items is still on the
+  // default restock level of 3, so nobody has said what "low" is for any
+  // particular item.
   const lowStockCount = items.filter((i) => (i.qty_remaining || 0) <= 5).length;
 
   function latestVariance(item) {
@@ -180,7 +188,7 @@ export default function StockCategoryPage({ category, title }) {
             <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy }}>{formatMoney(totalValue)} EGP</div>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: theme.gray }}>LOW STOCK ITEMS</div>
+            <div style={{ fontSize: 11, color: theme.gray }}>5 OR FEWER LEFT</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: lowStockCount > 0 ? "#ba1a1a" : theme.navy }}>{lowStockCount}</div>
           </div>
         </div>
