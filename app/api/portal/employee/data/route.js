@@ -123,8 +123,12 @@ export async function GET() {
   // side of a transaction - money they took, handed over, or received.
   const { data: myMovements } = await supabaseAdmin
     .from("expense_transactions")
-    .select("id, brand, type, amount, payment_method, note, status, entry_date, created_at, from_employee_id, to_employee_id, employee_id")
-    .or(`employee_id.eq.${session.id},from_employee_id.eq.${session.id},to_employee_id.eq.${session.id}`)
+    // employee_id does not exist on this table - the query errored on every
+    // load, the error was discarded, and no employee has ever seen their cash
+    // movements. Money is held by the person on one side of a transfer or the
+    // other, which is what from_employee_id and to_employee_id already say.
+    .select("id, brand, type, amount, payment_method, note, status, entry_date, created_at, from_employee_id, to_employee_id")
+    .or(`from_employee_id.eq.${session.id},to_employee_id.eq.${session.id}`)
     .in("type", ["cash_transfer", "cash_collection", "cash_out", "cash_conversion"])
     .order("created_at", { ascending: false })
     .limit(30);
