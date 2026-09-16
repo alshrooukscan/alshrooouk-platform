@@ -278,6 +278,61 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* Moved up from the foot of the sidebar. Ahmed asked for it because he
+          uploads scans against a patient and had no way of telling, at a
+          glance, which account he was signed in as - and a file put on the
+          wrong patient is not a small mistake to undo. Whose account this is
+          belongs at the top, where it is read before the work starts, not at
+          the bottom where it is found only if somebody goes looking. */}
+      {profile && !collapsed && (
+        <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px", marginBottom: 20 }}>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            Signed in as
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginTop: 2 }}>{profile.name}</div>
+          <div
+            style={{
+              display: "inline-block",
+              marginTop: 5,
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: profile.role === "admin" ? theme.gold : "rgba(255,255,255,0.15)",
+              color: profile.role === "admin" ? theme.navy : "#fff",
+            }}
+          >
+            {profile.role}
+          </div>
+        </div>
+      )}
+
+      {/* Collapsed to an icon strip there is no room for a name, and that is
+          exactly when somebody cannot tell who they are. The initials keep the
+          answer on screen, and the full name is in the tooltip. */}
+      {profile && collapsed && (
+        <div
+          title={`Signed in as ${profile.name} (${profile.role})`}
+          style={{
+            width: 34, height: 34, borderRadius: 999, marginBottom: 16,
+            background: profile.role === "admin" ? theme.gold : "rgba(255,255,255,0.15)",
+            color: profile.role === "admin" ? theme.navy : "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 800,
+          }}
+        >
+          {(profile.name || "")
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((w) => w[0])
+            .join("")
+            .toUpperCase()}
+        </div>
+      )}
+
       <nav style={{ flex: 1, width: "100%" }}>
         {visibleNav.map((item) => {
           if (item.type === "link") {
@@ -326,27 +381,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {profile && !collapsed && (
-        <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{profile.name}</div>
-          <div
-            style={{
-              display: "inline-block",
-              marginTop: 4,
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: 0.5,
-              textTransform: "uppercase",
-              padding: "2px 8px",
-              borderRadius: 999,
-              background: profile.role === "admin" ? theme.gold : "rgba(255,255,255,0.15)",
-              color: profile.role === "admin" ? theme.navy : "#fff",
-            }}
-          >
-            {profile.role}
-          </div>
-        </div>
-      )}
       {linkedEmployeeId && !collapsed && (
         <button
           onClick={handleOpenEmployeeDashboard}
