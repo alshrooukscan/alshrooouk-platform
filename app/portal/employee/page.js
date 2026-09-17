@@ -446,6 +446,17 @@ export default function EmployeePortalPage() {
                   Updates as you sign in and out. Final pay is confirmed on your payslip.
                 </div>
 
+                {/* Without a roster the pay rule has no denominator, so the
+                    whole salary is shown. Saying so beats leaving somebody to
+                    reconcile a number against days that were never recorded. */}
+                {data.noRoster && (
+                  <div style={{ fontSize: 11, color: "#8a6d00", marginTop: 6 }}>
+                    No shifts are on your roster this month, so your full monthly salary is shown.
+                    Once your shifts are added, this becomes your salary divided by your scheduled
+                    days, times the days you signed in and out.
+                  </div>
+                )}
+
                 {/* Every scheduled day of the month and whether it counted.
                     Nourhan could only see the last ten clock events - five
                     days - and reasonably concluded her attendance was being
@@ -455,17 +466,23 @@ export default function EmployeePortalPage() {
                 {data.attendanceDays?.length > 0 && (
                   <div style={{ marginTop: 12, borderTop: "1px solid #eceaf1", paddingTop: 10 }}>
                     <div style={{ fontSize: 11, color: theme.gray, marginBottom: 6 }}>
-                      Your scheduled days this month &middot;{" "}
+                      Your days this month &middot;{" "}
                       {data.attendanceDays.filter((d) => d.counted).length} of {data.attendanceDays.length} counted
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {data.attendanceDays.map((d) => {
                         const missingOut = d.signed_in && !d.signed_out;
+                        // Worked but never rostered. Marked differently rather
+                        // than shown as an ordinary day, because it is the
+                        // thing that needs correcting on the roster.
+                        const offRoster = d.counted && !d.scheduled;
                         return (
                           <span
                             key={d.date}
                             title={
-                              d.counted
+                              offRoster
+                                ? `${d.date} - you worked this day but it is not on your roster`
+                                : d.counted
                                 ? `${d.date} - signed in and out, counted`
                                 : missingOut
                                 ? `${d.date} - signed in but no sign-out, so it is not counted yet`
@@ -473,8 +490,8 @@ export default function EmployeePortalPage() {
                             }
                             style={{
                               fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
-                              background: d.counted ? "#e8f5ec" : missingOut ? "#fffaf0" : "#fdecec",
-                              color: d.counted ? "#1e7a3c" : missingOut ? "#8a6d00" : "#ba1a1a",
+                              background: offRoster ? "#eef2fb" : d.counted ? "#e8f5ec" : missingOut ? "#fffaf0" : "#fdecec",
+                              color: offRoster ? "#33478a" : d.counted ? "#1e7a3c" : missingOut ? "#8a6d00" : "#ba1a1a",
                             }}
                           >
                             {Number(d.date.slice(8, 10))}
@@ -483,8 +500,8 @@ export default function EmployeePortalPage() {
                       })}
                     </div>
                     <div style={{ fontSize: 10, color: theme.gray, marginTop: 6 }}>
-                      Green counted &middot; amber signed in but no sign-out &middot; red no sign-in.
-                      A day counts once both are recorded.
+                      Green counted &middot; blue worked but not on your roster &middot; amber signed in
+                      but no sign-out &middot; red no sign-in. A day counts once both are recorded.
                     </div>
                   </div>
                 )}

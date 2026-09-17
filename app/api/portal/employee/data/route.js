@@ -67,16 +67,34 @@ export async function GET() {
   }
 
   const todayIso = new Date().toISOString().slice(0, 10);
-  const attendanceDays = (scheduled || [])
-    .filter((d) => !d.is_day_off && d.work_date <= todayIso)
-    .map((d) => ({
-      date: d.work_date,
-      signed_in: dayIn.has(d.work_date),
-      signed_out: dayOut.has(d.work_date),
-      // A day only counts once both halves are there, which is the rule pay is
-      // calculated on - so it is the rule shown here too.
-      counted: dayIn.has(d.work_date) && dayOut.has(d.work_date),
-    }));
+  // Every scheduled day, plus any day they worked that was not on the roster.
+  // Showing scheduled days alone left Doaa with an empty panel: she has signed
+  // in eight times this month against a roster with nothing in it, so the one
+  // view that explains her pay showed her nothing at all. A day worked is worth
+  // seeing whether or not somebody put it on a roster first.
+  const rosterDays = new Set(
+    (scheduled || []).filter((d) => !d.is_day_off).map((d) => d.work_date)
+  );
+  const workedDays = new Set([...dayIn, ...dayOut]);
+  const allDays = [...new Set([...rosterDays, ...workedDays])]
+    .filter((d) => d <= todayIso)
+    .sort();
+
+  const attendanceDays = allDays.map((d) => ({
+    date: d,
+    scheduled: rosterDays.has(d),
+    signed_in: dayIn.has(d),
+    signed_out: dayOut.has(d),
+    // A day only counts once both halves are there, which is the rule pay is
+    // calculated on - so it is the rule shown here too.
+    counted: dayIn.has(d) && dayOut.has(d),
+  }));
+
+  // Said plainly where it applies. A salaried person with no roster is paid the
+  // whole salary because the rule - salary divided by scheduled days, times
+  // days worked - has no denominator without one. They should know that is why,
+  // rather than seeing a number they cannot reconcile with their own days.
+  const noRoster = rosterDays.size === 0 && Number(employee?.hourly_rate || 0) === 0;
   const { data: leaveRequests } = await supabaseAdmin
     .from("leave_requests")
     .select("*")
@@ -157,6 +175,7 @@ export async function GET() {
     payslips: payslips || [],
     events: events || [],
     attendanceDays,
+    noRoster,
     leaveRequests: leaveRequests || [],
     schedule: schedule || [],
     excuseRules: excuseRules || [],
