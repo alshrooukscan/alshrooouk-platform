@@ -304,6 +304,54 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
         {BRAND_LABEL[customer.brand] || customer.brand}.
       </p>
 
+      {/* What the balance is made of, here rather than on another page. Doaa
+          records money coming in from clinics and needs to see which order it
+          is against while she is doing it - a total on its own cannot answer
+          the question the clinic is asking on the phone. */}
+      {customer.charges?.length > 0 && (
+        <div style={{ background: "#faf9fb", borderRadius: 10, padding: 12, marginBottom: 14, maxHeight: 210, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: theme.navy, marginBottom: 6 }}>
+            What they took, and what they have paid
+          </div>
+          {customer.charges.map((ch, i) => {
+            const paid = ch.direction === "payment";
+            return (
+              <div key={i} style={{ fontSize: 12, padding: "5px 0", borderTop: i ? "1px solid #eee" : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ color: theme.navy, minWidth: 0 }}>
+                    {/* A payment carries no note, so without this it fell back
+                        to the reference type and read as blank or "charge" -
+                        the opposite of what it is. */}
+                    {paid
+                      ? "Payment received"
+                      : ch.reference
+                      ? ch.reference
+                      : ch.reference_type === "dental_order"
+                      ? "Order placed from the portal"
+                      : ch.note || "Charge"}
+                  </span>
+                  <span style={{ fontWeight: 700, whiteSpace: "nowrap", color: paid ? "#1e7a3c" : "#ba1a1a" }}>
+                    {paid ? "- " : "+ "}{formatMoney(ch.amount)}
+                  </span>
+                </div>
+                <div style={{ color: theme.gray, fontSize: 11 }}>
+                  {ch.entry_date}
+                  {paid ? " · paid" : ""}
+                  {ch.items?.length > 0 && <> · {ch.items.join(", ")}</>}
+                </div>
+              </div>
+            );
+          })}
+          {/* An opening balance carries no order because it came across from the
+              stock workbook, so saying "order" there would be a guess. */}
+          {customer.charges.some((c) => !c.reference && c.reference_type === null && c.direction === "charge") && (
+            <div style={{ fontSize: 10, color: theme.gray, marginTop: 8 }}>
+              Lines with no receipt came from the old stock workbook, before the platform, so there is no order to open.
+            </div>
+          )}
+        </div>
+      )}
+
       <FieldLabel>Amount Collected (EGP)</FieldLabel>
       <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
       {amt > 0 && amt <= customer.balance && (

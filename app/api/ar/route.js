@@ -112,11 +112,13 @@ export async function GET(req) {
   const owingIds = rows.map((r) => r.customer_id);
   const detailByCustomer = {};
   if (owingIds.length) {
+    // Payments as well as charges. Doaa is recording money coming in and needs
+    // to see what the clinic already paid against what they were charged - a
+    // total on its own does not tell her which order is still open.
     const { data: charges } = await supabaseAdmin
       .from("customer_ar_ledger")
       .select("customer_id, brand, amount, direction, reference_type, reference_id, note, entry_date")
       .in("customer_id", owingIds)
-      .eq("direction", "charge")
       .order("entry_date", { ascending: false })
       .limit(400);
 
@@ -129,18 +131,42 @@ export async function GET(req) {
       receiptById = Object.fromEntries((sales || []).map((x) => [x.id, x.receipt_no]));
     }
 
+    // What was actually ordered. A receipt number tells her which sale; the
+    // items tell her what the clinic took, which is what they ask about on the
+    // phone.
+    const orderIds = [...new Set((charges || []).filter((c) => c.reference_type === "dental_order" && c.reference_id).map((c) => c.reference_id))];
+    let itemsByOrder = {};
+    if (orderIds.length) {
+      const { data: lines } = await supabaseAdmin
+        .from("dental_order_items")
+        .select("order_id, item_name, quantity")
+        .in("order_id", orderIds);
+      for (const l of lines || []) (itemsByOrder[l.order_id] ||= []).push(`${l.item_name} \u00d7${Number(l.quantity)}`);
+    }
+
+    const saleItemsBySale = {};
+    if (saleIds.length) {
+      const { data: lines } = await supabaseAdmin
+        .from("counter_sale_items")
+        .select("sale_id, item_name, quantity")
+        .in("sale_id", saleIds);
+      for (const l of lines || []) (saleItemsBySale[l.sale_id] ||= []).push(`${l.item_name} \u00d7${Number(l.quantity)}`);
+    }
+
     for (const c of charges || []) {
       (detailByCustomer[c.customer_id] ||= []).push({
         brand: c.brand,
+        direction: c.direction,
         amount: Number(c.amount),
         entry_date: c.entry_date,
         reference: receiptById[c.reference_id] || null,
         reference_type: c.reference_type,
         note: c.note,
+        items: itemsByOrder[c.reference_id] || saleItemsBySale[c.reference_id] || [],
       });
     }
   }
-  rows.forEach((r) => { r.charges = (detailByCustomer[r.customer_id] || []).filter((c) => c.brand === r.brand).slice(0, 8); });
+  rows.forEach((r) => { r.charges = (detailByCustomer[r.customer_id] || []).filter((c) => c.brand === r.brand).slice(0, 40); });
 
   // Patients who owe the centre for a scan. This never appeared here at all -
   // 13,920 EGP across 24 visits was uncollectable simply because nobody could
