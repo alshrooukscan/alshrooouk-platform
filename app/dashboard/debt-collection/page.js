@@ -134,9 +134,28 @@ export default function DebtCollectionPage() {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: theme.navy }}>
-                      {c.name}
-                      {c.clinic_name ? <span style={{ color: theme.gray, fontWeight: 400 }}> · {c.clinic_name}</span> : null}
+                    <div style={{ fontWeight: 700, color: theme.navy, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      {/* Number first, then the name - the same order as the
+                          counter sale and stock orders screens, so a clinic
+                          looks the same wherever it appears.
+                          The code is also the only reliable identifier: clinic
+                          255 is named "0" and 237 and 129 have no name at all,
+                          so a list keyed on names alone cannot be read. */}
+                      {c.clinic_code && (
+                        <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999 }}>
+                          {c.clinic_code}
+                        </span>
+                      )}
+                      <span>
+                        {c.name && c.name !== "0" && c.name !== `Clinic ${c.clinic_code}`
+                          ? c.name
+                          : c.clinic_code
+                          ? `Clinic ${c.clinic_code}`
+                          : c.name}
+                      </span>
+                      {c.clinic_name && c.clinic_name !== c.name ? (
+                        <span style={{ color: theme.gray, fontWeight: 400 }}>· {c.clinic_name}</span>
+                      ) : null}
                     </div>
                     <div style={{ fontSize: 12, color: theme.gray }}>
                       {BRAND_LABEL[c.brand] || c.brand}
@@ -297,11 +316,20 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
     setSaving(false);
   }
 
+  // The number belongs in the title too: Doaa opens this while a clinic is on
+  // the phone quoting their number, not their name.
   return (
-    <Modal title={`Record Payment · ${customer.name}`} onClose={onClose}>
+    <Modal
+      title={`Record Payment · ${customer.clinic_code ? customer.clinic_code + " " : ""}${customer.name}`}
+      onClose={onClose}
+    >
       <p style={{ fontSize: 13, color: theme.gray, marginTop: -6 }}>
-        Currently owes <strong style={{ color: theme.navy }}>{formatMoney(customer.balance)} EGP</strong> for{" "}
+        {customer.clinic_code ? <>Clinic <strong style={{ color: theme.navy }}>{customer.clinic_code}</strong>{" "}</> : null}
+        owes <strong style={{ color: theme.navy }}>{formatMoney(customer.balance)} EGP</strong> for{" "}
         {BRAND_LABEL[customer.brand] || customer.brand}.
+        {customer.doctors?.length > 0 && (
+          <span style={{ color: theme.gray }}> Doctors: {customer.doctors.join(", ")}.</span>
+        )}
       </p>
 
       {/* What the balance is made of, here rather than on another page. Doaa
