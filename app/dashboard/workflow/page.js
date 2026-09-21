@@ -136,7 +136,7 @@ export default function WorkflowBoardPage() {
                 style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
                          padding: "9px 0", borderBottom: "1px solid #f0f0f3" }}>
                 <div>
-                  <span style={{ fontWeight: 700, color: theme.navy }}>{r.patient_name}</span>
+                  <PatientLink row={r} />
                   <span style={{ color: theme.gray, fontSize: 12, marginLeft: 8 }}>
                     {r.exam_date} · {r.step_name}
                     {r.records !== r.step_name ? ` (records: ${r.records})` : ""}
@@ -152,5 +152,28 @@ export default function WorkflowBoardPage() {
         </>
       )}
     </div>
+  );
+}
+
+// Every patient name on the board opens that patient's record at the exact
+// visit, scrolled into view and highlighted, so staff can see where the visit
+// actually stands without leaving the board to search for it. Opened in a new
+// tab because the board is a work queue: closing the tab returns you to your
+// place in the list. Use this for any list on this page that names a patient.
+function PatientLink({ row }) {
+  if (!row.patient_id) {
+    return <span style={{ fontWeight: 700, color: theme.navy }}>{row.patient_name}</span>;
+  }
+  return (
+    <a
+      href={`/dashboard/patients/${row.patient_id}?visit=${row.visit_id}`}
+      target="_blank"
+      rel="noreferrer"
+      title="Open this patient at this visit"
+      style={{ fontWeight: 700, color: theme.navy, textDecoration: "underline",
+               textDecorationColor: theme.gold, textUnderlineOffset: 3 }}
+    >
+      {row.patient_name}
+    </a>
   );
 }
