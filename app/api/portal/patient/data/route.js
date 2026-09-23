@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { collapseSeries } from "../../../../../lib/fileSeries";
 import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
@@ -101,7 +102,9 @@ export async function GET() {
     // These come straight from a Drive listing, so they still carry Drive's
     // own webViewLink - which no patient can open. Same proxy treatment.
     const guessed = (bestEffortByVisit[v.id] || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}`, exact: false }));
-    return { ...v, files: [...exact, ...guessed] };
+    // Collapsed per visit: a raw DICOM export is one scan, and a patient shown
+    // 326 numbered slices has no way to tell which one is their result.
+    return { ...v, files: collapseSeries([...exact, ...guessed]) };
   });
 
   // Checked fresh here, not read from the session token - see the identical
@@ -109,6 +112,6 @@ export async function GET() {
     // Impersonating admins are exempt: they are inspecting the account, not
   // using it, and cannot set someone else's password.
   if (!session.impersonated && auth?.must_change_password) return passwordChangeRequired();
-  const proxiedUnmatched = (stillUnmatched || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}` }));
+  const proxiedUnmatched = collapseSeries((stillUnmatched || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}` })));
   return NextResponse.json({ patient, visits: visitsWithFiles, files: proxiedUnmatched, mustChangePassword: session.impersonated ? false : !!auth?.must_change_password, impersonatedBy: session.impersonatedBy || null });
 }

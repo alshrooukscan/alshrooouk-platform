@@ -2,6 +2,7 @@ import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { listFilesGrouped } from "../../../../lib/googleDrive";
+import { collapseSeries } from "../../../../lib/fileSeries";
 
 export async function GET(req) {
   // Every route in this group ran with the service-role key and no
@@ -115,7 +116,9 @@ export async function GET(req) {
       };
     });
 
-    return NextResponse.json({ files: withLabels });
+    // A machine-written slice sequence is one scan, not hundreds of files, and
+    // is returned as one entry carrying its members. See lib/fileSeries.
+    return NextResponse.json({ files: collapseSeries(withLabels) });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

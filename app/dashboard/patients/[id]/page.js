@@ -868,6 +868,77 @@ export default function PatientProfilePage() {
     return true;
   });
 
+  // A raw DICOM export is a folder of numbered slices. Uploaded unzipped, one
+  // scan became 326 rows on this page - and because the page lists every file
+  // twice, once under its visit and once in the grid below, 652 cards. The
+  // listing now hands back one entry per sequence carrying its members, and
+  // this renders that entry as the single scan it is, openable slice by slice
+  // for whoever actually needs one.
+  const [openSeries, setOpenSeries] = useState({});
+
+  function FileCard({ f }) {
+    const isSeries = f.seriesCount > 1;
+    const expanded = !!openSeries[f.id];
+    return (
+      <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, gridColumn: isSeries && expanded ? "1 / -1" : undefined }}>
+        {isSeries ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy }} title={`${f.name} … ${f.series[f.series.length - 1].name}`}>
+              {f.displayName || f.name}
+            </div>
+            <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
+              {new Date(f.createdTime).toLocaleDateString()} &middot; {f.seriesCount} files in one set
+            </div>
+            <button
+              onClick={() => setOpenSeries((s) => ({ ...s, [f.id]: !s[f.id] }))}
+              style={{ ...fileActionBtn, marginTop: 8 }}
+            >
+              {expanded ? "Hide files" : `Show all ${f.seriesCount}`}
+            </button>
+            {expanded && (
+              <div style={{ marginTop: 10, maxHeight: 320, overflowY: "auto", border: "1px solid #f0f0f3", borderRadius: 8 }}>
+                {f.series.map((m) => (
+                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid #f6f6f8" }}>
+                    <a href={m.webViewLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: theme.navy, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.name}
+                    </a>
+                    {canManageFiles && (
+                      <button onClick={() => deleteFile(m)} disabled={fileBusy === m.id} style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9", flexShrink: 0 }}>
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <a href={f.webViewLink} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: theme.navy }}>
+              <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>
+                {f.displayName || f.name}
+              </div>
+              <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
+                {new Date(f.createdTime).toLocaleDateString()}
+                {f.typeLabel ? ` · ${f.typeLabel}` : ""}
+              </div>
+            </a>
+            {canManageFiles && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>
+                  {fileBusy === f.id ? "..." : "Replace"}
+                </button>
+                <button onClick={() => deleteFile(f)} disabled={fileBusy === f.id} style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9" }}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
   if (!patient) return <p style={{ color: theme.gray }}>Patient not found.</p>;
 
@@ -1318,29 +1389,7 @@ export default function PatientProfilePage() {
                       Files for this visit ({visitFiles.length})
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
-                      {visitFiles.map((f) => (
-                        <div key={f.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-                          <a href={f.webViewLink} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: theme.navy }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>
-                              {f.displayName || f.name}
-                            </div>
-                            <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
-                              {new Date(f.createdTime).toLocaleDateString()}
-                              {f.typeLabel ? ` \u00b7 ${f.typeLabel}` : ""}
-                            </div>
-                          </a>
-                          {canManageFiles && (
-                            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                              <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>
-                                {fileBusy === f.id ? "..." : "Replace"}
-                              </button>
-                              <button onClick={() => deleteFile(f)} disabled={fileBusy === f.id} style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9" }}>
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                      {visitFiles.map((f) => <FileCard key={f.id} f={f} />)}
                     </div>
                   </div>
                 );
@@ -1450,38 +1499,7 @@ export default function PatientProfilePage() {
           }
           const FileGrid = ({ items }) => (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
-              {items.map((f) => (
-                <div key={f.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-                  <a
-                    href={f.webViewLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ display: "block", textDecoration: "none", color: theme.navy }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>
-                      {f.displayName || f.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
-                      {new Date(f.createdTime).toLocaleDateString()}
-                      {f.typeLabel ? ` · ${f.typeLabel}` : ""}
-                    </div>
-                  </a>
-                  {canManageFiles && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>
-                        {fileBusy === f.id ? "..." : "Replace"}
-                      </button>
-                      <button
-                        onClick={() => deleteFile(f)}
-                        disabled={fileBusy === f.id}
-                        style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9" }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+              {items.map((f) => <FileCard key={f.id} f={f} />)}
             </div>
           );
           return (

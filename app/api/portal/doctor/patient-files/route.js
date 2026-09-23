@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { collapseSeries } from "../../../../../lib/fileSeries";
 import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
@@ -56,5 +57,7 @@ export async function GET(req) {
   // referring doctor has that, so every link answered with a sign-in page.
   // Rewritten to the proxy, which streams the file as the service account.
   const proxied = (files || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}` }));
-  return NextResponse.json({ files: proxied });
+  // One scan reads as one entry here too. A doctor handed 326 numbered slices
+  // cannot tell which to open, and each one is a separate download.
+  return NextResponse.json({ files: collapseSeries(proxied) });
 }
