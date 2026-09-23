@@ -1,0 +1,37 @@
+{
+  "Name": "SHSCAN-GW",
+  "DicomAet": "SHSCAN",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+
+  "AuthenticationEnabled": true,
+  "RegisteredUsers": {
+    "syncagent": "CHANGE_ME_STRONG_SECRET"
+  },
+
+  "_comment_commissioning": "During commissioning (section 6 of the development plan), leave the three DicomAlwaysAllow* settings below as true so C-ECHO/worklist queries/C-STORE from the XDI-350 succeed while you learn its real calling AE Title from the logs. Once known, set it in DicomModalities below, flip these three to false, and Orthanc only talks to registered modalities.",
+  "DicomCheckCalledAet": false,
+  "DicomAlwaysAllowEcho": true,
+  "DicomAlwaysAllowFind": true,
+  "DicomAlwaysAllowStore": true,
+
+  "_comment_stable_age": "Raised from Orthanc's 60s default - a CBCT study sends hundreds of slice instances and reconstruction/sending can pause mid-transfer.",
+  "StableAge": 120,
+  "OverwriteInstances": true,
+
+  "DicomModalities": {
+    "xline": ["XLINE_ACQ", "192.168.1.50", 104]
+  },
+
+  "Plugins": ["/usr/share/orthanc/plugins"],
+
+  "Worklists": {
+    "Enable": true,
+    "SaveInOrthancDatabase": true,
+    "SetStudyInstanceUidIfMissing": true,
+    "DeleteWorklistsOnStableStudy": true,
+    "FilterIssuerAet": false,
+    "HousekeepingInterval": 60,
+    "DeleteWorklistsDelay": 48
+  }
+}

@@ -1,0 +1,36 @@
+version: "3.9"
+
+# Runs on the always-on PC at the clinic, on the same local network as the
+# Xline XDI-350's acquisition PC. Nothing here is reachable from the internet -
+# the sync agent is the only thing that calls out, over outbound HTTPS to
+# shscan.com, matching the "gateway never exposed to the internet" design in
+# section 2 of the development plan.
+services:
+  orthanc:
+    image: orthancteam/orthanc:latest
+    container_name: shscan-gateway-orthanc
+    restart: unless-stopped
+    ports:
+      - "4242:4242" # DICOM (the XDI-350 talks to this)
+      - "8042:8042" # Orthanc's REST API (the sync agent talks to this, localhost only in practice)
+    volumes:
+      - ./orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - orthanc-db:/var/lib/orthanc/db
+
+  sync-agent:
+    build: ./sync-agent
+    container_name: shscan-gateway-sync-agent
+    restart: unless-stopped
+    depends_on:
+      - orthanc
+    environment:
+      ORTHANC_URL: "http://orthanc:8042"
+      ORTHANC_USERNAME: "syncagent"
+      ORTHANC_PASSWORD: "CHANGE_ME_STRONG_SECRET" # must match orthanc.json RegisteredUsers
+      SHSCAN_API_URL: "https://shscan.com"
+      GATEWAY_API_KEY: "CHANGE_ME_FROM_scripts/gateway_issue_key.js"
+      WORKLIST_POLL_SECONDS: "30"
+      STUDY_POLL_SECONDS: "15"
+
+volumes:
+  orthanc-db:

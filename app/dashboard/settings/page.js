@@ -62,6 +62,26 @@ export default function SettingsPage() {
       )}
 
       {!permsLoading && isAdmin && (
+        <Section title="Unmatched Scans" subtitle="Scans the CBCT gateway received but couldn't match to a visit automatically. Attach each one to the right patient by hand.">
+          <Link
+            href="/dashboard/settings/unmatched-scans"
+            style={{
+              display: "inline-block",
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: theme.navy,
+              color: "#fff",
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: 13,
+            }}
+          >
+            Review Unmatched Scans
+          </Link>
+        </Section>
+      )}
+
+      {!permsLoading && isAdmin && (
         <Section title="Staff Users" subtitle="Admin only. Control which parts of the system each staff member can access.">
           {staffUsers.map((u) => (
             <div key={u.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>

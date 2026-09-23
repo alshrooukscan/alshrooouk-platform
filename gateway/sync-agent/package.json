@@ -1,0 +1,14 @@
+{
+  "name": "shscan-gateway-sync-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs on the clinic gateway PC. Pushes DICOM worklist entries into the local Orthanc server before a scan, and relays finished studies to shscan.com after one.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0",
+    "form-data": "^4.0.0"
+  }
+}
