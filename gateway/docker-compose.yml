@@ -29,6 +29,7 @@ services:
       ORTHANC_PASSWORD: "CHANGE_ME_STRONG_SECRET" # must match orthanc.json RegisteredUsers
       SHSCAN_API_URL: "https://shscan.com"
       GATEWAY_API_KEY: "CHANGE_ME_FROM_scripts/gateway_issue_key.js"
+      SCHEDULED_STATION_AE_TITLE: "CHANGE_ME_MACHINE_AE_TITLE" # must match the machine's own AE Title (Application) field on its DICOM settings screen, not a made-up name
       WORKLIST_POLL_SECONDS: "30"
       STUDY_POLL_SECONDS: "15"
 
