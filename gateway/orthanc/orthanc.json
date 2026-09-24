@@ -23,7 +23,8 @@
   "_comment_modalities": "One entry per AE title that will query the worklist or send studies (add more if a second application at the clinic uses a different AE title). The IP is not checked (DicomCheckModalityHost is false above) since Docker's own network address translation on the gateway PC can show a different source IP than the real machine's, so any placeholder IP works.",
   "DicomModalities": {
     "romexis": ["ROMEXIS_1", "127.0.0.1", 104],
-    "fona": ["FONA", "127.0.0.1", 104]
+    "fona": ["FONA", "127.0.0.1", 104],
+    "romexis_scp": ["ROMEXIS_SCP", "192.168.1.15", 104]
   },
 
   "Plugins": ["/usr/share/orthanc/plugins"],
