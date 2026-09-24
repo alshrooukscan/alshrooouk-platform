@@ -31,7 +31,7 @@ async function createWorklist({ patientId, patientName, patientBirthDate, studyU
       ScheduledProcedureStepSequence: [
         {
           Modality: "CT",
-          ScheduledStationAETitle: "XLINE_ACQ",
+          ScheduledStationAETitle: process.env.SCHEDULED_STATION_AE_TITLE || "XLINE_ACQ",
           ScheduledProcedureStepStartDate: (examDate || new Date().toISOString().slice(0, 10)).replace(/-/g, ""),
           ScheduledProcedureStepDescription: (scanTypes || []).join("+") || "CBCT",
         },
