@@ -9,8 +9,9 @@
     "syncagent": "CHANGE_ME_STRONG_SECRET"
   },
 
-  "_comment_commissioning": "During commissioning (section 6 of the development plan), leave the three DicomAlwaysAllow* settings below as true so C-ECHO/worklist queries/C-STORE from the XDI-350 succeed while you learn its real calling AE Title from the logs. Once known, set it in DicomModalities below, flip these three to false, and Orthanc only talks to registered modalities.",
+  "_comment_commissioning": "DicomAlwaysAllow* covers C-ECHO and C-STORE from any calling AE, but the Worklists plugin enforces its own AE-title whitelist independent of DicomAlwaysAllowFind - a calling AE not listed here gets its FindWorklist request rejected outright, confirmed from the Orthanc log ('This AET is not listed in configuration option DicomModalities'). Every AE title that will query the worklist must be listed below, by name, or it is rejected regardless of the AlwaysAllow settings.",
   "DicomCheckCalledAet": false,
+  "DicomCheckModalityHost": false,
   "DicomAlwaysAllowEcho": true,
   "DicomAlwaysAllowFind": true,
   "DicomAlwaysAllowStore": true,
@@ -19,8 +20,10 @@
   "StableAge": 120,
   "OverwriteInstances": true,
 
+  "_comment_modalities": "One entry per AE title that will query the worklist or send studies (add more if a second application at the clinic uses a different AE title). The IP is not checked (DicomCheckModalityHost is false above) since Docker's own network address translation on the gateway PC can show a different source IP than the real machine's, so any placeholder IP works.",
   "DicomModalities": {
-    "xline": ["XLINE_ACQ", "192.168.1.50", 104]
+    "romexis": ["ROMEXIS_1", "127.0.0.1", 104],
+    "fona": ["FONA", "127.0.0.1", 104]
   },
 
   "Plugins": ["/usr/share/orthanc/plugins"],
