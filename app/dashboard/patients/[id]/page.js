@@ -146,6 +146,18 @@ export default function PatientProfilePage() {
   }
 
   async function handleSaveInfo() {
+    // Date of birth is required for every patient. Four older records have
+    // none; they have to get one the next time anyone edits them, rather
+    // than a blank date being saved back.
+    const todayCairo = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(new Date());
+    if (!infoDraft.dob) {
+      setInfoError("Date of birth is required.");
+      return;
+    }
+    if (infoDraft.dob > todayCairo || infoDraft.dob < "1900-01-01") {
+      setInfoError("That date of birth is not valid.");
+      return;
+    }
     if (!infoDraft.name || !infoDraft.mobile) {
       setInfoError("Name and mobile number are required.");
       return;
@@ -1026,8 +1038,8 @@ export default function PatientProfilePage() {
               <input style={editInp} value={infoDraft.mobile} onChange={(e) => setInfoDraft({ ...infoDraft, mobile: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </div>
             <div>
-              <label style={editLabel}>Date of Birth</label>
-              <input type="date" style={editInp} value={infoDraft.dob} onChange={(e) => setInfoDraft({ ...infoDraft, dob: e.target.value })} />
+              <label style={editLabel}>Date of Birth <span style={{ color: "#ba1a1a" }}>*</span></label>
+              <input type="date" style={editInp} min="1900-01-01" value={infoDraft.dob} onChange={(e) => setInfoDraft({ ...infoDraft, dob: e.target.value })} />
             </div>
             <div>
               <label style={editLabel}>Email</label>

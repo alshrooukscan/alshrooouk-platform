@@ -162,6 +162,10 @@ export default function NewPatientPage() {
   const missingFields = {};
   if (!form.name.trim()) missingFields.name = "Enter the patient's full name.";
   if (!form.mobile.trim()) missingFields.mobile = "Enter a mobile number.";
+  // Required for every new patient (client request, 27 Sep 2026): age drives
+  // which scan is appropriate and appears on the report.
+  if (!form.dob) missingFields.dob = "Enter the date of birth.";
+  else if (form.dob > todayLocal() || form.dob < "1900-01-01") missingFields.dob = "That date of birth is not valid.";
   if (!form.branch_id) missingFields.branch_id = "Choose which branch this visit is at.";
   if (form.scan_type_ids.length === 0) missingFields.scan_types = "Select at least one scan type.";
   if (!walkIn && !selectedDoctor)
@@ -363,8 +367,8 @@ export default function NewPatientPage() {
             </Field>
           </Row>
           <Row>
-            <Field label="Date of Birth">
-              <input type="date" style={inp} value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
+            <Field label="Date of Birth" required missing={flag("dob")}>
+              <input type="date" style={inp} max={todayLocal()} min="1900-01-01" value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
             </Field>
             <Field label="Email (Optional)">
               <input style={inp} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="sarah@example.com" />
@@ -591,3 +595,8 @@ const inp = {
   marginBottom: 16,
   fontFamily: "inherit",
 };
+
+// YYYY-MM-DD for today in Cairo, the clinic's own date.
+function todayLocal() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(new Date());
+}

@@ -66,6 +66,23 @@ export async function DELETE(req, { params }) {
   // own and safe to remove.
   await supabaseAdmin.from("whatsapp_log").delete().eq("visit_id", id);
 
+  // The DICOM gateway logs every visit it sends to the scanner's worklist, and
+  // an unmatched study can be resolved onto a visit. Both point at the visit
+  // with no ON DELETE rule, so since the gateway went live every visit that
+  // reached the worklist refused to delete ("violates foreign key constraint
+  // gateway_sync_log_visit_id_fkey"). The log rows are kept as history of what
+  // the gateway did; they just stop pointing at a visit that no longer exists.
+  const { error: gwErr } = await supabaseAdmin
+    .from("gateway_sync_log")
+    .update({ visit_id: null, detail: `Visit ${id} was deleted from the platform` })
+    .eq("visit_id", id);
+  if (gwErr) return NextResponse.json({ error: `Could not unlink the scanner log: ${gwErr.message}` }, { status: 500 });
+  const { error: umErr } = await supabaseAdmin
+    .from("unmatched_studies")
+    .update({ resolved_visit_id: null })
+    .eq("resolved_visit_id", id);
+  if (umErr) return NextResponse.json({ error: `Could not unlink the unmatched scan: ${umErr.message}` }, { status: 500 });
+
   // patient_files.visit_id is ON DELETE SET NULL and visit_edit_requests is
   // ON DELETE CASCADE at the database level already, so both are handled
   // automatically by this final delete, along with visit_payments cascading.
