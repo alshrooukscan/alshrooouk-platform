@@ -23,10 +23,19 @@ const getWorklistQueue = () => shscanFetch("/api/gateway/worklist-queue");
 const confirmWorklistCreated = (visitId, dicomStudyUid) =>
   shscanFetch("/api/gateway/worklist-created", { method: "POST", body: JSON.stringify({ visitId, dicomStudyUid }) });
 
+const getWorklistDeletionQueue = () => shscanFetch("/api/gateway/worklist-deletions");
+
+const confirmWorklistDeleted = (dicomStudyUid) =>
+  shscanFetch("/api/gateway/worklist-deletions", { method: "POST", body: JSON.stringify({ dicomStudyUid }) });
+
 const startStudyUpload = (payload) =>
   shscanFetch("/api/gateway/study-upload-session", { method: "POST", body: JSON.stringify(payload) });
 
 const completeStudyUpload = (payload) =>
   shscanFetch("/api/gateway/study-upload-complete", { method: "POST", body: JSON.stringify(payload) });
 
-module.exports = { getWorklistQueue, confirmWorklistCreated, startStudyUpload, completeStudyUpload };
+module.exports = {
+  getWorklistQueue, confirmWorklistCreated,
+  getWorklistDeletionQueue, confirmWorklistDeleted,
+  startStudyUpload, completeStudyUpload,
+};
