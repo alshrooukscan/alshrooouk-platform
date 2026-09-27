@@ -63,6 +63,20 @@ export async function DELETE(req, { params }) {
   // Unlink (not delete) any report tied to this visit, so a real report -
   // pending or completed, with a real uploaded file - survives independently
   // rather than being destroyed as a side effect of removing the visit.
+  //
+  // A report still pending with nothing uploaded is only a to-do created for
+  // this visit. Kept and unlinked, it stayed on the Reports page as work
+  // owed for a scan that no longer exists: two test deletions left two such
+  // rows beside the real one. Those go with the visit; anything with a file,
+  // or already completed, is still kept.
+  const { error: repDelErr } = await supabaseAdmin
+    .from("reports")
+    .delete()
+    .eq("visit_id", id)
+    .neq("status", "completed")
+    .is("report_file_url", null)
+    .is("client_uploaded_file_url", null);
+  if (repDelErr) return NextResponse.json({ error: `Could not remove the pending report: ${repDelErr.message}` }, { status: 500 });
   await supabaseAdmin.from("reports").update({ visit_id: null }).eq("visit_id", id);
 
   // The WhatsApp log is just a record of messages sent about this visit;
