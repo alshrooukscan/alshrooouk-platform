@@ -94,7 +94,52 @@ async function deleteStudy(studyId) {
   await orthancFetch(`/studies/${studyId}`, { method: "DELETE" });
 }
 
+// Worklists plugin's own REST routes (distinct from /studies), valid because
+// SaveInOrthancDatabase is true in orthanc.json. Used only for the resync
+// path: finding and removing a stale worklist entry (the one carrying a
+// patient's old name/birthdate) before pushing the corrected one, so the
+// machine's worklist screen never shows two entries for the same booking.
+async function listWorklists() {
+  const res = await orthancFetch("/worklists");
+  return res.json(); // array of worklist item IDs
+}
+
+async function getWorklistTags(worklistId) {
+  const res = await orthancFetch(`/worklists/${worklistId}`);
+  return res.json(); // { ID, Tags: {...}, ... }
+}
+
+async function deleteWorklist(worklistId) {
+  await orthancFetch(`/worklists/${worklistId}`, { method: "DELETE" });
+}
+
+// Best-effort: a lookup or delete failure here is logged and swallowed
+// rather than blocking the corrected push that follows it - a leftover
+// stale worklist entry is a much smaller problem than silently dropping the
+// fix for a wrong birthdate/name.
+async function deleteWorklistsByAccession(accessionNumber) {
+  let ids;
+  try {
+    ids = await listWorklists();
+  } catch (err) {
+    console.error(`[worklist] could not list existing worklist entries for resync: ${err.message}`);
+    return;
+  }
+  for (const id of ids) {
+    try {
+      const { Tags } = await getWorklistTags(id);
+      if (Tags?.AccessionNumber === accessionNumber) {
+        await deleteWorklist(id);
+        console.log(`[worklist] deleted stale worklist entry ${id} (accession ${accessionNumber}) before resync`);
+      }
+    } catch (err) {
+      console.error(`[worklist] could not inspect/delete worklist entry ${id} during resync: ${err.message}`);
+    }
+  }
+}
+
 module.exports = {
   createWorklist, pollChanges, getStudy, getStudyArchiveBuffer,
   listStudies, setStudyMetadata, getStudyMetadata, deleteStudy,
+  deleteWorklistsByAccession,
 };

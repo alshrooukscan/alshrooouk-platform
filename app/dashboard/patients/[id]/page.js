@@ -169,6 +169,8 @@ export default function PatientProfilePage() {
       return;
     }
     setSavingInfo(true);
+    const nameChanged = infoDraft.name !== (patient.name || "");
+    const dobChanged = (infoDraft.dob || null) !== (patient.dob || null);
     const { error } = await supabase
       .from("patients")
       .update({
@@ -182,6 +184,20 @@ export default function PatientProfilePage() {
     if (error) {
       setInfoError(error.message);
       return;
+    }
+    // A corrected name/birthdate only matters to the CBCT gateway if a
+    // worklist entry for this patient was already pushed to Orthanc with the
+    // old data - anything not yet pushed picks up the fresh value on its own
+    // next push (worklist-queue re-reads current patient data every poll),
+    // and anything already scanned is done, so there's nothing left to fix
+    // there. 'needs_resync' tells the gateway to delete that stale entry and
+    // push a corrected one under the same identifiers.
+    if (nameChanged || dobChanged) {
+      await supabase
+        .from("visits")
+        .update({ dicom_worklist_status: "needs_resync" })
+        .eq("patient_id", id)
+        .eq("dicom_worklist_status", "worklist_created");
     }
     logActivity({
       actorId: profile?.id,

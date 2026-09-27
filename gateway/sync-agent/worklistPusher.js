@@ -1,4 +1,4 @@
-const { createWorklist } = require("./orthancClient");
+const { createWorklist, deleteWorklistsByAccession } = require("./orthancClient");
 const { getWorklistQueue, confirmWorklistCreated } = require("./shscanClient");
 
 // DICOM PN (Person Name) format is "Family^Given". shscan.com stores one
@@ -18,6 +18,14 @@ async function pushPendingWorklists() {
   const { entries } = await getWorklistQueue();
   for (const entry of entries) {
     try {
+      // A resync reuses the same identifiers - the booking itself hasn't
+      // changed, only the patient's name/birthdate has - so the stale entry
+      // already sitting in Orthanc under this same AccessionNumber has to be
+      // removed first, or the machine's worklist screen would show two
+      // entries for what is really one booking.
+      if (entry.resync) {
+        await deleteWorklistsByAccession(entry.dicomAccessionNumber);
+      }
       await createWorklist({
         patientId: entry.patientId,
         patientName: toDicomPersonName(entry.patientName),
@@ -28,7 +36,7 @@ async function pushPendingWorklists() {
         scanTypes: entry.scanTypes,
       });
       await confirmWorklistCreated(entry.visitId, entry.dicomStudyUid);
-      console.log(`[worklist] pushed visit ${entry.visitId} (study ${entry.dicomStudyUid})`);
+      console.log(`[worklist] pushed visit ${entry.visitId} (study ${entry.dicomStudyUid})${entry.resync ? " [resync]" : ""}`);
     } catch (err) {
       // Left as dicom_worklist_status='pending' on shscan.com's side - the
       // next poll picks it up again with the same identifiers, so a failure
