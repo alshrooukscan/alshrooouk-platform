@@ -1,0 +1,13 @@
+-- worklist-queue hands a visit to the gateway and marks it 'pending' until the
+-- gateway confirms the Orthanc worklist entry was created. It only ever served
+-- visits with no status (or 'needs_resync'), so a push that failed left the
+-- visit at 'pending' for good - no worklist entry, and no retry, despite the
+-- code comments saying otherwise. For a name/DOB resync it was worse: the
+-- gateway deletes the stale entry before pushing the corrected one, so a
+-- failed push there left the booking with no entry at all.
+--
+-- worklist-queue now re-serves a visit stuck at 'pending' for more than a few
+-- minutes, with its existing identifiers. This column is when it was last
+-- handed out, which is what "stuck" is measured from. Existing 'pending' rows
+-- keep it null and are treated as stuck, so they are retried on the next poll.
+alter table visits add column if not exists dicom_worklist_pending_at timestamptz;
