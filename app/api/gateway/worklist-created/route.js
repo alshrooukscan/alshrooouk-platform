@@ -4,9 +4,10 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 // Confirms the gateway successfully created the worklist entry in the local
 // Orthanc server for a visit returned by /api/gateway/worklist-queue. Until
-// this fires, the visit stays dicom_worklist_status='pending' and is handed
-// out again on the next poll - a push that failed partway (network blip,
-// Orthanc restart mid-call) is simply retried with the same identifiers.
+// this fires, the visit stays dicom_worklist_status='pending' and, once it has
+// been pending for a few minutes, is handed out again by worklist-queue - a
+// push that failed partway (network blip, Orthanc restart mid-call) is simply
+// retried with the same identifiers.
 export async function POST(req) {
   const gateway = await requireGateway(req);
   if (!gateway) return NextResponse.json({ error: "Invalid gateway key." }, { status: 401 });
