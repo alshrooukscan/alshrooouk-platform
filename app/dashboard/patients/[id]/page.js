@@ -54,6 +54,12 @@ export default function PatientProfilePage() {
   const [visits, setVisits] = useState([]);
   const [visitFolders, setVisitFolders] = useState({});
   const [sameMobile, setSameMobile] = useState([]);
+  // One row per visit per DICOM gateway checkpoint reached, e.g.
+  // { [visitId]: { worklist_created: "2026-...", study_received: "2026-...", study_matched: "2026-..." } }.
+  // Only visits actually going through the CBCT gateway (dicom_worklist_status
+  // set) ever have an entry here - everything else is undefined, which is
+  // exactly what hides the gateway row for a visit that never used it.
+  const [gatewayLog, setGatewayLog] = useState({});
   const [credentials, setCredentials] = useState(null);
   const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState([]);
@@ -352,7 +358,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at, payment_verification, paymob_transaction_id, paymob_card_brand, paymob_card_last4, paymob_fees)")
+      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, dicom_worklist_status, dicom_study_uid, dicom_accession_number, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at, payment_verification, paymob_transaction_id, paymob_card_brand, paymob_card_last4, paymob_fees)")
       .eq("patient_id", id)
         // Latest first, and within the same day the later time first.
         .order("exam_date", { ascending: false })
@@ -407,7 +413,8 @@ export default function PatientProfilePage() {
     // scan instead of opening the patient folder and hunting through visits.
     const visitIds = (v || []).map((x) => x.id);
     const hasMobile = p?.mobile && p.mobile !== "0";
-    const [{ data: vf }, { data: others }] = await Promise.all([
+    const gatewayVisitIds = (v || []).filter((x) => x.dicom_worklist_status).map((x) => x.id);
+    const [{ data: vf }, { data: others }, { data: gwLog }] = await Promise.all([
       visitIds.length
         ? supabase
             .from("drive_folder_index")
@@ -422,9 +429,28 @@ export default function PatientProfilePage() {
       hasMobile
         ? supabase.from("patients").select("id, name, drive_folder_id").eq("mobile", p.mobile).neq("id", id)
         : Promise.resolve({ data: [] }),
+      // Only fetched for visits actually on the CBCT gateway path - most
+      // visits never touch this table, so this stays a no-op for them.
+      gatewayVisitIds.length
+        ? supabase
+            .from("gateway_sync_log")
+            .select("visit_id, event_type, created_at")
+            .in("visit_id", gatewayVisitIds)
+            .order("created_at", { ascending: true })
+        : Promise.resolve({ data: [] }),
     ]);
     setVisitFolders(Object.fromEntries((vf || []).map((r) => [r.entity_id, r.drive_folder_id])));
     setSameMobile(others || []);
+    // Earliest timestamp per event type per visit - a resend/retry can log
+    // the same event_type twice, and the first one is when that checkpoint
+    // was genuinely first reached.
+    const gwByVisit = {};
+    for (const row of gwLog || []) {
+      if (!row.visit_id) continue;
+      gwByVisit[row.visit_id] = gwByVisit[row.visit_id] || {};
+      if (!gwByVisit[row.visit_id][row.event_type]) gwByVisit[row.visit_id][row.event_type] = row.created_at;
+    }
+    setGatewayLog(gwByVisit);
 
     setPatient(p);
     setVisits(v || []);
@@ -1296,6 +1322,18 @@ export default function PatientProfilePage() {
                   ]}
                 />
               </div>
+              {/* Only shown for a visit that actually went through the CBCT
+                  gateway (Orthanc worklist) - most visits never set
+                  dicom_worklist_status at all, and this stays hidden for them
+                  rather than showing four permanently-empty circles. */}
+              {v.dicom_worklist_status && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>
+                    CBCT Gateway
+                  </div>
+                  <StageTable rows={gatewayRows(v, gatewayLog[v.id])} />
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
                 <span style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>Assigned to:</span>
                 {isAdmin ? (
@@ -2617,20 +2655,24 @@ function StageTable({ rows }) {
                   type="button"
                   onClick={r.onClick}
                   disabled={!r.onClick}
-                  title={r.onClick ? "Click to toggle" : undefined}
+                  title={r.onClick ? (r.warn ? "Click to review" : "Click to toggle") : undefined}
                   style={{
                     fontSize: 11,
                     padding: "4px 10px",
                     borderRadius: 999,
                     fontWeight: 700,
                     border: "none",
-                    background: r.active ? "#e8f5e9" : "#f5f5f5",
-                    color: r.active ? "#2e7d32" : "#aaa",
+                    // A row can be active AND still need attention (an
+                    // unmatched study did reach the gateway, it just wasn't
+                    // filed automatically) - warn overrides the usual green
+                    // so that case never reads as quietly done.
+                    background: r.warn ? "#fdecea" : r.active ? "#e8f5e9" : "#f5f5f5",
+                    color: r.warn ? "#b42318" : r.active ? "#2e7d32" : "#aaa",
                     cursor: r.onClick ? "pointer" : "default",
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {r.active ? "\u2713" : "\u25cb"} {r.label}
+                  {r.warn ? "\u26a0" : r.active ? "\u2713" : "\u25cb"} {r.label}
                 </button>
               </td>
               <td style={{ ...cell, color: r.active && r.timestamp ? "#27214D" : "#bbb", whiteSpace: "nowrap" }}>
@@ -2656,6 +2698,43 @@ function StageTable({ rows }) {
       </table>
     </div>
   );
+}
+
+// Builds the CBCT gateway's own 4-step row set for one visit, matching the
+// same shape StageTable already expects everywhere else. `log` is
+// gatewayLog[visit.id] - {worklist_created, study_received, study_matched,
+// study_unmatched}, each an ISO timestamp or undefined if that checkpoint
+// hasn't happened (or predates the study_received logging added later, in
+// which case it's simply left blank rather than guessed).
+function gatewayRows(v, log) {
+  const status = v.dicom_worklist_status; // 'pending' | 'worklist_created' | 'matched' | 'unmatched'
+  const received = log?.study_received;
+  const outcomeAt = status === "matched" ? log?.study_matched : status === "unmatched" ? log?.study_unmatched : null;
+  return [
+    {
+      label: "Worklist Pushed",
+      active: Boolean(status && status !== "pending"),
+      timestamp: log?.worklist_created,
+    },
+    {
+      label: "Study Received",
+      active: Boolean(received || status === "matched" || status === "unmatched"),
+      timestamp: received,
+    },
+    status === "unmatched"
+      ? {
+          label: "Unmatched – Needs Review",
+          active: true,
+          warn: true,
+          timestamp: outcomeAt,
+          onClick: () => window.open("/dashboard/settings/unmatched-scans", "_blank"),
+        }
+      : {
+          label: "Matched & Filed",
+          active: status === "matched",
+          timestamp: outcomeAt,
+        },
+  ];
 }
 
 function StageChip({ label, active, onClick, timestamp, byName }) {
