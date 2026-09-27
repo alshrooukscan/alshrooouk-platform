@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { collapseSeries } from "../../../../../lib/fileSeries";
+
+const TYPE_LABEL = { photos: "Photos", report: "Report", raw_data: "Raw Data", images: "Images", other: "Files" };
 import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
@@ -40,7 +42,7 @@ export async function GET() {
   // patient_files; anything uploaded through that path already has this.
   const { data: linkedFiles } = await supabaseAdmin
     .from("patient_files")
-    .select("id, visit_id, drive_file_id, file_name, created_at")
+    .select("id, visit_id, drive_file_id, file_name, file_type, created_at")
     .eq("patient_id", session.id);
 
   let driveFiles = [];
@@ -98,10 +100,14 @@ export async function GET() {
       // demanded a Google account with access to the clinic's shared drive,
       // which no patient has, so every one of them answered with a sign-in
       // page instead of the file.
-      webViewLink: `/api/portal/file/${f.drive_file_id}`, exact: true }));
+      webViewLink: `/api/portal/file/${f.drive_file_id}`, exact: true,
+      // Which visit and what kind: grouping into a set keys on both, and
+      // without them it refuses to group at all (it cannot tell unrelated
+      // files apart), so a patient with 23 photos got 23 separate rows.
+      visitId: v.id, fileType: f.file_type || null, typeLabel: TYPE_LABEL[f.file_type] || null }));
     // These come straight from a Drive listing, so they still carry Drive's
     // own webViewLink - which no patient can open. Same proxy treatment.
-    const guessed = (bestEffortByVisit[v.id] || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}`, exact: false }));
+    const guessed = (bestEffortByVisit[v.id] || []).map((f) => ({ ...f, webViewLink: `/api/portal/file/${f.id}`, exact: false, visitId: v.id, fileType: "unmatched" }));
     // Collapsed per visit: a raw DICOM export is one scan, and a patient shown
     // 326 numbered slices has no way to tell which one is their result.
     return { ...v, files: collapseSeries([...exact, ...guessed]) };

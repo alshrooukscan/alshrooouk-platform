@@ -15,7 +15,7 @@ export default function PatientPortalPage() {
   const [openSeries, setOpenSeries] = useState({});
   const SetEntry = ({ f, box }) => (
     <div style={{ ...box, gridColumn: openSeries[f.id] ? "1 / -1" : undefined }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{f.seriesCount} files in one set</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{f.typeLabel ? `${f.typeLabel} · ` : ""}{f.seriesCount} files in one set</div>
       <button
         type="button"
         onClick={() => setOpenSeries((o) => ({ ...o, [f.id]: !o[f.id] }))}
