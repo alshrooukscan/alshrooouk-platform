@@ -98,6 +98,7 @@ export default function PatientsPage() {
 
     let patientsPage = [];
     let count = 0;
+    let orderedByDayOnly = false;
 
     if (hasVisitFilter) {
       // "Invoice Generated" isn't a plain column on visits - it's whether a
@@ -148,7 +149,13 @@ export default function PatientsPage() {
         vq = excludeVisitIds.length > 0 ? vq.not("id", "in", `(${excludeVisitIds.join(",")})`) : vq;
       }
 
-      vq = vq.order("exam_date", { ascending: false }).range(from, to);
+      // Same day: the later visit first. Sorting by date alone left visits
+      // on the same day in whatever order the database returned them.
+      vq = vq
+        .order("exam_date", { ascending: false })
+        .order("exam_time", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       const { data, count: c } = await vq;
       const seen = new Set();
@@ -178,6 +185,7 @@ export default function PatientsPage() {
       // same way the filtered view (which sorts by exam_date) already does.
       // Patients with no visit yet fall to the end rather than the top.
       pq = pq.order("last_visit_date", { ascending: false, nullsFirst: false }).range(from, to);
+      orderedByDayOnly = true;
       const { data, count: c } = await pq;
       patientsPage = data || [];
       count = c || 0;
@@ -193,6 +201,11 @@ export default function PatientsPage() {
         .from("visits")
         .select("patient_id, exam_date, exam_time, scan_types, payment_status, scanned, raw_data_uploaded, report_done, invoices(id), amount_paid, doctor_id, doctors(name, clinic_code), visit_payments(payment_method)")
         .in("patient_id", ids)
+        // The last visit is the latest by date and time, not the one entered
+        // most recently; a visit added afterwards for an earlier day used to
+        // show as the last visit.
+        .order("exam_date", { ascending: false, nullsFirst: false })
+        .order("exam_time", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
       const statusMap = {};
       for (const v of recentVisits || []) {
@@ -215,6 +228,22 @@ export default function PatientsPage() {
         }
       }
       setStatusByPatient(statusMap);
+      // Patients only store the date of their last visit, so the database
+      // can order the list by day but not by time. Within a day, put the
+      // patient seen latest first.
+      // The day order from the database is kept as it is; only patients on
+      // the same day swap places. (The filtered view is already sorted by
+      // visit date and time in the query.)
+      if (orderedByDayOnly) {
+        const t = (id) => String(statusMap[id]?.exam_time || "");
+        const rank = new Map(patientsPage.map((pt, i) => [pt.id, i]));
+        setResults(
+          [...patientsPage].sort((a, b) => {
+            if (String(a.last_visit_date || "") !== String(b.last_visit_date || "")) return rank.get(a.id) - rank.get(b.id);
+            return t(b.id).localeCompare(t(a.id)) || rank.get(a.id) - rank.get(b.id);
+          })
+        );
+      }
     }
 
     setLoading(false);

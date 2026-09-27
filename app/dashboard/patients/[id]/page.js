@@ -342,7 +342,10 @@ export default function PatientProfilePage() {
       .from("visits")
       .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at, payment_verification, paymob_transaction_id, paymob_card_brand, paymob_card_last4, paymob_fees)")
       .eq("patient_id", id)
-        .order("exam_date", { ascending: false }),
+        // Latest first, and within the same day the later time first.
+        .order("exam_date", { ascending: false })
+        .order("exam_time", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false }),
       // Goes through a service-role route rather than querying patient_auth
       // directly: that table is RLS-locked with no policies, so a staff
       // client always read back nothing and the page believed every patient
