@@ -44,6 +44,12 @@ services:
       # to free disk space. Raise this if staff want a longer local backup.
       STUDY_RETENTION_HOURS: "24"
       CLEANUP_POLL_SECONDS: "3600"
+      # Only read on the first start after the sync-agent-state volume is
+      # created (no saved cursor yet). Set it to Orthanc's current "Last"
+      # change number (GET /changes?last) to skip replaying the whole history
+      # on that start. Leave it empty to start from 0. Ignored once a cursor
+      # has been saved.
+      CHANGE_CURSOR_INITIAL: ""
 
 volumes:
   orthanc-db:
