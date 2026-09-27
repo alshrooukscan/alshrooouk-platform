@@ -99,9 +99,19 @@ async function deleteStudy(studyId) {
 // path: finding and removing a stale worklist entry (the one carrying a
 // patient's old name/birthdate) before pushing the corrected one, so the
 // machine's worklist screen never shows two entries for the same booking.
+//
+// GET /worklists returns an array of objects (each carrying an "ID" field),
+// not bare ID strings like most other Orthanc listing routes - confirmed
+// from production logs, where treating an entry as a string produced
+// "GET /worklists/[object Object] -> 404" and every resync's delete step
+// silently failed, leaving the stale entry behind alongside the new one.
+function worklistIdOf(item) {
+  return typeof item === "string" ? item : item?.ID || item?.Id || item?.id || null;
+}
+
 async function listWorklists() {
   const res = await orthancFetch("/worklists");
-  return res.json(); // array of worklist item IDs
+  return res.json();
 }
 
 async function getWorklistTags(worklistId) {
@@ -113,33 +123,45 @@ async function deleteWorklist(worklistId) {
   await orthancFetch(`/worklists/${worklistId}`, { method: "DELETE" });
 }
 
-// Best-effort: a lookup or delete failure here is logged and swallowed
-// rather than blocking the corrected push that follows it - a leftover
-// stale worklist entry is a much smaller problem than silently dropping the
-// fix for a wrong birthdate/name.
-async function deleteWorklistsByAccession(accessionNumber) {
-  let ids;
+// Shared by the resync path (match by AccessionNumber) and the
+// visit-deletion path (match by StudyInstanceUID) - both just want "find and
+// remove whichever worklist entries carry this tag value." Best-effort: a
+// lookup or delete failure here is logged and swallowed rather than blocking
+// whatever follows it - a leftover stale entry is a much smaller problem
+// than dropping the fix/deletion that triggered this.
+async function deleteWorklistsByTag(tagName, tagValue) {
+  let items;
   try {
-    ids = await listWorklists();
+    items = await listWorklists();
   } catch (err) {
-    console.error(`[worklist] could not list existing worklist entries for resync: ${err.message}`);
+    console.error(`[worklist] could not list existing worklist entries: ${err.message}`);
     return;
   }
-  for (const id of ids) {
+  for (const item of items) {
+    const id = worklistIdOf(item);
+    if (!id) {
+      console.error(`[worklist] skipping unrecognized worklist listing entry: ${JSON.stringify(item)}`);
+      continue;
+    }
     try {
-      const { Tags } = await getWorklistTags(id);
-      if (Tags?.AccessionNumber === accessionNumber) {
+      // Some Orthanc versions already include Tags in the /worklists listing
+      // itself - only fall back to the per-item GET when they're missing.
+      const tags = item?.Tags || (await getWorklistTags(id)).Tags;
+      if (tags?.[tagName] === tagValue) {
         await deleteWorklist(id);
-        console.log(`[worklist] deleted stale worklist entry ${id} (accession ${accessionNumber}) before resync`);
+        console.log(`[worklist] deleted worklist entry ${id} (${tagName} ${tagValue})`);
       }
     } catch (err) {
-      console.error(`[worklist] could not inspect/delete worklist entry ${id} during resync: ${err.message}`);
+      console.error(`[worklist] could not inspect/delete worklist entry ${id}: ${err.message}`);
     }
   }
 }
 
+const deleteWorklistsByAccession = (accessionNumber) => deleteWorklistsByTag("AccessionNumber", accessionNumber);
+const deleteWorklistsByStudyUid = (studyUid) => deleteWorklistsByTag("StudyInstanceUID", studyUid);
+
 module.exports = {
   createWorklist, pollChanges, getStudy, getStudyArchiveBuffer,
   listStudies, setStudyMetadata, getStudyMetadata, deleteStudy,
-  deleteWorklistsByAccession,
+  deleteWorklistsByAccession, deleteWorklistsByStudyUid,
 };
