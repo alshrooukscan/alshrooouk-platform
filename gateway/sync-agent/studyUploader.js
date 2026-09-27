@@ -1,9 +1,19 @@
 const fetch = require("node-fetch");
-const { pollChanges, getStudy, getStudyArchiveBuffer, setStudyMetadata } = require("./orthancClient");
+const { pollChanges, getStudy, getStudyArchiveBuffer, setStudyMetadata, SYNCED_AT_METADATA_ID } = require("./orthancClient");
+const { loadChangeSeq, saveChangeSeq } = require("./changeCursor");
 const { startStudyUpload, completeStudyUpload } = require("./shscanClient");
 
 const STATE_STABLE_STUDY = "StableStudy";
-let lastChangeSeq = 0; // resets on agent restart; Orthanc will simply re-report any StableStudy events since 0, and completeStudyUpload is safe to call twice for the same study (see note below)
+// Was a plain in-memory `let lastChangeSeq = 0`, which reset to 0 on every
+// container restart. Orthanc keeps its entire change history forever, so
+// every redeploy replayed it from the very beginning - one clinic's gateway
+// had over a year of history to grind back through (roughly one real study
+// every 10-80s of Drive-upload time) before it reached that day's actual new
+// scans, which sat invisible on shscan.com's side in the meantime. Now
+// persisted to a file (see changeCursor.js) so a restart resumes where it
+// left off instead of starting over. completeStudyUpload is still safe to
+// call twice for the same study either way (see note below).
+let lastChangeSeq = loadChangeSeq();
 
 async function handleStableStudy(studyId) {
   const study = await getStudy(studyId);
@@ -59,7 +69,7 @@ async function handleStableStudy(studyId) {
   // folder for staff to resolve). cleanup.js only ever deletes a study that
   // carries this stamp, and only once it's old enough - this line is what
   // makes that safe.
-  await setStudyMetadata(studyId, "SyncedAt", new Date().toISOString());
+  await setStudyMetadata(studyId, SYNCED_AT_METADATA_ID, new Date().toISOString());
 }
 
 async function pollForStableStudies() {
@@ -78,6 +88,7 @@ async function pollForStableStudies() {
     }
   }
   lastChangeSeq = Last;
+  saveChangeSeq(lastChangeSeq);
 }
 
 module.exports = { pollForStableStudies };

@@ -23,6 +23,13 @@ services:
     restart: unless-stopped
     depends_on:
       - orthanc
+    volumes:
+      # Persists studyUploader.js's Orthanc /changes cursor across restarts -
+      # without this, every redeploy replayed Orthanc's entire change
+      # history from the beginning (which, after months of use, can take
+      # far longer than the delay between a real scan and staff expecting
+      # to see it on shscan.com) before it ever reached that day's new scans.
+      - sync-agent-state:/app/state
     environment:
       ORTHANC_URL: "http://orthanc:8042"
       ORTHANC_USERNAME: "syncagent"
@@ -40,3 +47,4 @@ services:
 
 volumes:
   orthanc-db:
+  sync-agent-state:
