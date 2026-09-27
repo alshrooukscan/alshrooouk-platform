@@ -185,7 +185,7 @@ function Overview() {
     setAllPaymentRows(paymentRows);
 
     // Real supplier payments (actual cash out), pulled in as a synthetic 'suppliers' stream.
-    const { data: poPayments } = await supabase.from("purchase_orders").select("amount, entry_date").eq("entry_type", "payment");
+    const { data: poPayments } = await supabase.from("purchase_orders").select("amount, entry_date").eq("entry_type", "payment").eq("status", "active");
     const supplierRows = (poPayments || []).map((p) => ({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(p.amount)), entry_date: p.entry_date }));
 
     const { data: items } = await supabase.from("stock_items").select("category, qty_remaining");

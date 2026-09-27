@@ -244,7 +244,7 @@ export default function ActionCenterPage() {
       // change to one waits for a decision rather than taking effect.
       const { data: sc } = await supabase
         .from("stock_change_requests")
-        .select("*, stock_items(name, item_code, category)")
+        .select("*, stock_items(name, item_code, category, qty_remaining)")
         .eq("status", "pending")
         .order("requested_at", { ascending: false });
       setStockChanges(sc || []);
@@ -687,13 +687,34 @@ export default function ActionCenterPage() {
                 <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
                   {c.stock_items?.item_code ? `${c.stock_items.item_code} · ` : ""}{c.stock_items?.name || "Item"}
                 </div>
-                <div style={{ fontSize: 12, color: theme.gray }}>
-                  {STOCK_FIELD_LABEL[c.field] || c.field}{" "}
-                  <span style={{ color: "#ba1a1a" }}>{formatMoney(c.old_value)}</span>
-                  {" \u2192 "}
-                  <span style={{ color: "#1e7a3c", fontWeight: 700 }}>{formatMoney(c.new_value)}</span>
-                  {c.requested_by_name ? ` · asked by ${c.requested_by_name}` : ""}
-                </div>
+                {c.field === "qty_remaining" && c.delta != null ? (
+                  // A quantity request is a change, applied to the stock as it
+                  // stands when approved. Showing "42 -> 22" read as "set it to
+                  // 22", which is exactly how 150 units from a PO that landed
+                  // in between were wiped on توبيكال جيل مصرى.
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    Quantity{" "}
+                    <span style={{ color: Number(c.delta) < 0 ? "#ba1a1a" : "#1e7a3c", fontWeight: 700 }}>
+                      {Number(c.delta) > 0 ? "+" : ""}{formatMoney(c.delta)}
+                    </span>
+                    {" · in stock now "}<strong style={{ color: theme.navy }}>{formatMoney(c.stock_items?.qty_remaining)}</strong>
+                    {" \u2192 "}
+                    <strong style={{ color: theme.navy }}>{formatMoney(Number(c.stock_items?.qty_remaining || 0) + Number(c.delta))}</strong>
+                    {Number(c.stock_items?.qty_remaining) !== Number(c.old_value) && (
+                      <div style={{ color: "#a06000" }}>Stock moved from {formatMoney(c.old_value)} since this was asked. The change still applies on top of today&apos;s figure.</div>
+                    )}
+                    {c.reason ? <div>Reason: {c.reason}</div> : null}
+                    {c.requested_by_name ? <div>Asked by {c.requested_by_name}</div> : null}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    {STOCK_FIELD_LABEL[c.field] || c.field}{" "}
+                    <span style={{ color: "#ba1a1a" }}>{formatMoney(c.old_value)}</span>
+                    {" \u2192 "}
+                    <span style={{ color: "#1e7a3c", fontWeight: 700 }}>{formatMoney(c.new_value)}</span>
+                    {c.requested_by_name ? ` · asked by ${c.requested_by_name}` : ""}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => decideStockChange(c.id, "approved")} disabled={busyId === c.id}

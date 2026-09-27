@@ -33,7 +33,7 @@ export default function TrendsAnalytics() {
     }
     const { data: ex } = await supabase
       .from("expense_transactions")
-      .select("entry_date, type, brand, amount")
+      .select("entry_date, type, brand, amount, category")
       .eq("status", "confirmed");
     setVisits(rows);
     setExpenses(ex || []);
@@ -64,6 +64,10 @@ export default function TrendsAnalytics() {
   for (const e of expenses) {
     const m = key(e.entry_date);
     if (!byMonth[m]) continue;
+    // Supplier payments made in cash also leave the payer's cash in hand as a
+    // cash-out. They are a debt being settled, not a new cost, so they stay out
+    // of this line the way they always have.
+    if (e.category === "supplier_payment") continue;
     if (["cash_out", "stock_purchase", "purchase"].includes(e.type)) byMonth[m].cashOut += Number(e.amount || 0);
   }
 

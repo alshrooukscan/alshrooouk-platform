@@ -808,8 +808,8 @@ function BatchPanel({ item, onClose, onReturn }) {
 }
 
 // Returning goods is not negative stock. The units go back to the supplier they
-// came from, at the price that delivery was bought at, and their value is held
-// as credit against that supplier's next invoice.
+// came from, at the price that delivery was bought at, and their value comes
+// off what is owed to that supplier.
 function ReturnModal({ batch, onClose, onSaved }) {
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
@@ -825,35 +825,15 @@ function ReturnModal({ batch, onClose, onSaved }) {
     if (!q || q <= 0) return setError("Enter how many units are going back.");
     if (q > max) return setError(`Only ${max} left in this delivery. You cannot return more than that.`);
     setSaving(true);
-    try {
-      const { data: ret, error: rErr } = await supabase
-        .from("supplier_returns")
-        .insert({
-          supplier_name: supplier, stock_item_id: batch.item.id, batch_id: batch.id,
-          qty: q, unit_cost: batch.purchase_price || 0,
-          total_value: q * Number(batch.purchase_price || 0), reason: reason || null,
-        })
-        .select("id").single();
-      if (rErr) throw new Error(rErr.message);
-
-      const { error: cErr } = await supabase.from("supplier_credits").insert({
-        supplier_name: supplier, direction: "credit",
-        amount: q * Number(batch.purchase_price || 0), return_id: ret.id,
-        note: `Returned ${q} x ${batch.item.name}`,
-      });
-      if (cErr) throw new Error(cErr.message);
-
-      // Both the delivery and the item's own count come down, so the return
-      // shows up wherever stock is read from.
-      await supabase.from("stock_batches").update({ qty_remaining: max - q }).eq("id", batch.id);
-      await supabase
-        .from("stock_items")
-        .update({ qty_remaining: Math.max(Number(batch.item.qty_remaining || 0) - q, 0) })
-        .eq("id", batch.item.id);
-      onSaved();
-    } catch (e) {
-      setError(e.message);
-    }
+    // One database step: the units leave the shelf and this delivery once, and
+    // the value comes off what is owed to the supplier. This used to take the
+    // units off the delivery and then off the item, and the item change moved
+    // the purchase ledger a second time.
+    const { error: rErr } = await supabase.rpc("return_to_supplier", {
+      p_batch_id: batch.id, p_qty: q, p_reason: reason || null, p_date: null, p_date_reason: null,
+    });
+    if (rErr) setError(rErr.message);
+    else onSaved();
     setSaving(false);
   }
 
