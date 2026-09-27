@@ -1,4 +1,4 @@
-const { pushPendingWorklists } = require("./worklistPusher");
+const { pushPendingWorklists, processWorklistDeletions } = require("./worklistPusher");
 const { pollForStableStudies } = require("./studyUploader");
 const { cleanupOldStudies } = require("./cleanup");
 
@@ -30,5 +30,6 @@ console.log(`  study watch every ${STUDY_POLL_MS / 1000}s`);
 console.log(`  local storage cleanup every ${CLEANUP_POLL_MS / 1000}s (keeps ${Number(process.env.STUDY_RETENTION_HOURS) || 24}h)`);
 
 loop("worklist", WORKLIST_POLL_MS, pushPendingWorklists);
+loop("worklist-deletions", WORKLIST_POLL_MS, processWorklistDeletions);
 loop("study", STUDY_POLL_MS, pollForStableStudies);
 loop("cleanup", CLEANUP_POLL_MS, cleanupOldStudies);

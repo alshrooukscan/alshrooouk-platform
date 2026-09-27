@@ -29,7 +29,11 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ error: "Only admins can delete a visit." }, { status: 403 });
   }
 
-  const { data: visit } = await supabaseAdmin.from("visits").select("id, patient_id").eq("id", id).single();
+  const { data: visit } = await supabaseAdmin
+    .from("visits")
+    .select("id, patient_id, dicom_study_uid, dicom_worklist_status")
+    .eq("id", id)
+    .single();
   if (!visit) {
     return NextResponse.json({ error: "Visit not found." }, { status: 404 });
   }
@@ -82,6 +86,23 @@ export async function DELETE(req, { params }) {
     .update({ resolved_visit_id: null })
     .eq("resolved_visit_id", id);
   if (umErr) return NextResponse.json({ error: `Could not unlink the unmatched scan: ${umErr.message}` }, { status: 500 });
+
+  // If a worklist entry may already exist in Orthanc for this visit (pushed,
+  // pending a resync, or awaiting the fix after a name/DOB edit), a deleted
+  // visit used to leave it behind indefinitely - nothing told the gateway the
+  // booking was gone, so the client's machine kept showing it until Orthanc's
+  // own DeleteWorklistsOnStableStudy or DeleteWorklistsDelay eventually swept
+  // it, up to 48h later. Logging a delete request here (matched by
+  // dicom_study_uid, which every push already carries - no schema change
+  // needed) lets worklist-deletions/route.js hand it to the gateway on its
+  // next poll, same pull model as every other gateway queue.
+  if (visit.dicom_study_uid && visit.dicom_worklist_status && visit.dicom_worklist_status !== "unmatched") {
+    await supabaseAdmin.from("gateway_sync_log").insert({
+      event_type: "worklist_delete_requested",
+      dicom_study_uid: visit.dicom_study_uid,
+      detail: `Visit ${id} was deleted from the platform`,
+    });
+  }
 
   // patient_files.visit_id is ON DELETE SET NULL and visit_edit_requests is
   // ON DELETE CASCADE at the database level already, so both are handled

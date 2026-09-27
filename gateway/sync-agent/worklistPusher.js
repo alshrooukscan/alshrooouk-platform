@@ -1,5 +1,8 @@
-const { createWorklist, deleteWorklistsByAccession } = require("./orthancClient");
-const { getWorklistQueue, confirmWorklistCreated } = require("./shscanClient");
+const { createWorklist, deleteWorklistsByAccession, deleteWorklistsByStudyUid } = require("./orthancClient");
+const {
+  getWorklistQueue, confirmWorklistCreated,
+  getWorklistDeletionQueue, confirmWorklistDeleted,
+} = require("./shscanClient");
 
 // DICOM PN (Person Name) format is "Family^Given". shscan.com stores one
 // free-text name field, usually written in Arabic, so this is a best-effort
@@ -46,4 +49,22 @@ async function pushPendingWorklists() {
   }
 }
 
-module.exports = { pushPendingWorklists };
+// A deleted visit (see visits/[id]/route.js on shscan.com) has no more
+// identifiers to reuse - there's nothing to recreate, just the stale entry
+// to remove. Confirmed even when nothing was actually found in Orthanc
+// (already gone counts as done), so a canceled visit can't get stuck
+// retrying forever.
+async function processWorklistDeletions() {
+  const { studyUids } = await getWorklistDeletionQueue();
+  for (const studyUid of studyUids) {
+    try {
+      await deleteWorklistsByStudyUid(studyUid);
+      await confirmWorklistDeleted(studyUid);
+      console.log(`[worklist] removed worklist entry for deleted visit (study ${studyUid})`);
+    } catch (err) {
+      console.error(`[worklist] failed to process deletion for study ${studyUid}: ${err.message}`);
+    }
+  }
+}
+
+module.exports = { pushPendingWorklists, processWorklistDeletions };
