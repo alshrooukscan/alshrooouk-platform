@@ -64,4 +64,37 @@ async function getStudyArchiveBuffer(studyId) {
   return res.buffer();
 }
 
-module.exports = { createWorklist, pollChanges, getStudy, getStudyArchiveBuffer };
+// All studies currently held in Orthanc's local storage (internal IDs, not
+// StudyInstanceUIDs) - used by cleanup.js to sweep for ones old enough to
+// delete. Cheap call, just an array of IDs.
+async function listStudies() {
+  const res = await orthancFetch("/studies");
+  return res.json();
+}
+
+// Custom per-study metadata (Orthanc's REST API supports named, not just
+// numbered, metadata keys since 1.9.2). Used to stamp "SyncedAt" once a
+// study has been safely uploaded to Drive, so cleanup.js knows it's safe to
+// delete later and never touches a study that hasn't been confirmed synced.
+async function setStudyMetadata(studyId, key, value) {
+  await orthancFetch(`/studies/${studyId}/metadata/${key}`, { method: "PUT", body: value });
+}
+
+// Returns null (not an error) when the key was never set - that's the
+// normal case for a study that hasn't finished uploading yet, or one that
+// predates this feature.
+async function getStudyMetadata(studyId, key) {
+  const res = await fetch(`${ORTHANC_URL}/studies/${studyId}/metadata/${key}`, { headers: { Authorization: AUTH } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Orthanc GET /studies/${studyId}/metadata/${key} -> ${res.status}: ${await res.text()}`);
+  return (await res.text()).trim();
+}
+
+async function deleteStudy(studyId) {
+  await orthancFetch(`/studies/${studyId}`, { method: "DELETE" });
+}
+
+module.exports = {
+  createWorklist, pollChanges, getStudy, getStudyArchiveBuffer,
+  listStudies, setStudyMetadata, getStudyMetadata, deleteStudy,
+};

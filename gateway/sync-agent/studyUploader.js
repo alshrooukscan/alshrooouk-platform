@@ -1,5 +1,5 @@
 const fetch = require("node-fetch");
-const { pollChanges, getStudy, getStudyArchiveBuffer } = require("./orthancClient");
+const { pollChanges, getStudy, getStudyArchiveBuffer, setStudyMetadata } = require("./orthancClient");
 const { startStudyUpload, completeStudyUpload } = require("./shscanClient");
 
 const STATE_STABLE_STUDY = "StableStudy";
@@ -53,6 +53,13 @@ async function handleStableStudy(studyId) {
   });
 
   console.log(`[study] ${dicomStudyUid} -> ${result.matched ? `matched to visit ${result.visitId}` : "unmatched, filed for review"}`);
+
+  // Stamps the moment this study's data safely exists in Drive (matched or
+  // not - unmatched still means the file itself made it to the quarantine
+  // folder for staff to resolve). cleanup.js only ever deletes a study that
+  // carries this stamp, and only once it's old enough - this line is what
+  // makes that safe.
+  await setStudyMetadata(studyId, "SyncedAt", new Date().toISOString());
 }
 
 async function pollForStableStudies() {

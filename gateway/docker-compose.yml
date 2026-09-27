@@ -32,6 +32,11 @@ services:
       SCHEDULED_STATION_AE_TITLE: "CHANGE_ME_MACHINE_AE_TITLE" # must match the machine's own AE Title (Application) field on its DICOM settings screen, not a made-up name
       WORKLIST_POLL_SECONDS: "30"
       STUDY_POLL_SECONDS: "15"
+      # Once a study is safely uploaded to Drive, its local copy on this PC
+      # is kept for this many hours (as a safety buffer) then auto-deleted
+      # to free disk space. Raise this if staff want a longer local backup.
+      STUDY_RETENTION_HOURS: "24"
+      CLEANUP_POLL_SECONDS: "3600"
 
 volumes:
   orthanc-db:
