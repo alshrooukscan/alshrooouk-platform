@@ -9,6 +9,32 @@ import Loading from "../../../lib/Loading";
 export default function PatientPortalPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Sets of 12+ files of one kind on one visit arrive as one entry carrying
+  // its members. Drawn as a plain file, a patient saw the first of their 23
+  // photos and could not reach the rest.
+  const [openSeries, setOpenSeries] = useState({});
+  const SetEntry = ({ f, box }) => (
+    <div style={{ ...box, gridColumn: openSeries[f.id] ? "1 / -1" : undefined }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{f.seriesCount} files in one set</div>
+      <button
+        type="button"
+        onClick={() => setOpenSeries((o) => ({ ...o, [f.id]: !o[f.id] }))}
+        style={{ marginTop: 6, padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+      >
+        {openSeries[f.id] ? "Hide files" : `Show all ${f.seriesCount}`}
+      </button>
+      {openSeries[f.id] && (
+        <div style={{ marginTop: 8, maxHeight: 320, overflowY: "auto", borderTop: "1px solid #eee" }}>
+          {f.series.map((m) => (
+            <a key={m.id} href={m.webViewLink} target="_blank" rel="noreferrer"
+              style={{ display: "block", padding: "6px 2px", borderBottom: "1px solid #f0f0f3", fontSize: 12, color: theme.navy, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {m.name}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
   const router = useRouter();
 
   useEffect(() => {
@@ -65,7 +91,9 @@ export default function PatientPortalPage() {
 
             {v.files && v.files.length > 0 && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0f0f0", display: "grid", gap: 6 }}>
-                {v.files.map((f) => (
+                {v.files.map((f) => f.seriesCount > 1 ? (
+                  <SetEntry key={f.id} f={f} box={{ padding: "8px 10px", borderRadius: 8, background: "#faf9fb" }} />
+                ) : (
                   <a
                     key={f.id}
                     href={f.webViewLink}
@@ -89,7 +117,9 @@ export default function PatientPortalPage() {
             <h3 style={{ color: theme.navy, marginTop: 28, marginBottom: 12 }}>Other Files</h3>
             <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Couldn't be matched to a specific scan above.</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {data.files.map((f) => (
+              {data.files.map((f) => f.seriesCount > 1 ? (
+                <SetEntry key={f.id} f={f} box={cardStyle} />
+              ) : (
                 <a key={f.id} href={f.webViewLink} target="_blank" rel="noreferrer" style={{ ...cardStyle, textDecoration: "none", display: "block" }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
                   <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(f.createdTime).toLocaleDateString()}</div>

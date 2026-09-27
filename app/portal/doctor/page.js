@@ -23,6 +23,10 @@ export default function DoctorPortalPage() {
   const [openPatientId, setOpenPatientId] = useState(null);
   const [filesByPatient, setFilesByPatient] = useState({});
   const [filesLoading, setFilesLoading] = useState(false);
+  // Sets of 12+ files of one kind on one visit (a photo shoot, an unzipped
+  // DICOM export) arrive from the server as one entry carrying its members.
+  // Which sets the doctor has opened.
+  const [openSeries, setOpenSeries] = useState({});
   // Which of the two views is showing. Scans first: patient lookup is the
   // commoner reason a doctor opens this page.
   const [view, setView] = useState("scans");
@@ -324,18 +328,47 @@ export default function DoctorPortalPage() {
                       const files = filesByPatient[patientId] || [];
                       const FileGrid = ({ items }) => (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          {items.map((f) => (
-                            <a
-                              key={f.id}
-                              href={f.webViewLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ background: "#faf9fb", borderRadius: 8, padding: 10, textDecoration: "none" }}
-                            >
-                              <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                              <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
-                            </a>
-                          ))}
+                          {items.map((f) =>
+                            f.seriesCount > 1 ? (
+                              // The server folds a large set into one entry. It
+                              // was drawn as a plain file before, so a doctor
+                              // saw the first of 23 photos and nothing else.
+                              <div key={f.id} style={{ background: "#faf9fb", borderRadius: 8, padding: 10, gridColumn: openSeries[f.id] ? "1 / -1" : undefined }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>
+                                  {f.typeLabel ? f.typeLabel.replace(/_/g, " ") : "Files"} &middot; {f.seriesCount} files in one set
+                                </div>
+                                <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenSeries((o) => ({ ...o, [f.id]: !o[f.id] }))}
+                                  style={{ marginTop: 6, padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                                >
+                                  {openSeries[f.id] ? "Hide files" : `Show all ${f.seriesCount}`}
+                                </button>
+                                {openSeries[f.id] && (
+                                  <div style={{ marginTop: 8, maxHeight: 320, overflowY: "auto", borderTop: "1px solid #eee" }}>
+                                    {f.series.map((m) => (
+                                      <a key={m.id} href={m.webViewLink} target="_blank" rel="noreferrer"
+                                        style={{ display: "block", padding: "6px 2px", borderBottom: "1px solid #f0f0f3", fontSize: 12, color: theme.navy, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {m.name}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <a
+                                key={f.id}
+                                href={f.webViewLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ background: "#faf9fb", borderRadius: 8, padding: 10, textDecoration: "none" }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                                <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                              </a>
+                            )
+                          )}
                         </div>
                       );
                       const ungrouped = files.filter((f) => !f.groupLabel);
