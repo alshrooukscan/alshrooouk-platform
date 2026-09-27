@@ -1,4 +1,4 @@
-const { listStudies, getStudyMetadata, deleteStudy } = require("./orthancClient");
+const { listStudies, getStudyMetadata, deleteStudy, SYNCED_AT_METADATA_ID } = require("./orthancClient");
 
 const RETENTION_MS = (Number(process.env.STUDY_RETENTION_HOURS) || 24) * 60 * 60 * 1000;
 
@@ -15,7 +15,7 @@ async function cleanupOldStudies() {
   let deleted = 0;
 
   for (const studyId of studyIds) {
-    const syncedAt = await getStudyMetadata(studyId, "SyncedAt");
+    const syncedAt = await getStudyMetadata(studyId, SYNCED_AT_METADATA_ID);
     if (!syncedAt) continue; // not yet uploaded (or failed) - leave it alone
 
     const syncedAtMs = Date.parse(syncedAt);

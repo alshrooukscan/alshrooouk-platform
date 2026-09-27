@@ -72,10 +72,15 @@ async function listStudies() {
   return res.json();
 }
 
-// Custom per-study metadata (Orthanc's REST API supports named, not just
-// numbered, metadata keys since 1.9.2). Used to stamp "SyncedAt" once a
-// study has been safely uploaded to Drive, so cleanup.js knows it's safe to
-// delete later and never touches a study that hasn't been confirmed synced.
+// Custom per-study metadata. Production logs showed every PUT with a named
+// key ("SyncedAt") failing with "404 Accessing an inexistent item" even
+// immediately after a successful GET on the same study ID - named custom
+// metadata isn't behaving as documented on this Orthanc build/plugin combo.
+// Callers now pass SYNCED_AT_METADATA_ID (a plain integer in Orthanc's
+// reserved 1024-65535 user-metadata range), which every Orthanc version
+// supports unconditionally - no dependency on named-metadata support at all.
+const SYNCED_AT_METADATA_ID = 1025;
+
 async function setStudyMetadata(studyId, key, value) {
   await orthancFetch(`/studies/${studyId}/metadata/${key}`, { method: "PUT", body: value });
 }
@@ -164,4 +169,5 @@ module.exports = {
   createWorklist, pollChanges, getStudy, getStudyArchiveBuffer,
   listStudies, setStudyMetadata, getStudyMetadata, deleteStudy,
   deleteWorklistsByAccession, deleteWorklistsByStudyUid,
+  SYNCED_AT_METADATA_ID,
 };
