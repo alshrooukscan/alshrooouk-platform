@@ -54,7 +54,13 @@ export async function GET() {
     .maybeSingle();
   if (folder) {
     try {
-      driveFiles = await listFiles(folder.drive_folder_id);
+      // Only real files. The patient folder also holds each visit's own
+      // folder, and it came through as a "possibly related" file that failed
+      // to open ("Only files with binary content can be downloaded"). Google's
+      // own Docs/Sheets types cannot be streamed either, so they are left out.
+      driveFiles = (await listFiles(folder.drive_folder_id)).filter(
+        (f) => !String(f.mimeType || "").startsWith("application/vnd.google-apps.")
+      );
     } catch (e) {
       driveFiles = [];
     }

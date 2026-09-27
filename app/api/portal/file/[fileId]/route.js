@@ -86,6 +86,14 @@ export async function GET(req, { params }) {
 
     if (!upstream.ok) {
       const body = await upstream.text();
+      // A folder, or a Google Doc/Sheet, has no bytes to hand over. Answer in
+      // plain words rather than pasting Google's error at a patient.
+      if (body.includes("Only files with binary content")) {
+        return new NextResponse(
+          "This link points to a folder, not a file, so there is nothing to open here. Please go back and open one of the files instead.",
+          { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+        );
+      }
       return NextResponse.json(
         { error: `Could not read the file from Drive: ${body.slice(0, 200)}` },
         { status: 502 }
