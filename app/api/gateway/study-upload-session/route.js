@@ -55,6 +55,19 @@ export async function POST(req) {
     standardName = fileName;
   }
 
+  // Logged here, not in study-upload-complete, because this is the moment
+  // Orthanc's copy is confirmed stable and matching has run - the earliest
+  // point a visit page can show "study received by gateway" as its own step,
+  // distinct from "worklist pushed" (worklist-created) and "upload finished"
+  // (matched/unmatched in study-upload-complete). The Drive PUT itself can
+  // take a while on a slow line, so this checkpoint is what tells staff the
+  // scan definitely reached the gateway even before that upload completes.
+  await supabaseAdmin.from("gateway_sync_log").insert({
+    event_type: "study_received",
+    dicom_study_uid: dicomStudyUid,
+    visit_id: visit?.id || null,
+  });
+
   const sessionUrl = await createResumableSession(folderId, standardName, "application/zip", sizeBytes, null);
 
   return NextResponse.json({

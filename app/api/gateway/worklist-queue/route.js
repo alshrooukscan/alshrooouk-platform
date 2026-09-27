@@ -17,10 +17,14 @@ export async function GET(req) {
   const gateway = await requireGateway(req);
   if (!gateway) return NextResponse.json({ error: "Invalid gateway key." }, { status: 401 });
 
+  // 'needs_resync' is set (by the patient-info edit flow) on a visit whose
+  // worklist entry was already pushed once but the patient's name/DOB has
+  // since changed - it's picked up here alongside brand-new visits, but
+  // keeps its existing identifiers instead of getting new ones (see below).
   const { data: pending } = await supabaseAdmin
     .from("visits")
-    .select("id, exam_date, scan_types, patient_id, patients(name, dob)")
-    .is("dicom_worklist_status", null)
+    .select("id, exam_date, scan_types, patient_id, dicom_study_uid, dicom_accession_number, dicom_worklist_status, patients(name, dob)")
+    .or("dicom_worklist_status.is.null,dicom_worklist_status.eq.needs_resync")
     .gte("exam_date", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
     .order("exam_date", { ascending: true })
     .limit(20);
@@ -29,12 +33,23 @@ export async function GET(req) {
 
   const entries = [];
   for (const visit of pending) {
+    const isResync = visit.dicom_worklist_status === "needs_resync";
+    // A resync keeps the identifiers already assigned - the booking hasn't
+    // changed, only the patient's demographic data has. Reusing them (rather
+    // than issuing a fresh pair, like a brand-new visit gets below) is what
+    // lets the gateway find and remove the stale Orthanc entry by
+    // AccessionNumber before pushing the corrected one.
+    //
     // 2.25.<uuid-as-decimal> is a self-issued DICOM UID root that needs no OID
     // registration (DICOM PS3.5 Annex B) - fine for a UID generated per-study
     // by our own system rather than by the imaging equipment itself.
-    const studyUid = `2.25.${BigInt("0x" + crypto.randomUUID().replace(/-/g, "")).toString()}`;
+    const studyUid = isResync
+      ? visit.dicom_study_uid
+      : `2.25.${BigInt("0x" + crypto.randomUUID().replace(/-/g, "")).toString()}`;
     // AccessionNumber is DICOM VR "SH", 16 characters max.
-    const accessionNumber = `SH${visit.id.replace(/-/g, "").slice(0, 14).toUpperCase()}`;
+    const accessionNumber = isResync
+      ? visit.dicom_accession_number
+      : `SH${visit.id.replace(/-/g, "").slice(0, 14).toUpperCase()}`;
 
     await supabaseAdmin
       .from("visits")
@@ -50,6 +65,7 @@ export async function GET(req) {
       scanTypes: visit.scan_types || [],
       dicomStudyUid: studyUid,
       dicomAccessionNumber: accessionNumber,
+      resync: isResync,
     });
   }
 
