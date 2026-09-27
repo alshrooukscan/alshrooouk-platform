@@ -613,6 +613,11 @@ export default function EmployeeProfilePage() {
                 {e.face_match_status === "verified" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#e8f5e9", color: "#2e7d32" }}>Face verified</span>}
                 {e.face_match_status === "failed" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a" }}>Face not matched</span>}
                 {e.face_match_status === "not_enrolled" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#f0f0f0", color: "#888" }}>Not enrolled</span>}
+                {/* An admin-entered punch has no device reading behind it at all.
+                    It carried no badge, so on a payroll record it looked the same
+                    as a normal punch whose face check simply was not shown. */}
+                {e.face_match_status === "manual_entry" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff4e0", color: "#a06000" }}>Added by admin</span>}
+                {e.face_match_status === "verified_by_admin" && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff4e0", color: "#a06000" }}>Confirmed by admin</span>}
               </div>
               <div style={{ color: theme.gray, fontSize: 12 }}>{new Date(e.event_time).toLocaleString()}</div>
               {e.lat && (

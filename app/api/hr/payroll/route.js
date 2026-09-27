@@ -295,13 +295,24 @@ export async function POST(req) {
         .eq("work_date", exc.work_date)
         .maybeSingle();
       const endTime = day?.end_time || "17:00";
-      await supabaseAdmin.from("timeclock_events").insert({
+      // The insert's error was discarded and the exception was marked approved
+      // regardless. When a check constraint rejected the row, the day showed as
+      // credited on screen while no sign-out existed, so the payslip still paid
+      // nothing for it - an approval that silently did the opposite of what the
+      // admin pressed. Credit only counts if the sign-out actually lands.
+      const { error: punchError } = await supabaseAdmin.from("timeclock_events").insert({
         employee_id: exc.employee_id,
         event_type: "logout",
         event_time: `${exc.work_date}T${endTime}`,
         face_match_status: "manual_entry",
         correction_note: `Missing sign-out credited by ${staff.name} on ${new Date().toISOString().slice(0, 10)}`,
       });
+      if (punchError) {
+        return NextResponse.json(
+          { error: `The sign-out could not be recorded, so nothing was approved: ${punchError.message}` },
+          { status: 500 }
+        );
+      }
     }
 
     await supabaseAdmin
