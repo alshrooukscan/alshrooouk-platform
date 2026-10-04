@@ -182,6 +182,17 @@ export default function DebtCollectionPage() {
                     <div style={{ fontWeight: 800, color: over ? "#ba1a1a" : theme.navy, whiteSpace: "nowrap" }}>
                       {formatMoney(c.balance)} EGP
                     </div>
+                    {/* Printable statement of what this account took, at what
+                        price, what it paid and what it owes, to send to the
+                        doctor. Opens in a new tab so the list stays put. */}
+                    <a
+                      href={`/dashboard/debt-collection/statement/${c.customer_id}/${c.brand}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}
+                    >
+                      Statement
+                    </a>
                     <button onClick={() => setTarget(c)} style={primaryBtn}>Record Payment</button>
                   </div>
                 </div>
