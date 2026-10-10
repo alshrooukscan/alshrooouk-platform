@@ -34,6 +34,7 @@ import {
   Download,
   CreditCard,
   Timer,
+  Undo2,
 } from "lucide-react";
 
 // A "link" item is a single nav entry. A "group" item is a section header
@@ -80,6 +81,7 @@ const NAV = [
       // stock being viewed is already chosen.
       { href: "/dashboard/stock", label: "Stock Details", icon: Package, key: "stock" },
       { href: "/dashboard/stock/orders", label: "Stock Orders", icon: ShoppingBag, key: "stock", badge: "stock_orders" },
+      { href: "/dashboard/stock/returns", label: "Returns", icon: Undo2, key: "stock" },
     ],
   },
   {

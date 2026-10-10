@@ -64,6 +64,10 @@ export default function ActionCenterPage() {
   // wait here for a decision rather than being changed automatically.
   const [cardReviews, setCardReviews] = useState([]);
   const [stockChanges, setStockChanges] = useState([]);
+  // Returns from customers waiting for an admin (migration 0111). Nothing
+  // goes back into stock or comes off an account until approved here.
+  const [saleReturns, setSaleReturns] = useState([]);
+  const [returnNote, setReturnNote] = useState({});
 
   useEffect(() => {
     if (!permsLoading && profile) load();
@@ -79,6 +83,14 @@ export default function ActionCenterPage() {
       p_by_name: profile?.name || "",
       p_note: null,
     });
+    setBusyId(null);
+    if (error) { alert(error.message); return; }
+    load();
+  }
+
+  async function decideSaleReturn(id, status) {
+    setBusyId(id);
+    const { error } = await supabase.rpc("decide_sale_return", { p_id: id, p_status: status, p_note: returnNote[id] || null });
     setBusyId(null);
     if (error) { alert(error.message); return; }
     load();
@@ -248,6 +260,13 @@ export default function ActionCenterPage() {
         .eq("status", "pending")
         .order("requested_at", { ascending: false });
       setStockChanges(sc || []);
+
+      const { data: sr } = await supabase
+        .from("sale_returns")
+        .select("*, sale_return_lines(item_name, qty, unit_price)")
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+      setSaleReturns(sr || []);
     }
     if (isAdmin) {
       // Unpacked by position in the order the promises were pushed above.
@@ -665,6 +684,51 @@ export default function ActionCenterPage() {
                   style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   Do not pay
                 </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>Returns Awaiting Your Approval</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
+            Items a doctor brought back. Approving puts them back into stock and takes the amount off the clinic&apos;s
+            account, or refunds it as shown. Rejecting changes nothing.
+          </p>
+          {saleReturns.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing waiting.</p>}
+          {saleReturns.map((r) => (
+            <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }} dir="auto">
+                    {r.receipt_no || "Doctor portal order"} · {r.customer_label || ""} · {formatMoney(r.total_value)} EGP
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.gray }} dir="auto">
+                    {(r.sale_return_lines || []).map((l) => `${l.item_name} \u00d7${Number(l.qty)} @ ${formatMoney(l.unit_price)}`).join(", ")}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    {{ account: "Comes off the clinic's account", credit: "Credit on the clinic's account", cash: "Cash refund from the employee's cash in hand", tab: "Comes off the staff tab" }[r.refund_mode]}
+                    {" · "}Reason: {r.reason}{r.requested_by_name ? ` · asked by ${r.requested_by_name}` : ""}
+                  </div>
+                  <input
+                    value={returnNote[r.id] || ""}
+                    onChange={(e) => setReturnNote((n) => ({ ...n, [r.id]: e.target.value }))}
+                    placeholder="Note (optional)"
+                    style={{ marginTop: 6, padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", fontSize: 12, width: 240, maxWidth: "100%" }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => decideSaleReturn(r.id, "approved")} disabled={busyId === r.id}
+                    style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    {busyId === r.id ? "..." : "Approve"}
+                  </button>
+                  <button onClick={() => decideSaleReturn(r.id, "rejected")} disabled={busyId === r.id}
+                    style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: "#ba1a1a", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    Reject
+                  </button>
+                </div>
               </div>
             </div>
           ))}

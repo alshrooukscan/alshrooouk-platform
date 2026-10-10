@@ -67,27 +67,31 @@ export async function GET(req) {
   // The items behind each charge, at the price each was sold at.
   const saleIds = ledger.filter((l) => l.reference_type === "counter_sale" && l.reference_id).map((l) => l.reference_id);
   const orderIds = ledger.filter((l) => l.reference_type === "dental_order" && l.reference_id).map((l) => l.reference_id);
-  const [salesRes, saleLinesRes, orderLinesRes] = await Promise.all([
+  const returnIds = ledger.filter((l) => l.reference_type === "sale_return" && l.reference_id).map((l) => l.reference_id);
+  const [salesRes, saleLinesRes, orderLinesRes, returnLinesRes] = await Promise.all([
     saleIds.length ? supabaseAdmin.from("counter_sales").select("id, receipt_no").in("id", saleIds) : { data: [] },
     saleIds.length ? supabaseAdmin.from("counter_sale_items").select("sale_id, item_name, quantity, unit_price, line_total").in("sale_id", saleIds) : { data: [] },
     orderIds.length ? supabaseAdmin.from("dental_order_items").select("order_id, item_name, quantity, unit_price, line_total").in("order_id", orderIds) : { data: [] },
+    returnIds.length ? supabaseAdmin.from("sale_return_lines").select("return_id, item_name, qty, unit_price").in("return_id", returnIds) : { data: [] },
   ]);
   const receiptBySale = Object.fromEntries((salesRes.data || []).map((s) => [s.id, s.receipt_no]));
   const linesByRef = {};
   for (const l of saleLinesRes.data || []) (linesByRef[l.sale_id] ||= []).push({ item: l.item_name, qty: Number(l.quantity), unit_price: Number(l.unit_price), line_total: Number(l.line_total) });
   for (const l of orderLinesRes.data || []) (linesByRef[l.order_id] ||= []).push({ item: l.item_name, qty: Number(l.quantity), unit_price: Number(l.unit_price), line_total: Number(l.line_total) });
+  for (const l of returnLinesRes.data || []) (linesByRef[l.return_id] ||= []).push({ item: l.item_name, qty: Number(l.qty), unit_price: Number(l.unit_price), line_total: Math.round(Number(l.qty) * Number(l.unit_price) * 100) / 100 });
 
   let charged = 0;
   let paid = 0;
   const entries = ledger.map((l) => {
     const amount = round2(l.amount);
     const lines = linesByRef[l.reference_id] || [];
-    const kind = l.direction === "charge" ? "charge" : l.direction === "payment" ? "payment" : "adjustment";
+    const kind = l.direction === "charge" ? "charge" : l.direction === "payment" ? "payment" : l.reference_type === "sale_return" ? "return" : "adjustment";
     if (kind === "charge") charged += amount;
     else paid += amount;
 
     let label;
     if (kind === "payment") label = "Payment received";
+    else if (kind === "return") label = "Items returned";
     else if (kind === "adjustment") label = l.note || "Adjustment";
     else if (l.reference_type === "counter_sale") label = "Sale";
     else if (l.reference_type === "dental_order") label = "Order from the doctor portal";
@@ -98,7 +102,7 @@ export async function GET(req) {
     // charge) is shown as its own line, so the items always add up to the
     // amount charged rather than leaving the reader to wonder.
     const itemsTotal = round2(lines.reduce((s, x) => s + x.line_total, 0));
-    const difference = lines.length && kind === "charge" ? round2(amount - itemsTotal) : 0;
+    const difference = lines.length && (kind === "charge" || kind === "return") ? round2(amount - itemsTotal) : 0;
 
     return {
       id: l.id,
@@ -107,6 +111,8 @@ export async function GET(req) {
       label,
       receipt_no: receiptBySale[l.reference_id] || l.receipt_no || null,
       payment_method: kind === "payment" ? l.payment_method : null,
+      reference_type: l.reference_type,
+      reference_id: l.reference_id,
       note: l.note && label !== l.note ? l.note : null,
       amount,
       lines,

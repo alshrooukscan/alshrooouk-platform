@@ -301,6 +301,12 @@ function CounterSalePageInner() {
                         {r.items.map((l) => `${l.item_name} \u00d7${Number(l.quantity)}`).join(", ")}
                       </div>
                     )}
+                    {r.receipt_no && (
+                      <a href={`/dashboard/stock/returns?receipt=${encodeURIComponent(r.receipt_no)}`} target="_blank" rel="noreferrer"
+                        style={{ fontSize: 11, color: theme.navy, textDecoration: "underline" }}>
+                        Return items from {r.receipt_no}
+                      </a>
+                    )}
                   </div>
                 );
               })}

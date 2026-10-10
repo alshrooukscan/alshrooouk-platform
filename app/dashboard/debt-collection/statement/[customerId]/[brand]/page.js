@@ -52,8 +52,9 @@ export default function AccountStatementPage() {
       return { ...e, running: Math.round(running * 100) / 100 };
     });
     const charged = inRange.filter((e) => e.kind === "charge").reduce((s, e) => s + e.amount, 0);
-    const paid = inRange.filter((e) => e.kind !== "charge").reduce((s, e) => s + e.amount, 0);
-    return { rows, opening: Math.round(opening * 100) / 100, charged, paid, closing: Math.round(running * 100) / 100 };
+    const paid = inRange.filter((e) => e.kind !== "charge" && e.kind !== "return").reduce((s, e) => s + e.amount, 0);
+    const returned = inRange.filter((e) => e.kind === "return").reduce((s, e) => s + e.amount, 0);
+    return { rows, opening: Math.round(opening * 100) / 100, charged, paid, returned, closing: Math.round(running * 100) / 100 };
   }, [data, from, to]);
 
   if (error) return <p style={{ padding: 24, color: "#ba1a1a" }}>{error}</p>;
@@ -120,7 +121,7 @@ export default function AccountStatementPage() {
             <th style={{ ...th, width: 44 }}>Qty</th>
             <th style={{ ...th, width: 84 }}>Unit price</th>
             <th style={{ ...th, width: 92 }}>Charged</th>
-            <th style={{ ...th, width: 92 }}>Paid</th>
+            <th style={{ ...th, width: 92 }}>Paid / returned</th>
             <th style={{ ...th, width: 98 }}>Balance</th>
           </tr>
         </thead>
@@ -137,13 +138,23 @@ export default function AccountStatementPage() {
           )}
           {view.rows.map((e) => (
             <Fragment key={e.id}>
-              <tr style={{ background: e.kind === "charge" ? "#fff" : "#f3faf4", borderTop: "1px solid #e6e6ea" }}>
+              <tr style={{ background: e.kind === "charge" ? "#fff" : e.kind === "return" ? "#fff8ec" : "#f3faf4", borderTop: "1px solid #e6e6ea" }}>
                 <td style={td}>{formatDate(e.date)}</td>
                 <td style={{ ...td, textAlign: "left", fontWeight: 700 }}>
                   {e.label}
                   {e.receipt_no && <span style={{ fontWeight: 400, color: theme.gray }}> · {e.receipt_no}</span>}
                   {e.payment_method && <span style={{ fontWeight: 400, color: theme.gray }}> · {METHOD_LABEL[e.payment_method] || e.payment_method}</span>}
                   {e.note && <div style={{ fontWeight: 400, color: theme.gray, fontSize: 11 }} dir="auto">{e.note}</div>}
+                  {/* Starts a return for this sale. Hidden on paper. */}
+                  {e.kind === "charge" && (e.reference_type === "counter_sale" || e.reference_type === "dental_order") && (
+                    <a className="no-print" target="_blank" rel="noreferrer"
+                      href={e.reference_type === "counter_sale" && e.receipt_no
+                        ? `/dashboard/stock/returns?receipt=${encodeURIComponent(e.receipt_no)}`
+                        : `/dashboard/stock/returns?source=${e.reference_type}&id=${e.reference_id}`}
+                      style={{ display: "inline-block", marginTop: 2, fontWeight: 400, fontSize: 11, color: theme.navy, textDecoration: "underline" }}>
+                      Return items
+                    </a>
+                  )}
                 </td>
                 <td style={td}></td>
                 <td style={td}></td>
@@ -157,8 +168,8 @@ export default function AccountStatementPage() {
                   <td style={{ ...td, textAlign: "left", paddingLeft: 18 }} dir="auto">{l.item}</td>
                   <td style={td}>{qtyText(l.qty)}</td>
                   <td style={td}>{money(l.unit_price)}</td>
-                  <td style={td}>{money(l.line_total)}</td>
-                  <td style={td}></td>
+                  <td style={td}>{e.kind === "return" ? "" : money(l.line_total)}</td>
+                  <td style={td}>{e.kind === "return" ? money(l.line_total) : ""}</td>
                   <td style={td}></td>
                 </tr>
               ))}
@@ -184,6 +195,7 @@ export default function AccountStatementPage() {
             {from && <tr><td style={sumL}>Brought forward</td><td style={sumR}>{money(view.opening)} EGP</td></tr>}
             <tr><td style={sumL}>Total charged</td><td style={sumR}>{money(view.charged)} EGP</td></tr>
             <tr><td style={sumL}>Total paid</td><td style={{ ...sumR, color: "#2e7d32" }}>-{money(view.paid)} EGP</td></tr>
+            {view.returned > 0 && <tr><td style={sumL}>Total returned</td><td style={{ ...sumR, color: "#a06000" }}>-{money(view.returned)} EGP</td></tr>}
             <tr style={{ borderTop: `2px solid ${theme.navy}` }}>
               <td style={{ ...sumL, fontWeight: 800, color: theme.navy }}>Balance due</td>
               <td style={{ ...sumR, fontWeight: 800, fontSize: 16, color: view.closing > 0 ? "#ba1a1a" : "#2e7d32" }}>{money(view.closing)} EGP</td>

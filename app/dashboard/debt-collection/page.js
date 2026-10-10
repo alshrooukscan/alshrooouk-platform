@@ -353,7 +353,10 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
             What they took, and what they have paid
           </div>
           {customer.charges.map((ch, i) => {
-            const paid = ch.direction === "payment";
+            // A return (an adjustment) lowers the balance like a payment does,
+            // so it reads as money off, labelled as what it is.
+            const paid = ch.direction !== "charge";
+            const isReturn = ch.reference_type === "sale_return";
             return (
               <div key={i} style={{ fontSize: 12, padding: "5px 0", borderTop: i ? "1px solid #eee" : "none" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -361,7 +364,9 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
                     {/* A payment carries no note, so without this it fell back
                         to the reference type and read as blank or "charge" -
                         the opposite of what it is. */}
-                    {paid
+                    {isReturn
+                      ? ch.note || "Items returned"
+                      : paid
                       ? "Payment received"
                       : ch.reference
                       ? ch.reference
@@ -375,7 +380,7 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
                 </div>
                 <div style={{ color: theme.gray, fontSize: 11 }}>
                   {ch.entry_date}
-                  {paid ? " · paid" : ""}
+                  {isReturn ? " · returned" : paid ? " · paid" : ""}
                   {ch.items?.length > 0 && <> · {ch.items.join(", ")}</>}
                 </div>
               </div>
