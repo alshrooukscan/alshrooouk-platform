@@ -16,6 +16,7 @@ import { logActivity } from "../../../../lib/activityLog";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import DocumentsUploader from "../../../../components/DocumentsUploader";
 import { APP_URL } from "../../../../lib/appUrl";
+import BonusRatesPanel from "../../../../components/hr/BonusRatesPanel";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 export default function EmployeeProfilePage() {
@@ -667,6 +668,8 @@ export default function EmployeeProfilePage() {
           </p>
         )}
       </div>
+
+      <BonusRatesPanel employeeId={id} />
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Weekly Shift Schedule</h3>

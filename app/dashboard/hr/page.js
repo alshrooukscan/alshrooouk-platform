@@ -74,6 +74,13 @@ export default function HRPage() {
             </button>
           )}
           <Link
+            href="/dashboard/hr/rules"
+            style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`, color: theme.navy,
+                     fontWeight: 700, textDecoration: "none", fontSize: 14, whiteSpace: "nowrap" }}
+          >
+            Bonus & Attendance Rules
+          </Link>
+          <Link
             href="/dashboard/hr/new"
             style={{
               padding: "10px 20px",
