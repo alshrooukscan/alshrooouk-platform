@@ -79,11 +79,13 @@ export async function POST(req) {
   // Running the detectors produces pending rows only. It is safe to run at
   // any time and is a no-op until a go-live date is set.
   if (action === "detect") {
-    const [visa, stock, leave, reversed] = await Promise.all([
+    const [visa, stock, leave, reversed, attendance] = await Promise.all([
       supabaseAdmin.rpc("detect_visa_deductions"),
       supabaseAdmin.rpc("detect_stock_deductions", { p_since: null }),
       supabaseAdmin.rpc("detect_leave_deductions"),
       supabaseAdmin.rpc("reverse_confirmed_visa_deductions"),
+      // Absence, uncovered lateness and early leave for finished months (v3).
+      supabaseAdmin.rpc("detect_attendance_deductions", { p_period: null }),
     ]);
     return NextResponse.json({
       ok: true,
@@ -91,6 +93,7 @@ export async function POST(req) {
       stock: stock.data?.[0] || stock.data,
       leave: leave.data?.[0] || leave.data,
       reversed: reversed.data ?? 0,
+      attendance: attendance.data?.[0] || attendance.data,
     });
   }
 
@@ -104,7 +107,14 @@ export async function POST(req) {
       );
     }
     const patch = {};
-    for (const k of ["deduction_go_live", "visa_grace_hours", "penalty_cap_percent", "dispute_window_hours"]) {
+    for (const k of [
+      "deduction_go_live", "visa_grace_hours", "penalty_cap_percent", "dispute_window_hours",
+      // v3 attendance rules (client voice notes, 5 and 6 Oct 2026)
+      "late_grace_minutes", "late_multiplier", "early_leave_multiplier", "early_leave_grace_minutes",
+      "absence_day_multiplier", "overtime_min_minutes", "overtime_multiplier", "extra_day_multiplier",
+      "early_credit_cap_minutes", "stay_credit_cap_minutes", "early_min_minutes",
+      "grace_reduces_overtime", "balance_mode", "partial_makeup_daily", "pay_unverified_days",
+    ]) {
       if (Object.prototype.hasOwnProperty.call(body, k)) {
         patch[k] = body[k] === "" ? null : body[k];
       }

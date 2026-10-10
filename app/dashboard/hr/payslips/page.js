@@ -285,7 +285,7 @@ export default function PayslipsPage() {
             )}
           </div>
 
-          {(slip.reportBonus > 0 || slip.scanCommission > 0) && (
+          {(slip.reportBonus > 0 || slip.scanCommission > 0 || slip.rawDataBonus > 0) && (
             <div style={{ ...card, marginBottom: 18 }}>
               <h3 style={{ color: theme.navy, marginTop: 0 }}>Earned on top of the shift</h3>
               {slip.scanCommission > 0 && (
@@ -298,16 +298,46 @@ export default function PayslipsPage() {
               {slip.reportBonus > 0 && (
                 <p style={{ fontSize: 13, color: theme.navy, margin: 0 }}>
                   <strong>Report bonus {formatMoney(slip.reportBonus)} EGP</strong> — {slip.reportsQualifying} of{" "}
-                  {slip.reportsTotal} reports qualified at {formatMoney(slip.reportRate)} each.{" "}
+                  {slip.reportsTotal} reports qualified (average {formatMoney(slip.reportRate)} each; rate depends on scan type).{" "}
                   {slip.reportsBeyondThreshold} past the daily count, {slip.reportsOffShift} finished off shift.
                   {slip.reportsBeyondThreshold + slip.reportsOffShift > slip.reportsQualifying &&
                     " Reports meeting both only count once."}
                 </p>
               )}
+              {slip.rawDataBonus > 0 && (
+                <p style={{ fontSize: 13, color: theme.navy, margin: "8px 0 0" }}>
+                  <strong>Raw data bonus {formatMoney(slip.rawDataBonus)} EGP</strong> — {slip.rawDataQualifying} of{" "}
+                  {slip.rawDataUploads} uploaded scans earn a bonus (rate per scan type, set on the employee profile).
+                </p>
+              )}
             </div>
           )}
 
-          {slip.payBasis === "hourly" && (slip.overtimeHours > 0 || slip.overtimeDecision) && (
+          {slip.attendanceBalance && (
+            <div style={{ ...card, marginBottom: 18 }}>
+              <h3 style={{ color: theme.navy, marginTop: 0 }}>
+                Time balance this month
+                <span style={{ fontSize: 11, fontWeight: 400, color: theme.gray, marginLeft: 8 }}>
+                  {slip.attendanceBalance.mode === "monthly" ? "Lateness is balanced over the whole month" : "Lateness is balanced day by day"}
+                </span>
+              </h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, fontSize: 13, color: theme.navy }}>
+                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>LATE (OVER GRACE)</div>{slip.attendanceBalance.late_counted_minutes} min</div>
+                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>EARLY + STAYED LATE</div>{Number(slip.attendanceBalance.credit_offset_minutes) + Number(slip.attendanceBalance.credit_ot_day_minutes)} min</div>
+                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>NOT COVERED</div><span style={{ color: Number(slip.attendanceBalance.uncovered_late_minutes) > 0 ? "#ba1a1a" : theme.navy }}>{slip.attendanceBalance.uncovered_late_minutes} min</span></div>
+                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>OVERTIME</div>{slip.attendanceBalance.overtime_minutes} min</div>
+              </div>
+              <p style={{ fontSize: 12, color: theme.gray, margin: "10px 0 0" }}>
+                Grace-period lateness: {slip.attendanceBalance.grace_minutes} min.
+                {Number(slip.attendanceBalance.late_deduction) > 0 && ` Uncovered lateness costs ${formatMoney(slip.attendanceBalance.late_deduction)} EGP.`}
+                {Number(slip.attendanceBalance.early_leave_deduction) > 0 && ` Early leave without excuse: ${slip.attendanceBalance.early_leave_minutes} min, ${formatMoney(slip.attendanceBalance.early_leave_deduction)} EGP.`}
+                {Number(slip.attendanceBalance.absent_days) > 0 && ` Absent: ${slip.attendanceBalance.absent_dates}.`}
+                {" "}Deductions reach the payslip only after approval in Deductions.
+              </p>
+            </div>
+          )}
+
+          {(slip.overtimeHours > 0 || slip.overtimeDecision) && (
             <div style={{ ...card, marginBottom: 18, borderLeft: `4px solid ${theme.gold}` }}>
               <h3 style={{ color: theme.navy, marginTop: 0 }}>
                 Overtime
@@ -343,7 +373,7 @@ export default function PayslipsPage() {
                 <>
                   <p style={{ fontSize: 13, color: theme.navy, margin: "0 0 10px" }}>
                     <strong>{Number(slip.overtimeHours).toFixed(2)} hours</strong> recorded beyond the schedule.
-                    At the hourly rate that would be {formatMoney(slip.overtimeIndicativeValue)} EGP, shown only as
+                    At the overtime rate that would be {formatMoney(slip.overtimeIndicativeValue)} EGP, shown only as
                     a reference — enter whatever it is actually worth.
                   </p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
