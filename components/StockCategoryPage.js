@@ -735,7 +735,7 @@ function BatchPanel({ item, onClose, onReturn }) {
       setLoading(true);
       const { data } = await supabase
         .from("stock_batches")
-        .select("id, po_number, supplier_name, purchase_price, sale_price, qty_in, qty_remaining, received_date, note")
+        .select("id, po_id, po_number, supplier_name, purchase_price, sale_price, qty_in, qty_remaining, received_date, note")
         .eq("stock_item_id", item.id)
         .order("received_date", { ascending: true, nullsFirst: true })
         .order("created_at", { ascending: true });
@@ -816,14 +816,30 @@ function ReturnModal({ batch, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const max = Number(batch.qty_remaining);
-  const supplier = batch.supplier_name || "Main Dental Supplier";
   const value = (Number(qty) || 0) * Number(batch.purchase_price || 0);
+  // Whose goods these are. A delivery received on a PO already knows; older
+  // stock (from before the platform, a count, or a quantity correction) has
+  // no supplier on record. This used to assume "Main Dental Supplier" on
+  // screen while crediting nobody, which is how eight returns on 10 Oct left
+  // the stock but never reached a supplier's balance.
+  const [suppliers, setSuppliers] = useState([]);
+  const [supplierId, setSupplierId] = useState("");
+  const fromPo = !!batch.po_id;
+  useEffect(() => {
+    supabase.from("suppliers").select("id, name").order("name").then(({ data }) => {
+      setSuppliers(data || []);
+      const match = (data || []).find((x) => x.name === batch.supplier_name);
+      if (match) setSupplierId(match.id);
+    });
+  }, [batch.supplier_name]);
+  const supplier = suppliers.find((x) => x.id === supplierId)?.name || null;
 
   async function handleSave() {
     setError("");
     const q = Number(qty);
     if (!q || q <= 0) return setError("Enter how many units are going back.");
     if (q > max) return setError(`Only ${max} left in this delivery. You cannot return more than that.`);
+    if (!fromPo && !supplierId) return setError("Choose which supplier these are going back to.");
     setSaving(true);
     // One database step: the units leave the shelf and this delivery once, and
     // the value comes off what is owed to the supplier. This used to take the
@@ -831,6 +847,7 @@ function ReturnModal({ batch, onClose, onSaved }) {
     // the purchase ledger a second time.
     const { error: rErr } = await supabase.rpc("return_to_supplier", {
       p_batch_id: batch.id, p_qty: q, p_reason: reason || null, p_date: null, p_date_reason: null,
+      p_supplier_id: fromPo ? null : supplierId || null,
     });
     if (rErr) setError(rErr.message);
     else onSaved();
@@ -844,11 +861,21 @@ function ReturnModal({ batch, onClose, onSaved }) {
       </p>
       <FieldLabel>How many go back</FieldLabel>
       <input type="number" min="1" max={max} value={qty} onChange={(e) => setQty(e.target.value)} style={inp} />
+      {!fromPo && (
+        <>
+          <FieldLabel>Going back to which supplier</FieldLabel>
+          <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={inp}>
+            <option value="">Choose...</option>
+            {suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        </>
+      )}
       <FieldLabel>Reason (optional)</FieldLabel>
       <input value={reason} onChange={(e) => setReason(e.target.value)} style={inp} />
       <p style={{ fontSize: 12, color: theme.navy, background: "#f6efdd", padding: "10px 12px", borderRadius: 8, marginTop: 12 }}>
-        {supplier} will be credited <strong>{formatMoney(value)} EGP</strong> &mdash; {qty || 0} at{" "}
-        {formatMoney(batch.purchase_price)} each, the price this delivery was bought at. Use it against their next invoice.
+        {fromPo ? "The supplier on this purchase order" : supplier || "The supplier you choose"} will have{" "}
+        <strong>{formatMoney(value)} EGP</strong> taken off what we owe them: {qty || 0} at{" "}
+        {formatMoney(batch.purchase_price)} each, the price this delivery was bought at.
       </p>
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
