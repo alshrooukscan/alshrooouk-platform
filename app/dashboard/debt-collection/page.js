@@ -5,6 +5,11 @@ import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney, formatVisitDateTime } from "../../../lib/format";
 
+// Balances keep their piasters. They were shown as whole pounds, so a clinic
+// left owing 0.73 (clinic 407, 14 Oct 2026) showed "1 EGP", and typing 1 was
+// refused as "more than the 1 EGP outstanding": the account could never close.
+const money = (v) => formatMoney(v, { decimals: Math.round(Number(v || 0) * 100) % 100 ? 2 : 0 });
+
 const BRANDS = [
   { key: "scan", label: "Scan Center" },
   { key: "dental_stock", label: "Dental Supply" },
@@ -180,7 +185,7 @@ export default function DebtCollectionPage() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ fontWeight: 800, color: over ? "#ba1a1a" : theme.navy, whiteSpace: "nowrap" }}>
-                      {formatMoney(c.balance)} EGP
+                      {money(c.balance)} EGP
                     </div>
                     {/* Printable statement of what this account took, at what
                         price, what it paid and what it owes, to send to the
@@ -292,12 +297,12 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
   const [error, setError] = useState("");
 
   const amt = Number(amount);
-  const remaining = customer.balance - (amt > 0 ? amt : 0);
+  const remaining = Math.round((customer.balance - (amt > 0 ? amt : 0)) * 100) / 100;
 
   async function save() {
     setError("");
     if (!amt || amt <= 0) return setError("Enter the amount collected.");
-    if (amt > customer.balance) return setError(`That is more than the ${formatMoney(customer.balance)} EGP outstanding.`);
+    if (Math.round(amt * 100) > Math.round(customer.balance * 100)) return setError(`That is more than the ${money(customer.balance)} EGP outstanding.`);
     if (paymentMethod === "cash" && !acknowledged) return setError("Please confirm the cash has been received.");
     if (paymentMethod === "cash" && !collectedBy)
       return setError("Your login isn't linked to an employee record, so cash can't be recorded against you. Ask an admin to link it, or record this as a card or transfer payment.");
@@ -336,7 +341,7 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
     >
       <p style={{ fontSize: 13, color: theme.gray, marginTop: -6 }}>
         {customer.clinic_code ? <>Clinic <strong style={{ color: theme.navy }}>{customer.clinic_code}</strong>{" "}</> : null}
-        owes <strong style={{ color: theme.navy }}>{formatMoney(customer.balance)} EGP</strong> for{" "}
+        owes <strong style={{ color: theme.navy }}>{money(customer.balance)} EGP</strong> for{" "}
         {BRAND_LABEL[customer.brand] || customer.brand}.
         {customer.doctors?.length > 0 && (
           <span style={{ color: theme.gray }}> Doctors: {customer.doctors.join(", ")}.</span>
@@ -397,10 +402,19 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
       )}
 
       <FieldLabel>Amount Collected (EGP)</FieldLabel>
-      <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
-      {amt > 0 && amt <= customer.balance && (
+      <div style={{ display: "flex", gap: 8 }}>
+        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...inp, flex: 1 }} />
+        <button
+          type="button"
+          onClick={() => setAmount(String(Math.round(customer.balance * 100) / 100))}
+          style={{ ...inp, width: "auto", cursor: "pointer", fontWeight: 600, color: theme.navy, whiteSpace: "nowrap" }}
+        >
+          Full balance
+        </button>
+      </div>
+      {amt > 0 && Math.round(amt * 100) <= Math.round(customer.balance * 100) && (
         <p style={{ fontSize: 12, color: theme.gray, margin: "4px 0 0" }}>
-          Remaining after this payment: <strong>{formatMoney(remaining)} EGP</strong>
+          Remaining after this payment: <strong>{money(remaining)} EGP</strong>
         </p>
       )}
 
@@ -468,9 +482,9 @@ function ReceiptModal({ receipt, onClose }) {
         <Row k="Receipt No." v={receipt.receipt_no} strong />
         <Row k="Customer" v={receipt.customerName} />
         <Row k="Business" v={BRAND_LABEL[receipt.brand] || receipt.brand} />
-        <Row k="Amount Paid" v={`${formatMoney(receipt.amount)} EGP`} strong />
+        <Row k="Amount Paid" v={`${money(receipt.amount)} EGP`} strong />
         <Row k="Method" v={receipt.method} />
-        <Row k="Remaining Balance" v={`${formatMoney(receipt.outstanding)} EGP`} strong />
+        <Row k="Remaining Balance" v={`${money(receipt.outstanding)} EGP`} strong />
       </div>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: 0 }}>
         Sending the printed and WhatsApp receipt to the customer is the next part of this stage.
