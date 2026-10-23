@@ -28,7 +28,7 @@ export async function GET() {
   const { data: client } = await supabaseAdmin.from("clients").select("id, name, contact_phone, contact_email, must_change_password, logo_url").eq("id", session.id).single();
   const { data: reports } = await supabaseAdmin
     .from("reports")
-    .select("id, scan_name, date_required, status, client_uploaded_file_name, report_file_url, report_file_name, created_at, completed_at")
+    .select("id, scan_name, date_required, status, client_uploaded_file_name, report_file_url, report_file_name, report_files, created_at, completed_at")
     .eq("client_id", session.id)
     .order("created_at", { ascending: false });
 

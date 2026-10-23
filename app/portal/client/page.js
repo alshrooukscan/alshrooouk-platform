@@ -177,11 +177,13 @@ export default function ClientPortalPage() {
                   {r.status === "completed" ? "Done" : "Pending"}
                 </span>
               </div>
-              {r.report_file_url && (
-                <a href={r.report_file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: theme.gold, fontWeight: 600 }}>
-                  Download: {r.report_file_name}
-                </a>
-              )}
+              {(r.report_files?.length ? r.report_files : r.report_file_url ? [{ name: r.report_file_name, url: r.report_file_url }] : []).map((f, i) => (
+                <div key={f.file_id || f.url || i}>
+                  <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: theme.gold, fontWeight: 600 }}>
+                    Download: {f.name}
+                  </a>
+                </div>
+              ))}
             </div>
           ))}
         </div>

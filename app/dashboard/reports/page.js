@@ -25,6 +25,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [uploadingId, setUploadingId] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadCount, setUploadCount] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -69,40 +70,47 @@ export default function ReportsPage() {
     load();
   }
 
-  async function handleFilePicked(report, file) {
-    if (!file) return;
+  // Several files can go on one report (Reham, 21 Oct 2026): pick them all
+  // at once, or add more later. They upload one after the other.
+  async function handleFilesPicked(report, fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
     setUploadingId(report.id);
     setUploadProgress(0);
+    setUploadCount({ done: 0, total: files.length });
     setError("");
-    try {
-      const { data: session } = await supabase.auth.getSession();
-      const fileId = await uploadFileToDrive({
-        file,
-        initEndpoint: "/api/reports/upload-session",
-        initBody: { reportId: report.id, fileName: file.name, mimeType: file.type },
-        onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
-        authToken: session.session?.access_token,
-      });
-      const { data: rs } = await supabase.auth.getSession();
-      const res = await fetch("/api/reports/upload-complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${rs?.session?.access_token || ""}`,
-        },
-        body: JSON.stringify({ fileId, reportId: report.id, fileName: file.name }),
-      });
-      const result = await res.json();
-      if (!res.ok) {
-        setError(result.error || "Upload failed.");
-      } else {
-        load();
+    const failed = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setUploadCount({ done: i, total: files.length });
+      setUploadProgress(0);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        const fileId = await uploadFileToDrive({
+          file,
+          initEndpoint: "/api/reports/upload-session",
+          initBody: { reportId: report.id, fileName: file.name, mimeType: file.type },
+          onProgress: (frac) => setUploadProgress(Math.round(frac * 100)),
+          authToken: token,
+        });
+        const { data: rs } = await supabase.auth.getSession();
+        const res = await fetch("/api/reports/upload-complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${rs?.session?.access_token || ""}` },
+          body: JSON.stringify({ fileId, reportId: report.id, fileName: file.name }),
+        });
+        const result = await res.json();
+        if (!res.ok) failed.push(`${file.name}: ${result.error || "upload failed"}`);
+      } catch (e) {
+        failed.push(`${file.name}: ${e.message || "upload failed"}`);
       }
-    } catch (e) {
-      setError(e.message || "Upload failed.");
     }
+    if (failed.length) setError(`Not uploaded: ${failed.join(" · ")}`);
     setUploadingId(null);
     setUploadProgress(0);
+    setUploadCount(null);
+    load();
   }
 
   return (
@@ -171,13 +179,13 @@ export default function ReportsPage() {
                       View what the client uploaded: {r.client_uploaded_file_name}
                     </a>
                   )}
-                  {r.report_file_name && (
-                    <div style={{ fontSize: 12 }}>
-                      <a href={r.report_file_url} target="_blank" rel="noreferrer" style={{ color: "#2e7d32" }}>
-                        Completed report: {r.report_file_name}
+                  {(r.report_files?.length ? r.report_files : r.report_file_name ? [{ name: r.report_file_name, url: r.report_file_url }] : []).map((f, i) => (
+                    <div key={f.file_id || f.url || i} style={{ fontSize: 12 }}>
+                      <a href={f.url} target="_blank" rel="noreferrer" style={{ color: "#2e7d32" }}>
+                        {i === 0 ? "Completed report" : "Report file"}: {f.name}
                       </a>
                     </div>
-                  )}
+                  ))}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <select
@@ -190,15 +198,17 @@ export default function ReportsPage() {
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
-                  {r.status === "pending" && (
-                    <label style={{ padding: "8px 16px", borderRadius: 8, background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12, opacity: uploadingId === r.id ? 0.6 : 1, position: "relative", overflow: "hidden" }}>
-                      {uploadingId === r.id && (
-                        <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
-                      )}
-                      <span style={{ position: "relative" }}>{uploadingId === r.id ? `Uploading... ${uploadProgress}%` : "Upload Report"}</span>
-                      <input type="file" onChange={(e) => handleFilePicked(r, e.target.files?.[0])} disabled={uploadingId === r.id} style={{ display: "none" }} />
-                    </label>
-                  )}
+                  <label style={{ padding: "8px 16px", borderRadius: 8, background: r.status === "pending" ? theme.gold : "#fff", border: r.status === "pending" ? "none" : `1px solid ${theme.gold}`, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12, opacity: uploadingId === r.id ? 0.6 : 1, position: "relative", overflow: "hidden" }}>
+                    {uploadingId === r.id && (
+                      <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
+                    )}
+                    <span style={{ position: "relative" }}>
+                      {uploadingId === r.id
+                        ? `Uploading${uploadCount?.total > 1 ? ` ${uploadCount.done + 1} of ${uploadCount.total}` : ""}... ${uploadProgress}%`
+                        : r.status === "pending" ? "Upload Report Files" : "Add More Files"}
+                    </span>
+                    <input type="file" multiple onChange={(e) => { handleFilesPicked(r, e.target.files); e.target.value = ""; }} disabled={!!uploadingId} style={{ display: "none" }} />
+                  </label>
                   {r.source_type === "client" && r.clients?.contact_phone && (
                     <WhatsAppDropdown
                       buttonStyle={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
