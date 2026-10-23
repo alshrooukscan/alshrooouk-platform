@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
 
 // What needs reordering, and what has already gone wrong.
 //
@@ -17,12 +18,14 @@ export default function StockAlerts() {
   const [level, setLevel] = useState("");
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(["stock_items", "stock_batches", "dental_orders"], () => load());
 
+  // Reads available quantity (on hand less what is reserved for doctor
+  // orders), so stock already promised to someone does not count as healthy.
   async function load() {
-    setLoading(true);
     const { data } = await supabase
-      .from("stock_items")
-      .select("id, name, category, qty_remaining, reorder_level, purchase_price, sale_price")
+      .from("stock_available")
+      .select("id, name, category, qty_remaining, qty_available, reorder_level, purchase_price, sale_price")
       .order("qty_remaining", { ascending: true });
     setItems(data || []);
     setLoading(false);
@@ -31,7 +34,8 @@ export default function StockAlerts() {
   async function saveLevel(id) {
     const n = Number(level);
     if (isNaN(n) || n < 0) return;
-    await supabase.from("stock_items").update({ reorder_level: n }).eq("id", id);
+    const { error } = await supabase.from("stock_items").update({ reorder_level: n }).eq("id", id);
+    if (error) return alert(`Could not save the level: ${error.message}`);
     setEditing(null);
     setLevel("");
     load();
@@ -40,7 +44,10 @@ export default function StockAlerts() {
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
 
   const scoped = cat === "all" ? items : items.filter((i) => i.category === cat);
-  const qty = (i) => Number(i.qty_remaining || 0);
+  // Negative is judged on what is on the books (available is floored at 0);
+  // everything else on what can actually be sold.
+  const onHand = (i) => Number(i.qty_remaining || 0);
+  const qty = (i) => (onHand(i) < 0 ? onHand(i) : Number(i.qty_available ?? i.qty_remaining ?? 0));
   const lvl = (i) => Number(i.reorder_level ?? 3);
 
   const negative = scoped.filter((i) => qty(i) < 0);
@@ -52,6 +59,8 @@ export default function StockAlerts() {
   const restockCost = [...negative, ...zero, ...low].reduce(
     (s, i) => s + Math.max(lvl(i) - qty(i), 0) * Number(i.purchase_price || 0), 0
   );
+  // Items with no cost price would silently count as free to restock.
+  const unpriced = [...negative, ...zero, ...low].filter((i) => i.purchase_price == null || Number(i.purchase_price) === 0).length;
 
   const card = { background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" };
 
@@ -110,7 +119,7 @@ export default function StockAlerts() {
           { l: "Negative", v: negative.length, c: "#7a1010" },
           { l: "Out of stock", v: zero.length, c: "#ba1a1a" },
           { l: "Below reorder level", v: low.length, c: "#a97c00" },
-          { l: "Cost to restock", v: `${formatMoney(restockCost)} EGP`, c: theme.navy },
+          { l: unpriced ? `Cost to restock (+${unpriced} with no cost price)` : "Cost to restock", v: `${formatMoney(restockCost)} EGP`, c: theme.navy },
         ].map((k) => (
           <div key={k.l} style={card}>
             <div style={{ fontSize: 10, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{k.l}</div>

@@ -22,7 +22,8 @@ const StockAnalytics = dynamic(() => import("../../components/analytics/StockAna
 import DrillDownModal from "../../components/analytics/DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "../../components/analytics/PeriodFilterBar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Cell as PieCell, Legend } from "recharts";
-import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { useAutoRefresh, useLiveStatus } from "../../lib/useAutoRefresh";
+import { fetchAll, cairoDate, fetchStockCashIn, brandStream } from "../../lib/dashboardData";
 
 const PAYMENT_COLORS = ["#27214D", "#A98B4D", "#6D5A3A", "#8a7ba0", "#c9a86a", "#48464E", "#3d3564"];
 
@@ -46,6 +47,27 @@ export default function DashboardHome() {
   );
 }
 
+// Shows that the numbers are live: green while the change feed is connected,
+// with the time of the last refresh. Any sale, payment, PO or clock-in updates
+// the open tab within a second or two; it also refreshes every minute and when
+// the tab comes back into view.
+function LiveBadge() {
+  const { connected, lastUpdated } = useLiveStatus();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 15000);
+    return () => clearInterval(t);
+  }, []);
+  const time = lastUpdated ? lastUpdated.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Africa/Cairo" }) : "";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, background: "#fff", boxShadow: "0 2px 8px rgba(39,33,77,0.06)", fontSize: 12, color: theme.navy, marginTop: 6 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: connected ? "#2e7d32" : "#c9a86a", display: "inline-block", boxShadow: connected ? "0 0 0 3px rgba(46,125,50,0.15)" : "none" }} />
+      <strong>{connected ? "Live" : "Auto-refresh"}</strong>
+      {time && <span style={{ color: theme.gray }}>updated {time}</span>}
+    </div>
+  );
+}
+
 function DashboardTabs() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -57,8 +79,13 @@ function DashboardTabs() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Dashboard &amp; Analytics</h1>
-      <p style={{ color: theme.gray, marginBottom: 20 }}>Everything measurable in the system, in one place.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ color: theme.navy, marginBottom: 4 }}>Dashboard &amp; Analytics</h1>
+          <p style={{ color: theme.gray, marginBottom: 20 }}>Everything measurable in the system, in one place.</p>
+        </div>
+        <LiveBadge />
+      </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
         {TABS.map((t) => (
@@ -97,11 +124,12 @@ function DashboardTabs() {
 
 function Overview() {
   const { isAdmin, profile } = usePermissions();
-  useAutoRefresh(["visits", "invoices", "reports", "cash_expenses", "expense_transactions"], () => { load(); });
+  useAutoRefresh(["visit_payments", "visits", "counter_sales", "customer_ar_ledger", "expense_transactions", "purchase_orders", "stock_items", "stock_batches"], () => load());
   const [allLedger, setAllLedger] = useState([]);
   const [allPaymentRows, setAllPaymentRows] = useState([]);
   const [dentalUnits, setDentalUnits] = useState(0);
   const [el3awamaUnits, setEl3awamaUnits] = useState(0);
+  const [consolidatedSupplier, setConsolidatedSupplier] = useState(0);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
@@ -119,80 +147,61 @@ function Overview() {
 
 
 
+  // Live-numbers audit (23 Oct 2026): this page read cash_ledger, which only
+  // the pre-launch tables (invoices, stock_transactions, cash_expenses,
+  // payroll_runs) ever wrote to. October scans showed 4,440 against a real
+  // 104,900, dental stock money was missing entirely and a 23,500 "payroll"
+  // line came from deleted test runs. Every figure now comes from the tables
+  // the live flows actually write, dated on the day the money moved (Cairo).
   async function load() {
-    setLoading(true);
-    let all = [];
-    let from = 0;
-    const pageSize = 1000;
-    while (true) {
-      const { data } = await supabase.from("cash_ledger").select("source_stream, direction, amount, entry_date").range(from, from + pageSize - 1);
-      if (!data || data.length === 0) break;
-      all = all.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
+    try {
+      const [payments, stockIn, expenses, poPayments, items] = await Promise.all([
+        fetchAll(() => supabase.from("visit_payments").select("id, payment_method, amount, paid_at, visits(exam_date, patients(name))")),
+        fetchStockCashIn(),
+        fetchAll(() =>
+          supabase
+            .from("expense_transactions")
+            .select("id, amount, category, note, entry_date, created_by_name, brand")
+            .eq("status", "confirmed")
+            .eq("type", "cash_out")
+            .or("category.is.null,category.neq.supplier_payment")
+        ),
+        fetchAll(() => supabase.from("purchase_orders").select("id, amount, entry_date, payment_method, is_consolidated, suppliers(name)").eq("entry_type", "payment").eq("status", "active")),
+        fetchAll(() => supabase.from("stock_items").select("id, category, qty_remaining")),
+      ]);
 
-    // Revenue by payment method comes from visit_payments, the actual payment
-    // ledger - NOT visits.payment_method. The visit row only carries a single
-    // denormalized method, so a split payment (part cash, part Visa) collapses
-    // to one label and the other half disappears. Reading the ledger is also
-    // the only way InstaPay/Wallet entries show up at all.
-    let paymentRows = [];
-    let pfrom = 0;
-    while (true) {
-      const { data } = await supabase
-        .from("visit_payments")
-        .select("visit_id, payment_method, amount, paid_at, visits(exam_date)")
-        .range(pfrom, pfrom + pageSize - 1);
-      if (!data || data.length === 0) break;
-      paymentRows = paymentRows.concat(
-        data.map((r) => ({
-          payment_method: r.payment_method,
-          amount_paid: r.amount,
-          // Fall back to paid_at where a payment has no parent visit date, so
-          // the period filter never silently drops real money.
-          exam_date: r.visits?.exam_date || (r.paid_at ? r.paid_at.slice(0, 10) : null),
-        }))
-      );
-      if (data.length < pageSize) break;
-      pfrom += pageSize;
-    }
-
-    // A handful of older visits carry amount_paid without any matching ledger
-    // row. Folding them in keeps this chart's total equal to real revenue
-    // instead of quietly under-reporting by whatever those visits are worth.
-    let orphanFrom = 0;
-    const ledgerVisitIds = new Set();
-    while (true) {
-      const { data } = await supabase.from("visit_payments").select("visit_id").range(orphanFrom, orphanFrom + pageSize - 1);
-      if (!data || data.length === 0) break;
-      for (const r of data) ledgerVisitIds.add(r.visit_id);
-      if (data.length < pageSize) break;
-      orphanFrom += pageSize;
-    }
-    let vfrom = 0;
-    while (true) {
-      const { data } = await supabase.from("visits").select("id, payment_method, amount_paid, exam_date").gt("amount_paid", 0).range(vfrom, vfrom + pageSize - 1);
-      if (!data || data.length === 0) break;
-      for (const v of data) {
-        if (!ledgerVisitIds.has(v.id)) {
-          paymentRows.push({ payment_method: v.payment_method, amount_paid: v.amount_paid, exam_date: v.exam_date });
+      const rows = [];
+      for (const p of payments) {
+        rows.push({ source_stream: "scans", direction: "in", amount: Number(p.amount || 0), entry_date: cairoDate(p.paid_at), method: p.payment_method, who: p.visits?.patients?.name || "", kind: "Visit payment" });
+      }
+      for (const r of stockIn) {
+        rows.push({ source_stream: brandStream(r.brand), direction: "in", amount: r.amount, entry_date: r.entry_date, method: r.method, who: r.ref || "", kind: r.kind });
+      }
+      for (const e of expenses) {
+        // Cash handed back to a customer on a return reduces stock money in;
+        // it is not an operating expense.
+        if (e.category === "customer_refund") {
+          rows.push({ source_stream: brandStream(e.brand), direction: "in", amount: -Number(e.amount || 0), entry_date: e.entry_date, method: "cash", who: e.note || "", kind: "Refund on a return" });
+        } else {
+          rows.push({ source_stream: "expenses", direction: "out", amount: Number(e.amount || 0), entry_date: e.entry_date, who: e.note || e.category || "", kind: e.category || "other" });
         }
       }
-      if (data.length < pageSize) break;
-      vfrom += pageSize;
+      // The consolidated payment (31 Aug) settles all pre-launch purchases in
+      // one line; there is no matching stock revenue before launch, so it
+      // would sink any period it falls in. It is shown on its own, not in P&L.
+      let consolidated = 0;
+      for (const po of poPayments) {
+        if (po.is_consolidated) { consolidated += Math.abs(Number(po.amount || 0)); continue; }
+        rows.push({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(po.amount || 0)), entry_date: po.entry_date, method: po.payment_method, who: po.suppliers?.name || "", kind: "Supplier payment" });
+      }
+      setConsolidatedSupplier(consolidated);
+      setAllLedger(rows);
+      setAllPaymentRows(rows.filter((r) => r.direction === "in" && r.amount > 0).map((r) => ({ payment_method: r.method, amount_paid: r.amount, exam_date: r.entry_date })));
+      setDentalUnits(items.filter((i) => i.category === "dental").reduce((s, i) => s + Number(i.qty_remaining || 0), 0));
+      setEl3awamaUnits(items.filter((i) => i.category === "el3awama").reduce((s, i) => s + Number(i.qty_remaining || 0), 0));
+    } finally {
+      setLoading(false);
     }
-    setAllPaymentRows(paymentRows);
-
-    // Real supplier payments (actual cash out), pulled in as a synthetic 'suppliers' stream.
-    const { data: poPayments } = await supabase.from("purchase_orders").select("amount, entry_date").eq("entry_type", "payment").eq("status", "active");
-    const supplierRows = (poPayments || []).map((p) => ({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(p.amount)), entry_date: p.entry_date }));
-
-    const { data: items } = await supabase.from("stock_items").select("category, qty_remaining");
-    setAllLedger(all.concat(supplierRows));
-    setDentalUnits((items || []).filter((i) => i.category === "dental").reduce((s, i) => s + (i.qty_remaining || 0), 0));
-    setEl3awamaUnits((items || []).filter((i) => i.category === "el3awama").reduce((s, i) => s + (i.qty_remaining || 0), 0));
-    setLoading(false);
   }
 
   const years = [...new Set(allLedger.filter((l) => l.entry_date).map((l) => l.entry_date.slice(0, 4)))].sort().reverse();
@@ -246,33 +255,24 @@ function Overview() {
     return ledger.filter((l) => l.source_stream === stream && l.direction === direction).reduce((s, l) => s + Number(l.amount || 0), 0);
   }
 
-  async function openRevenueDrill(streamLabel) {
-    setDrill({ title: `${streamLabel} — Revenue`, subtitle: "Loading real transactions...", columns: [], rows: [] });
-    setDrillLoading(true);
-    if (streamLabel === "Scans") {
-      let q = supabase.from("visits").select("exam_date, amount_paid, payment_method, patients(name)").gt("amount_paid", 0);
-      if (start) q = q.gte("exam_date", start).lte("exam_date", end);
-      const { data } = await q.order("exam_date", { ascending: false }).limit(200);
-      setDrill({
-        title: "Scans — Recent Revenue",
-        subtitle: `Most recent 200 of the visits behind this figure${start ? " (within selected period)" : ""}`,
-        columns: [
-          { key: "patient", label: "Patient", render: (r) => r.patients?.name || "—" },
-          { key: "amount_paid", label: "Amount Paid (EGP)" },
-          { key: "payment_method", label: "Method" },
-          { key: "exam_date", label: "Date" },
-        ],
-        rows: data || [],
-      });
-    } else {
-      setDrill({
-        title: `${streamLabel} — Revenue`,
-        subtitle: "No transactions recorded through the system yet for this stream.",
-        columns: [],
-        rows: [],
-      });
-    }
-    setDrillLoading(false);
+  // The rows behind a bar are the same rows that make up the bar.
+  function openRevenueDrill(streamLabel) {
+    const stream = { Scans: "scans", El3awama: "el3awama", Stock: "stock" }[streamLabel];
+    const rows = ledger
+      .filter((l) => l.source_stream === stream && l.direction === "in")
+      .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)));
+    setDrill({
+      title: `${streamLabel}: money received`,
+      subtitle: `${rows.length.toLocaleString()} payments, ${formatMoney(rows.reduce((s, r) => s + r.amount, 0))} EGP${start ? " in the selected period" : ""}${rows.length > 300 ? " (latest 300 shown)" : ""}`,
+      columns: [
+        { key: "entry_date", label: "Date" },
+        { key: "kind", label: "Type" },
+        { key: "who", label: stream === "scans" ? "Patient" : "Receipt" },
+        { key: "method", label: "Method" },
+        { key: "amount", label: "Amount (EGP)", render: (r) => formatMoney(r.amount, { decimals: 2 }) },
+      ],
+      rows: rows.slice(0, 300),
+    });
   }
 
   const cashInScans = sum("scans", "in");
@@ -281,12 +281,11 @@ function Overview() {
   const cashOutEl3awama = sum("el3awama", "out");
   const cashOutStock = sum("stock", "out");
   const cashOutScans = sum("scans", "out");
-  const cashOutPayroll = sum("payroll", "out");
   const cashOutSuppliers = sum("suppliers", "out");
   const cashOutExpenses = sum("expenses", "out");
 
   const totalCashIn = cashInScans + cashInEl3awama + cashInStock;
-  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutPayroll + cashOutSuppliers + cashOutExpenses;
+  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutSuppliers + cashOutExpenses;
   const netPL = totalCashIn - totalCashOut;
 
   const revenueStreams = [
@@ -300,9 +299,8 @@ function Overview() {
     { label: "El3awama purchases", value: cashOutEl3awama },
     { label: "Stock purchases", value: cashOutStock },
     { label: "Scans-related costs", value: cashOutScans },
-    { label: "Payroll", value: cashOutPayroll },
     { label: "Supplier payments (Purchase Orders)", value: cashOutSuppliers },
-    { label: "Cash Expenses (Utilities, Maintenance, Advances, etc.)", value: cashOutExpenses },
+    { label: "Cash expenses (supplies, utilities, maintenance, other)", value: cashOutExpenses },
   ].filter((e) => e.value > 0);
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
@@ -338,12 +336,12 @@ function Overview() {
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Stream</h3>
           <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>Click a bar to see the real transactions behind it.</p>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={revenueStreams} onClick={(e) => { if (e && e.activePayload) openRevenueDrill(e.activePayload[0].payload.label); }}>
+            <BarChart data={revenueStreams}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v) => [`${formatMoney(v)} EGP`, "Revenue"]} cursor={{ fill: "rgba(39,33,77,0.05)" }} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} style={{ cursor: "pointer" }}>
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} style={{ cursor: "pointer" }} onClick={(d) => d?.label && openRevenueDrill(d.label)}>
                 {revenueStreams.map((r, i) => (
                   <Cell key={i} fill={r.color} />
                 ))}
@@ -370,7 +368,7 @@ function Overview() {
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
-        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, from real recorded visits{start ? ", within the selected period" : ""}.</p>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, scans and stock together{start ? ", within the selected period" : ""}.</p>
         {paymentMethodTotals.some(([m]) => m === "Not recorded (migrated)") && (
           <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
             "Not recorded (migrated)" covers {migratedCount.toLocaleString()} payments brought over from the original Excel files, every one of them dated before September 2026. The method was stored there literally as "Unknown", was never captured at the time, and cannot be recovered from the source. It is not a reporting fault. Every payment taken in the platform since go-live carries its real method.
@@ -415,9 +413,9 @@ function Overview() {
         )}
       </div>
 
-      <p style={{ fontSize: 11, color: "#bbb", marginTop: 20 }}>
-        Every figure above reads live from the cash_ledger table, populated automatically when invoices, stock sales/purchases, or payroll runs happen anywhere in the system.
-        {(cashInEl3awama === 0 || cashInStock === 0) && " Stock and El3awama show 0 in Cash In because no sale has been recorded through the system yet, current quantities were loaded as opening stock, not as sales history. The first real sale through Stock → Transaction will start reflecting here."}
+      <p style={{ fontSize: 11, color: "#999", marginTop: 20 }}>
+        Money in: scan visit payments, dental stock paid at the counter and collected on account. Money out: confirmed cash expenses and supplier payments. All dated on the day the money moved.
+        {consolidatedSupplier > 0 && ` The one-off settlement of ${formatMoney(consolidatedSupplier)} EGP for supplier purchases before launch (31 Aug 2026) is kept out of these totals.`}
       </p>
 
       {drill && (

@@ -4,6 +4,8 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import DrillDownModal from "./DrillDownModal";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { fetchAll, cairoToday } from "../../lib/dashboardData";
 
 // Money owed to the clinic, in one place. Revenue answers "what came in";
 // this answers "what hasn't", which is the number that actually needs chasing
@@ -23,41 +25,63 @@ export default function OutstandingAnalytics() {
   const [tab, setTab] = useState("patients");
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(["visits", "visit_payments", "customer_ar_ledger", "counter_sales"], () => load());
 
+  // Live-numbers audit (23 Oct 2026): "owed by doctors" read dental_orders,
+  // whose amount_paid is never updated by account payments, so it showed 460
+  // (already settled) and missed the real 5,814.73 owed on clinic accounts.
+  // It now reads the same account balances Debt Collection works from.
   async function load() {
-    setLoading(true);
-    const pageSize = 1000;
-    let rows = [];
-    let from = 0;
-    while (true) {
-      const { data } = await supabase
-        .from("visits")
-        .select("id, exam_date, amount_due, amount_paid, payment_status, scan_types, patients(id, name, mobile), doctors(name, clinic_code)")
-        .neq("payment_status", "paid")
-        .range(from, from + pageSize - 1);
-      if (!data || data.length === 0) break;
-      rows = rows.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
+    try {
+      const [rows, balRes] = await Promise.all([
+        fetchAll(() =>
+          supabase
+            .from("visits")
+            .select("id, exam_date, amount_due, amount_paid, payment_status, scan_types, patients(id, name, mobile), doctors(name, clinic_code)")
+            .neq("payment_status", "paid")
+        ),
+        supabase.from("customer_ar_balances").select("customer_type, customer_id, brand, balance").gt("balance", 0.005),
+      ]);
+      const bals = balRes.data || [];
+      const clinicIds = bals.filter((b) => b.customer_type === "clinic").map((b) => b.customer_id);
+      const doctorIds = bals.filter((b) => b.customer_type === "doctor").map((b) => b.customer_id);
+      const [clinicsRes, doctorsRes] = await Promise.all([
+        clinicIds.length ? supabase.from("clinics").select("id, name, code").in("id", clinicIds) : { data: [] },
+        doctorIds.length ? supabase.from("doctors").select("id, name, clinic_code").in("id", doctorIds) : { data: [] },
+      ]);
+      const codes = (clinicsRes.data || []).map((c) => c.code).filter(Boolean);
+      const { data: clinicDoctors } = codes.length ? await supabase.from("doctors").select("name, clinic_code").in("clinic_code", codes) : { data: [] };
+      const clinicById = Object.fromEntries((clinicsRes.data || []).map((c) => [c.id, c]));
+      const doctorById = Object.fromEntries((doctorsRes.data || []).map((d) => [d.id, d]));
+      setVisits(rows);
+      setOrders(
+        bals
+          .map((b) => {
+            if (b.customer_type === "clinic") {
+              const c = clinicById[b.customer_id] || {};
+              const docs = (clinicDoctors || []).filter((d) => d.clinic_code === c.code).map((d) => d.name);
+              return { id: `${b.customer_id}-${b.brand}`, customerId: b.customer_id, brand: b.brand, name: c.name && c.name !== "0" ? `${c.name} (${c.code})` : `Clinic ${c.code || ""}`, sub: docs.join(", "), owed: Number(b.balance) };
+            }
+            const d = doctorById[b.customer_id] || {};
+            return { id: `${b.customer_id}-${b.brand}`, customerId: b.customer_id, brand: b.brand, name: d.name || "Doctor", sub: d.clinic_code ? `Clinic ${d.clinic_code}` : "", owed: Number(b.balance) };
+          })
+          .sort((x, y) => y.owed - x.owed)
+      );
+    } finally {
+      setLoading(false);
     }
-    const { data: ord } = await supabase
-      .from("dental_orders")
-      .select("id, created_at, total_amount, amount_paid, payment_status, status, doctors(name, clinic_code)")
-      .neq("status", "cancelled");
-    setVisits(rows);
-    setOrders((ord || []).filter((o) => Number(o.total_amount || 0) - Number(o.amount_paid || 0) > 0.005));
-    setLoading(false);
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
 
   const owedOn = (v) => Math.max(Number(v.amount_due || 0) - Number(v.amount_paid || 0), 0);
   const open = visits.filter((v) => owedOn(v) > 0.005);
-  const today = new Date();
+  const today = new Date(cairoToday() + "T00:00:00");
   const ageOf = (d) => (d ? Math.floor((today - new Date(d + "T00:00:00")) / 86400000) : 0);
 
   const patientTotal = open.reduce((s, v) => s + owedOn(v), 0);
-  const orderTotal = orders.reduce((s, o) => s + (Number(o.total_amount || 0) - Number(o.amount_paid || 0)), 0);
+  const orderTotal = orders.reduce((s, o) => s + o.owed, 0);
+  const money2 = (v) => formatMoney(v, { decimals: Math.round(Number(v || 0) * 100) % 100 ? 2 : 0 });
 
   const buckets = AGE_BUCKETS.map((b) => {
     const rows = open.filter((v) => {
@@ -117,7 +141,7 @@ export default function OutstandingAnalytics() {
     <div>
       <h1 style={{ color: theme.navy, marginBottom: 4 }}>Money Owed</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        Everything billed but not yet collected, from patient visits and doctor stock orders.
+        Everything billed but not yet collected, from patient visits and clinic / doctor stock accounts.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
@@ -127,13 +151,13 @@ export default function OutstandingAnalytics() {
           <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{open.length} unpaid or part-paid visits</div>
         </button>
         <div style={card}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Owed by doctors</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: orderTotal > 0 ? "#ba1a1a" : theme.navy }}>{formatMoney(orderTotal)} EGP</div>
-          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{orders.length} unsettled stock orders</div>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Owed on stock accounts</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: orderTotal > 0 ? "#ba1a1a" : theme.navy }}>{money2(orderTotal)} EGP</div>
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{orders.length} clinic / doctor account{orders.length === 1 ? "" : "s"}</div>
         </div>
         <div style={card}>
           <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Total outstanding</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: theme.navy }}>{formatMoney(patientTotal + orderTotal)} EGP</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: theme.navy }}>{money2(patientTotal + orderTotal)} EGP</div>
         </div>
       </div>
 
@@ -155,7 +179,7 @@ export default function OutstandingAnalytics() {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[{ k: "patients", l: "Patients who owe" }, { k: "clinics", l: "By clinic" }, { k: "doctors", l: "Doctor orders" }].map((t) => (
+        {[{ k: "patients", l: "Patients who owe" }, { k: "clinics", l: "By clinic" }, { k: "doctors", l: "Stock accounts" }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{ padding: "8px 18px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
               background: tab === t.k ? theme.navy : "#fff", color: tab === t.k ? "#fff" : theme.navy,
@@ -198,19 +222,18 @@ export default function OutstandingAnalytics() {
 
       {tab === "doctors" && (
         <div style={card}>
-          {orders.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>No unsettled stock orders.</p>}
+          {orders.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>No clinic or doctor owes anything on stock.</p>}
           {orders.map((o) => (
-            <div key={o.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f2f2f2" }}>
+            <a key={o.id} href={`/dashboard/debt-collection/statement/${o.customerId}/${o.brand}`}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f2f2f2", textDecoration: "none" }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{o.doctors?.name || "Unknown doctor"}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{o.name}</div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · {o.status}
+                  {o.sub ? `${o.sub} · ` : ""}{o.brand === "dental_stock" ? "Dental stock" : o.brand} · open statement
                 </div>
               </div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: "#ba1a1a" }}>
-                {formatMoney(Number(o.total_amount || 0) - Number(o.amount_paid || 0))} EGP
-              </span>
-            </div>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#ba1a1a" }}>{money2(o.owed)} EGP</span>
+            </a>
           ))}
         </div>
       )}

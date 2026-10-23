@@ -4,6 +4,8 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import DrillDownModal from "./DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
+import { fetchAll, cairoDate, cairoToday } from "../../lib/dashboardData";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
 
 // Oversight layer for report requests: how many are open, who they came from,
 // which ones are late, and how long they actually take to turn around.
@@ -19,33 +21,53 @@ export default function ClientRequestsAnalytics() {
   const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
   const [sourceFilter, setSourceFilter] = useState("all");
   const [drill, setDrill] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     load();
   }, []);
 
+  useAutoRefresh(["reports"], load);
+
+  // Silent on refresh: "Loading" only shows until the first load completes.
   async function load() {
-    setLoading(true);
-    const [{ data: r }, { data: c }] = await Promise.all([
-      supabase
-        .from("reports")
-        .select("id, source_type, client_id, scan_name, date_required, status, assigned_to_name, created_at, completed_at, report_file_name, client_uploaded_file_name")
-        .order("created_at", { ascending: false }),
-      supabase.from("clients").select("id, name, is_pseudo"),
-    ]);
-    setReports(r || []);
-    setClients(c || []);
-    setLoading(false);
+    try {
+      const [r, { data: c, error: cErr }] = await Promise.all([
+        fetchAll(() =>
+          supabase
+            .from("reports")
+            .select("id, source_type, client_id, scan_name, date_required, status, assigned_to_name, created_at, completed_at, report_file_name, client_uploaded_file_name")
+        ),
+        supabase.from("clients").select("id, name, is_pseudo"),
+      ]);
+      if (cErr) throw new Error(cErr.message);
+      // fetchAll pages by id; keep the newest-first order the page always had.
+      r.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+      setReports(r);
+      setClients(c || []);
+      setError(null);
+    } catch (e) {
+      setError(e.message || "Could not load requests.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (error && reports.length === 0) return <p style={{ color: "#ba1a1a" }}>Could not load requests: {error}</p>;
 
   const clientById = Object.fromEntries(clients.map((c) => [c.id, c]));
-  const years = [...new Set(reports.filter((r) => r.created_at).map((r) => r.created_at.slice(0, 4)))].sort().reverse();
+  // Bucket by the Cairo calendar day, not the UTC date in the ISO string.
+  const years = [...new Set(reports.filter((r) => r.created_at).map((r) => cairoDate(r.created_at).slice(0, 4)))].sort().reverse();
   const { start, end } = getDateRange(dateFilter);
 
   let scoped = reports;
-  if (start) scoped = scoped.filter((r) => r.created_at && r.created_at.slice(0, 10) >= start && r.created_at.slice(0, 10) <= end);
+  if (start) {
+    scoped = scoped.filter((r) => {
+      const d = r.created_at && cairoDate(r.created_at);
+      return d && d >= start && d <= end;
+    });
+  }
   if (sourceFilter !== "all") scoped = scoped.filter((r) => (r.source_type || "internal") === sourceFilter);
 
   const isDone = (r) => r.status === "completed" || !!r.completed_at;
@@ -54,16 +76,19 @@ export default function ClientRequestsAnalytics() {
 
   // Overdue is measured against date_required, the date the requester was told
   // to expect it - not against how long it's been sitting in the queue.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoToday();
   const overdue = open.filter((r) => r.date_required && r.date_required < today);
   const unassigned = open.filter((r) => !r.assigned_to_name);
 
+  // Backfilled rows can have completed_at earlier than created_at; a negative
+  // duration is not a turnaround, so those are left out of the average.
   const turnarounds = done
     .filter((r) => r.created_at && r.completed_at)
-    .map((r) => (new Date(r.completed_at) - new Date(r.created_at)) / 86400000);
-  const avgTurnaround = turnarounds.length
-    ? (turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length).toFixed(1)
-    : null;
+    .map((r) => (new Date(r.completed_at) - new Date(r.created_at)) / 86400000)
+    .filter((d) => d >= 0);
+  const avgDays = turnarounds.length ? turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length : null;
+  const avgTurnaround = avgDays === null ? null : avgDays < 1 ? (avgDays * 24).toFixed(1) : avgDays.toFixed(1);
+  const avgUnit = avgDays !== null && avgDays < 1 ? "hours" : "days";
 
   const byRequester = {};
   for (const r of scoped) {
@@ -78,12 +103,18 @@ export default function ClientRequestsAnalytics() {
   }
   const requesterRows = Object.entries(byRequester).sort((a, b) => b[1].total - a[1].total);
 
+  // Grouped case-insensitively; each group shows its most common spelling.
   const byScan = {};
   for (const r of scoped) {
-    const k = (r.scan_name || "Unspecified").trim() || "Unspecified";
-    byScan[k] = (byScan[k] || 0) + 1;
+    const name = (r.scan_name || "").trim() || "Unspecified";
+    const g = (byScan[name.toLowerCase()] = byScan[name.toLowerCase()] || { count: 0, spellings: {} });
+    g.count++;
+    g.spellings[name] = (g.spellings[name] || 0) + 1;
   }
-  const topScans = Object.entries(byScan).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const topScans = Object.values(byScan)
+    .map((g) => [Object.entries(g.spellings).sort((a, b) => b[1] - a[1])[0][0], g.count])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
 
   function openDrill(title, rows) {
     setDrill({
@@ -169,7 +200,7 @@ export default function ClientRequestsAnalytics() {
           <p style={{ margin: 0 }}>
             <span style={{ fontSize: 30, fontWeight: 800, color: theme.navy }}>{avgTurnaround}</span>
             <span style={{ fontSize: 13, color: theme.gray, marginLeft: 8 }}>
-              days from request to completed report, across {turnarounds.length} finished request{turnarounds.length === 1 ? "" : "s"}
+              {avgUnit} from request to completed report, across {turnarounds.length} finished request{turnarounds.length === 1 ? "" : "s"}
             </span>
           </p>
         )}

@@ -6,6 +6,47 @@ import { theme } from "../../lib/theme";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DrillDownModal from "./DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
+import { fetchAll, cairoToday } from "../../lib/dashboardData";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
+
+// A couple of legacy visits carry impossible exam dates (1956, 1960). They are
+// still real visits, but they are kept out of anything plotted by date.
+const MIN_EXAM_DATE = "2020-01-01";
+const hasRealDate = (v) => !!v.exam_date && v.exam_date >= MIN_EXAM_DATE;
+
+// "YYYY-MM" keys from startKey to endKey inclusive, pure string math so the
+// browser's timezone can never shift a month.
+function monthKeys(startKey, endKey) {
+  const out = [];
+  let y = parseInt(startKey.slice(0, 4), 10);
+  let m = parseInt(startKey.slice(5, 7), 10);
+  const ey = parseInt(endKey.slice(0, 4), 10);
+  const em = parseInt(endKey.slice(5, 7), 10);
+  while (y < ey || (y === ey && m <= em)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+const monthLabel = (key) => key.slice(5) + "/" + key.slice(2, 4);
+
+// Scan types are typed by hand, so "Endo One Tooth" and "Endo one tooth" must
+// count as one. Groups case-insensitively and shows the most common spelling.
+function buildScanNamer(visits) {
+  const spellings = {};
+  for (const v of visits) {
+    for (const t of v.scan_types || []) {
+      if (typeof t !== "string" || !t.trim()) continue;
+      const k = t.trim().toLowerCase();
+      const s = (spellings[k] = spellings[k] || {});
+      s[t.trim()] = (s[t.trim()] || 0) + 1;
+    }
+  }
+  const display = {};
+  for (const [k, s] of Object.entries(spellings)) display[k] = Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
+  return (t) => (typeof t === "string" && t.trim() ? display[t.trim().toLowerCase()] || t.trim() : null);
+}
 
 const PERIODS = {
   month: { label: "Month", days: 30 },
@@ -21,24 +62,35 @@ export default function DoctorAnalytics() {
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
   const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     load();
   }, []);
 
+  useAutoRefresh(["visits", "doctors"], load);
+
+  // Silent on refresh: "Loading" only shows until the first load completes.
   async function load() {
-    setLoading(true);
-    const { data: docs } = await supabase.from("doctors").select("id, name, clinic_code");
-    const { data: v } = await supabase.from("visits").select("doctor_id, patient_id, exam_date, scan_types, patients(name)").not("doctor_id", "is", null);
-    setDoctors(docs || []);
-    setVisits(v || []);
-    setLoading(false);
+    try {
+      const [docs, v] = await Promise.all([
+        fetchAll(() => supabase.from("doctors").select("id, name, clinic_code")),
+        fetchAll(() => supabase.from("visits").select("doctor_id, patient_id, exam_date, scan_types, patients(name)").not("doctor_id", "is", null)),
+      ]);
+      setDoctors(docs);
+      setVisits(v);
+      setError(null);
+    } catch (e) {
+      setError(e.message || "Could not load doctor data.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openMonthDrill(monthLabel, key) {
     const docById = Object.fromEntries(doctors.map((d) => [d.id, d.name]));
     const rows = visits
-      .filter((v) => v.exam_date && v.exam_date.startsWith(key))
+      .filter((v) => hasRealDate(v) && v.exam_date.startsWith(key))
       .map((v) => ({ doctor: docById[v.doctor_id] || "—", patient: v.patients?.name || "—", date: v.exam_date, scans: (v.scan_types || []).join(", ") }));
     setDrill({
       title: `Referrals in ${monthLabel}`,
@@ -54,7 +106,9 @@ export default function DoctorAnalytics() {
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (error && visits.length === 0) return <p style={{ color: "#ba1a1a" }}>Could not load doctor data: {error}</p>;
 
+  const scanName = buildScanNamer(visits);
   const now = new Date();
   const periodDays = PERIODS[period].days;
   const periodStart = new Date(now.getTime() - periodDays * 86400000);
@@ -80,7 +134,7 @@ export default function DoctorAnalytics() {
   const dormantCutoff = new Date(now.getTime() - 60 * 86400000);
   const lastVisitByDoctor = {};
   for (const v of visits) {
-    if (!v.exam_date) continue;
+    if (!hasRealDate(v)) continue;
     const d = new Date(v.exam_date);
     if (!lastVisitByDoctor[v.doctor_id] || d > lastVisitByDoctor[v.doctor_id]) {
       lastVisitByDoctor[v.doctor_id] = d;
@@ -91,33 +145,21 @@ export default function DoctorAnalytics() {
     .map((d) => ({ ...d, lastVisit: lastVisitByDoctor[d.id], totalHistorical: visits.filter((v) => v.doctor_id === d.id).length }))
     .sort((a, b) => a.lastVisit - b.lastVisit);
 
-  // Referral trend: full available range by default, or the selected calendar period
-  const years = [...new Set(visits.filter((v) => v.exam_date).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
+  // Referral trend: last 12 months by default, or the selected calendar period
+  const years = [...new Set(visits.filter(hasRealDate).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
   const { start: filterStart, end: filterEnd } = getDateRange(dateFilter);
   const monthBuckets = {};
   if (filterStart) {
-    let cursor = new Date(filterStart);
-    const endDate = new Date(filterEnd);
-    while (cursor <= endDate) {
-      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
-      monthBuckets[key] = 0;
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
+    for (const key of monthKeys(filterStart.slice(0, 7), filterEnd.slice(0, 7))) monthBuckets[key] = 0;
   } else {
-    const datedVisits = visits.filter((v) => v.exam_date);
-    if (datedVisits.length > 0) {
-      const minDate = new Date(Math.min(...datedVisits.map((v) => new Date(v.exam_date))));
-      const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-      const endCursor = new Date(now.getFullYear(), now.getMonth(), 1);
-      while (cursor <= endCursor) {
-        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
-        monthBuckets[key] = 0;
-        cursor.setMonth(cursor.getMonth() + 1);
-      }
-    }
+    const endKey = cairoToday().slice(0, 7);
+    let y = parseInt(endKey.slice(0, 4), 10);
+    let m = parseInt(endKey.slice(5, 7), 10) - 11;
+    if (m < 1) { m += 12; y--; }
+    for (const key of monthKeys(`${y}-${String(m).padStart(2, "0")}`, endKey)) monthBuckets[key] = 0;
   }
   for (const v of visits) {
-    if (!v.exam_date) continue;
+    if (!hasRealDate(v)) continue;
     const key = v.exam_date.slice(0, 7);
     if (key in monthBuckets) monthBuckets[key]++;
   }
@@ -145,7 +187,10 @@ export default function DoctorAnalytics() {
     const st = (statsByDoctor[v.doctor_id] = statsByDoctor[v.doctor_id] || { visits: 0, patients: new Set(), scans: {} });
     st.visits++;
     if (v.patient_id) st.patients.add(v.patient_id);
-    for (const t of v.scan_types || []) st.scans[t] = (st.scans[t] || 0) + 1;
+    for (const t of v.scan_types || []) {
+      const n = scanName(t);
+      if (n) st.scans[n] = (st.scans[n] || 0) + 1;
+    }
   }
   const docNameById = Object.fromEntries(doctors.map((d) => [d.id, d]));
   const leaderboard = Object.entries(statsByDoctor)
@@ -164,7 +209,10 @@ export default function DoctorAnalytics() {
   // Overall scan-type demand across every referral in the selected window.
   const scanDemand = {};
   for (const v of leaderboardSource) {
-    for (const t of v.scan_types || []) scanDemand[t] = (scanDemand[t] || 0) + 1;
+    for (const t of v.scan_types || []) {
+      const n = scanName(t);
+      if (n) scanDemand[n] = (scanDemand[n] || 0) + 1;
+    }
   }
   const topScanTypes = Object.entries(scanDemand).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const scanDemandTotal = Object.values(scanDemand).reduce((a, b) => a + b, 0) || 1;
@@ -190,7 +238,10 @@ export default function DoctorAnalytics() {
     const counts = {};
     for (const v of visits) {
       if (v.doctor_id !== docId) continue;
-      for (const st of v.scan_types || []) counts[st] = (counts[st] || 0) + 1;
+      for (const t of v.scan_types || []) {
+        const n = scanName(t);
+        if (n) counts[n] = (counts[n] || 0) + 1;
+      }
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }
@@ -228,11 +279,11 @@ export default function DoctorAnalytics() {
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Referrals, Last 12 Months</h3>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{filterStart ? "Referrals by Month" : "Referrals, Last 12 Months"}</h3>
           <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>Click a bar to see that month's referrals.</p>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart
-              data={Object.entries(monthBuckets).map(([key, count]) => ({ key, month: key.slice(5), count }))}
+              data={Object.entries(monthBuckets).map(([key, count]) => ({ key, month: monthLabel(key), count }))}
               onClick={(e) => { if (e && e.activePayload) openMonthDrill(e.activePayload[0].payload.month, e.activePayload[0].payload.key); }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />

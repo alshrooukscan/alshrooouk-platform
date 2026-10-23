@@ -4,6 +4,8 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import DrillDownModal from "./DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
+import { fetchAll, cairoToday } from "../../lib/dashboardData";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend,
@@ -11,38 +13,79 @@ import {
 
 const COLORS = [theme.navy, theme.gold, "#6D5A3A", "#A98B4D", "#48464E", "#8a7ba0", "#c9a86a", "#3d3564"];
 
+// A couple of legacy visits carry impossible exam dates (1956, 1960). They are
+// still real visits, but they are kept out of anything plotted by date.
+const MIN_EXAM_DATE = "2020-01-01";
+const hasRealDate = (v) => !!v.exam_date && v.exam_date >= MIN_EXAM_DATE;
+
+// "YYYY-MM" keys from startKey to endKey inclusive, pure string math so the
+// browser's timezone can never shift a month.
+function monthKeys(startKey, endKey) {
+  const out = [];
+  let y = parseInt(startKey.slice(0, 4), 10);
+  let m = parseInt(startKey.slice(5, 7), 10);
+  const ey = parseInt(endKey.slice(0, 4), 10);
+  const em = parseInt(endKey.slice(5, 7), 10);
+  while (y < ey || (y === ey && m <= em)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+// Scan types are typed by hand, so "Endo One Tooth" and "Endo one tooth" must
+// count as one. Groups case-insensitively and shows the most common spelling.
+function buildScanNamer(visits) {
+  const spellings = {};
+  for (const v of visits) {
+    for (const t of v.scan_types || []) {
+      if (typeof t !== "string" || !t.trim()) continue;
+      const k = t.trim().toLowerCase();
+      const s = (spellings[k] = spellings[k] || {});
+      s[t.trim()] = (s[t.trim()] || 0) + 1;
+    }
+  }
+  const display = {};
+  for (const [k, s] of Object.entries(spellings)) display[k] = Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
+  return (t) => (typeof t === "string" && t.trim() ? display[t.trim().toLowerCase()] || t.trim() : null);
+}
+
 export default function ScanInsights() {
   const [allVisits, setAllVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
   const [filter, setFilter] = useState({ year: "", quarter: "", month: "" });
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     load();
   }, []);
 
+  useAutoRefresh(["visits", "doctors", "branches"], load);
+
+  // Silent on refresh: "Loading" only shows until the first load completes.
   async function load() {
-    setLoading(true);
-    let all = [];
-    let from = 0;
-    const pageSize = 1000;
-    while (true) {
-      const { data } = await supabase
-        .from("visits")
-        .select("id, scan_types, exam_date, branch_id, payment_status, patient_id, patients(name), doctors(name), branches(name)")
-        .range(from, from + pageSize - 1);
-      if (!data || data.length === 0) break;
-      all = all.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
+    try {
+      const all = await fetchAll(() =>
+        supabase
+          .from("visits")
+          .select("id, scan_types, exam_date, branch_id, payment_status, patient_id, patients(name), doctors(name), branches(name)")
+      );
+      setAllVisits(all);
+      setError(null);
+    } catch (e) {
+      setError(e.message || "Could not load scan data.");
+    } finally {
+      setLoading(false);
     }
-    setAllVisits(all);
-    setLoading(false);
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (error && allVisits.length === 0) return <p style={{ color: "#ba1a1a" }}>Could not load scan data: {error}</p>;
 
-  const years = [...new Set(allVisits.filter((v) => v.exam_date).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
+  const scanName = buildScanNamer(allVisits);
+  const years = [...new Set(allVisits.filter(hasRealDate).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
   const { start, end } = getDateRange(filter);
   const visits = start ? allVisits.filter((v) => v.exam_date && v.exam_date >= start && v.exam_date <= end) : allVisits;
 
@@ -51,39 +94,30 @@ export default function ScanInsights() {
 
   const typeCounts = {};
   for (const v of visits) {
-    for (const t of v.scan_types || []) typeCounts[t] = (typeCounts[t] || 0) + 1;
+    for (const t of v.scan_types || []) {
+      const n = scanName(t);
+      if (n) typeCounts[n] = (typeCounts[n] || 0) + 1;
+    }
   }
   const topTypes = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
 
-  const now = new Date();
-  let monthData = [];
+  // A specific year/quarter/month selected: show that range by month.
+  // No filter: the last 12 months up to the current Cairo month.
+  let monthKeyList;
   if (start) {
-    // A specific year/quarter/month is selected: show that range at month granularity.
-    let cursor = new Date(start);
-    const endDate = new Date(end);
-    while (cursor <= endDate) {
-      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
-      monthData.push({ month: key.slice(5) + "/" + key.slice(2, 4), key, scans: 0 });
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
+    monthKeyList = monthKeys(start.slice(0, 7), end.slice(0, 7));
   } else {
-    // No filter: show every month across all real data on file, not just a recent slice.
-    const datedVisits = allVisits.filter((v) => v.exam_date);
-    if (datedVisits.length > 0) {
-      const minDate = new Date(Math.min(...datedVisits.map((v) => new Date(v.exam_date))));
-      const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-      const endCursor = new Date(now.getFullYear(), now.getMonth(), 1);
-      while (cursor <= endCursor) {
-        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
-        monthData.push({ month: key.slice(5) + "/" + key.slice(2), key, scans: 0 });
-        cursor.setMonth(cursor.getMonth() + 1);
-      }
-    }
+    const endKey = cairoToday().slice(0, 7);
+    let y = parseInt(endKey.slice(0, 4), 10);
+    let m = parseInt(endKey.slice(5, 7), 10) - 11;
+    if (m < 1) { m += 12; y--; }
+    monthKeyList = monthKeys(`${y}-${String(m).padStart(2, "0")}`, endKey);
   }
+  const monthData = monthKeyList.map((key) => ({ month: key.slice(5) + "/" + key.slice(2, 4), key, scans: 0 }));
+  const bucketByKey = Object.fromEntries(monthData.map((m) => [m.key, m]));
   for (const v of visits) {
-    if (!v.exam_date) continue;
-    const key = v.exam_date.slice(0, 7);
-    const bucket = monthData.find((m) => m.key === key);
+    if (!hasRealDate(v)) continue;
+    const bucket = bucketByKey[v.exam_date.slice(0, 7)];
     if (bucket) bucket.scans += v.scan_types?.length || 0;
   }
 
@@ -98,7 +132,7 @@ export default function ScanInsights() {
 
   function openScanTypeDrill(typeName) {
     const rows = visits
-      .filter((v) => (v.scan_types || []).includes(typeName))
+      .filter((v) => (v.scan_types || []).some((t) => scanName(t) === typeName))
       .map((v) => ({ patient: v.patients?.name || "—", doctor: v.doctors?.name || "Walk-in", date: v.exam_date, status: v.payment_status }));
     setDrill({
       title: typeName,
@@ -115,7 +149,7 @@ export default function ScanInsights() {
 
   function openMonthDrill(monthLabel, key) {
     const rows = visits
-      .filter((v) => v.exam_date && v.exam_date.startsWith(key))
+      .filter((v) => hasRealDate(v) && v.exam_date.startsWith(key))
       .map((v) => ({ patient: v.patients?.name || "—", scans: (v.scan_types || []).join(", "), date: v.exam_date, status: v.payment_status }));
     setDrill({
       title: `Visits in ${monthLabel}`,
@@ -143,7 +177,7 @@ export default function ScanInsights() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Scans, Last 12 Months</h3>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{start ? "Scans by Month" : "Scans, Last 12 Months"}</h3>
           <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Click a point to see that month's visits.</p>
           <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={monthData} onClick={(e) => { if (e && e.activePayload) openMonthDrill(e.activePayload[0].payload.month, e.activePayload[0].payload.key); }}>

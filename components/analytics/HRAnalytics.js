@@ -4,9 +4,38 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
+import { fetchAll, cairoDate, cairoToday } from "../../lib/dashboardData";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
 
 const TREND_DAYS_DEFAULT = 30;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Attendance tracking went live on this date; days before it are never "Absent".
+const GO_LIVE = "2026-09-01";
+// Never "employees" / "staff_profiles": Realtime would broadcast salary columns.
+const LIVE_TABLES = ["timeclock_events", "employee_shifts", "leave_requests"];
+
+// Everything below runs on Cairo time, not the browser's or UTC.
+const cairoHMFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit", hour12: false, hourCycle: "h23" });
+function cairoHM(ts) {
+  return cairoHMFmt.format(new Date(ts)).replace(/^24:/, "00:"); // "HH:MM"
+}
+function dowOfKey(key) {
+  return new Date(key + "T00:00:00Z").getUTCDay();
+}
+function addDaysKey(key, n) {
+  const d = new Date(key + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function shiftStartHM(shift) {
+  return (shift.start_time || "09:00").slice(0, 5);
+}
+// Earliest day the trend can need for this filter (default: last 30 days).
+function trendFromKey(dateFilter) {
+  const { start } = getDateRange(dateFilter);
+  const from = start || addDaysKey(cairoToday(), -(TREND_DAYS_DEFAULT - 1));
+  return from > GO_LIVE ? from : GO_LIVE;
+}
 
 export default function HRAnalytics() {
   const [employees, setEmployees] = useState([]);
@@ -16,94 +45,120 @@ export default function HRAnalytics() {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
 
+  const fromKey = trendFromKey(dateFilter);
+
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromKey]);
+
+  // Silent background refresh: only the first load shows "Loading...".
+  useAutoRefresh(LIVE_TABLES, () => load());
 
   async function load() {
-    setLoading(true);
-    const { data: emps } = await supabase.from("employees").select("id, name, hr_id, is_active").eq("is_active", true);
-    const { data: ev } = await supabase.from("timeclock_events").select("employee_id, event_type, event_time");
-    const { data: lr } = await supabase.from("leave_requests").select("*").eq("status", "approved");
-    const { data: sh } = await supabase.from("employee_shifts").select("*");
+    try {
+      // Start of the earliest needed Cairo day, as an instant (Cairo is UTC+2/+3, so
+      // going back 3h from UTC midnight covers it; extra rows are filtered by day key).
+      const fromTs = new Date(new Date(fromKey + "T00:00:00Z").getTime() - 3 * 3600000).toISOString();
+      const [emps, ev, lr, sh] = await Promise.all([
+        fetchAll(() => supabase.from("employees").select("id, name, hr_id, is_active, created_at").eq("is_active", true)),
+        fetchAll(() => supabase.from("timeclock_events").select("id, employee_id, event_type, event_time").gte("event_time", fromTs)),
+        fetchAll(() => supabase.from("leave_requests").select("*").eq("status", "approved")),
+        fetchAll(() => supabase.from("employee_shifts").select("*")),
+      ]);
 
-    const shiftMap = {};
-    for (const s of sh || []) {
-      shiftMap[s.employee_id] = shiftMap[s.employee_id] || {};
-      shiftMap[s.employee_id][s.day_of_week] = s;
+      const shiftMap = {};
+      for (const s of sh) {
+        shiftMap[s.employee_id] = shiftMap[s.employee_id] || {};
+        shiftMap[s.employee_id][s.day_of_week] = s;
+      }
+
+      setEmployees(emps);
+      setEvents(ev.filter((e) => e.event_time).map((e) => ({ ...e, day: cairoDate(e.event_time) })));
+      setLeaveRequests(lr);
+      setShiftsByEmployee(shiftMap);
+    } catch (err) {
+      console.error("HRAnalytics load failed", err); // keep showing the last good data
+    } finally {
+      setLoading(false);
     }
-
-    setEmployees(emps || []);
-    setEvents(ev || []);
-    setLeaveRequests(lr || []);
-    setShiftsByEmployee(shiftMap);
-    setLoading(false);
   }
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
 
-  const today = new Date();
-  const todayKey = dateKey(today);
+  const todayKey = cairoToday();
+  const nowHM = cairoHM(new Date());
 
-  function dateKey(d) {
-    return d.toISOString().slice(0, 10);
-  }
   function onApprovedLeave(empId, day) {
     return leaveRequests.some((r) => r.employee_id === empId && day >= r.start_date && day <= r.end_date);
   }
+  // Sorted by time, so [first login] and [last logout] are well defined.
   function eventsFor(empId, day) {
-    return events.filter((e) => e.employee_id === empId && e.event_time.slice(0, 10) === day);
+    return events
+      .filter((e) => e.employee_id === empId && e.day === day)
+      .sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+  }
+  function firstLogin(dayEvents) {
+    return dayEvents.find((e) => e.event_type === "login");
+  }
+  function lastLogout(dayEvents) {
+    for (let i = dayEvents.length - 1; i >= 0; i--) if (dayEvents[i].event_type === "logout") return dayEvents[i];
+    return undefined;
   }
   function shiftFor(empId, dayOfWeek) {
     return shiftsByEmployee[empId]?.[dayOfWeek]; // undefined = no shift defined yet for that day
   }
+  // Employee start: the earlier of their record creation and first clock event (Cairo day).
+  const firstEventDay = {};
+  for (const e of events) {
+    if (!firstEventDay[e.employee_id] || e.day < firstEventDay[e.employee_id]) firstEventDay[e.employee_id] = e.day;
+  }
+  function employeeStartKey(emp) {
+    const c = emp.created_at ? cairoDate(emp.created_at) : null;
+    const f = firstEventDay[emp.id] || null;
+    if (c && f) return c < f ? c : f;
+    return c || f || GO_LIVE;
+  }
 
   // ---------- Today's flags, per-employee shift aware ----------
-  const todayDow = today.getDay();
+  const todayDow = dowOfKey(todayKey);
   const todayFlags = employees.map((emp) => {
     const shift = shiftFor(emp.id, todayDow);
     if (onApprovedLeave(emp.id, todayKey)) return { emp, status: "vacation" };
     if (!shift) return { emp, status: "no_shift" };
     if (shift.is_day_off) return { emp, status: "off" };
 
-    const dayEvents = eventsFor(emp.id, todayKey).sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
-    const login = dayEvents.find((e) => e.event_type === "login");
-    const logout = dayEvents.find((e) => e.event_type === "logout");
-    if (!login) return { emp, status: "no_signin" };
+    const dayEvents = eventsFor(emp.id, todayKey);
+    const login = firstLogin(dayEvents);
+    const logout = lastLogout(dayEvents);
+    if (!login) return { emp, status: nowHM < shiftStartHM(shift) ? "not_started" : "no_signin" };
 
-    const [shiftHour, shiftMin] = (shift.start_time || "09:00").split(":").map(Number);
-    const loginDate = new Date(login.event_time);
-    const loginHour = loginDate.getHours() + loginDate.getMinutes() / 60;
-    const shiftStartHour = shiftHour + shiftMin / 60;
-    const late = loginHour > shiftStartHour;
+    const late = cairoHM(login.event_time) > shiftStartHM(shift);
 
     if (!logout) return { emp, status: late ? "late_no_signout" : "no_signout", loginTime: login.event_time };
     return { emp, status: late ? "late" : "on_time", loginTime: login.event_time, logoutTime: logout.event_time };
   });
 
   // ---------- Trend: selected calendar period, or last 30 days by default ----------
-  const years = [...new Set(events.filter((e) => e.event_time).map((e) => e.event_time.slice(0, 4)))].sort().reverse();
+  const goLiveYear = Number(GO_LIVE.slice(0, 4));
+  const years = [];
+  for (let y = Number(todayKey.slice(0, 4)); y >= goLiveYear; y--) years.push(String(y));
   const { start: filterStart, end: filterEnd } = getDateRange(dateFilter);
-  let trendDates = [];
-  if (filterStart) {
-    let cursor = new Date(filterStart);
-    const endDate = new Date(Math.min(new Date(filterEnd), today));
-    while (cursor <= endDate) {
-      trendDates.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-  } else {
-    for (let i = TREND_DAYS_DEFAULT - 1; i >= 0; i--) {
-      trendDates.push(new Date(today.getTime() - i * 86400000));
-    }
-  }
+  const rangeStart = filterStart || addDaysKey(todayKey, -(TREND_DAYS_DEFAULT - 1));
+  const rangeEnd = filterEnd && filterEnd < todayKey ? filterEnd : todayKey;
 
   const trend = employees.map((emp) => {
     let lateDays = 0, absentDays = 0, missingSignoutDays = 0, vacationDays = 0, noShiftDays = 0;
-    for (const d of trendDates) {
-      const dow = d.getDay();
-      const shift = shiftFor(emp.id, dow);
-      const key = dateKey(d);
+    // Clamp per employee: never count days before go-live or before they existed.
+    let startKey = rangeStart;
+    if (GO_LIVE > startKey) startKey = GO_LIVE;
+    const empStart = employeeStartKey(emp);
+    if (empStart > startKey) startKey = empStart;
+
+    for (let key = startKey; key <= rangeEnd; key = addDaysKey(key, 1)) {
+      const shift = shiftFor(emp.id, dowOfKey(key));
+      // Today only counts once this employee's shift has started (Cairo time).
+      if (key === todayKey && (!shift || shift.is_day_off || nowHM < shiftStartHM(shift))) continue;
 
       if (onApprovedLeave(emp.id, key)) {
         vacationDays++;
@@ -116,16 +171,13 @@ export default function HRAnalytics() {
       if (shift.is_day_off) continue;
 
       const dayEvents = eventsFor(emp.id, key);
-      const login = dayEvents.find((e) => e.event_type === "login");
-      const logout = dayEvents.find((e) => e.event_type === "logout");
+      const login = firstLogin(dayEvents);
+      const logout = lastLogout(dayEvents);
       if (!login) {
         absentDays++;
         continue;
       }
-      const [shiftHour, shiftMin] = (shift.start_time || "09:00").split(":").map(Number);
-      const loginDate = new Date(login.event_time);
-      const loginHour = loginDate.getHours() + loginDate.getMinutes() / 60;
-      if (loginHour > shiftHour + shiftMin / 60) lateDays++;
+      if (cairoHM(login.event_time) > shiftStartHM(shift)) lateDays++;
       if (!logout) missingSignoutDays++;
     }
     return { emp, lateDays, absentDays, missingSignoutDays, vacationDays, noShiftDays };
@@ -141,6 +193,7 @@ export default function HRAnalytics() {
     on_time: { label: "On time", bg: "#e8f5e9", color: "#2e7d32" },
     late: { label: "Late", bg: "#fff8e1", color: "#a97c00" },
     no_signin: { label: "No sign-in", bg: "#fdecea", color: "#ba1a1a" },
+    not_started: { label: "Shift not started yet", bg: "#f5f5f5", color: "#888" },
     no_signout: { label: "No sign-out yet", bg: "#fff3e0", color: "#a97c00" },
     late_no_signout: { label: "Late, no sign-out yet", bg: "#fdecea", color: "#ba1a1a" },
     vacation: { label: "On vacation", bg: "#e3f2fd", color: "#1565c0" },
@@ -170,8 +223,8 @@ export default function HRAnalytics() {
               <a key={emp.id} href={`/dashboard/hr/${emp.id}`} style={{ textDecoration: "none", border: `1px solid ${meta.bg}`, background: meta.bg, borderRadius: 10, padding: 12, display: "block" }}>
                 <div style={{ fontWeight: 600, color: theme.navy, fontSize: 13 }}>{emp.name}</div>
                 <div style={{ fontSize: 11, color: meta.color, fontWeight: 700, marginTop: 2 }}>{meta.label}</div>
-                {loginTime && <div style={{ fontSize: 10, color: theme.gray, marginTop: 2 }}>In: {new Date(loginTime).toLocaleTimeString()}</div>}
-                {logoutTime && <div style={{ fontSize: 10, color: theme.gray }}>Out: {new Date(logoutTime).toLocaleTimeString()}</div>}
+                {loginTime && <div style={{ fontSize: 10, color: theme.gray, marginTop: 2 }}>In: {new Date(loginTime).toLocaleTimeString([], { timeZone: "Africa/Cairo" })}</div>}
+                {logoutTime && <div style={{ fontSize: 10, color: theme.gray }}>Out: {new Date(logoutTime).toLocaleTimeString([], { timeZone: "Africa/Cairo" })}</div>}
               </a>
             );
           })}

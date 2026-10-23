@@ -5,6 +5,8 @@ import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { exportToCsv } from "../../lib/exportCsv";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
+import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { fetchAll, cairoDate } from "../../lib/dashboardData";
 
 export default function StockAnalytics() {
   const [category, setCategory] = useState("dental");
@@ -15,21 +17,42 @@ export default function StockAnalytics() {
   const [dateFilter, setDateFilter] = useState({ year: "", quarter: "", month: "" });
 
   useEffect(() => {
+    setLoading(true);
     load();
   }, [category]);
+  useAutoRefresh(["stock_items", "stock_batches", "counter_sales", "counter_sale_items", "dental_orders", "sale_returns", "purchase_orders", "supplier_returns"], () => load());
 
+  // Live-numbers audit (23 Oct 2026): sales and purchases used to come from
+  // stock_transactions, which nothing has written since 10 Sep, so October
+  // showed 0. They now come from where the money actually moves: counter
+  // sales and delivered doctor orders (less approved returns), and active
+  // purchase order lines (less what went back to the supplier). Voided POs and
+  // the consolidated pre-launch PO (no lines) are left out.
   async function load() {
-    setLoading(true);
-    const { data: itemRows } = await supabase.from("stock_items").select("id, name, item_code, purchase_price, sale_price, qty_remaining").eq("category", category);
-    const ids = (itemRows || []).map((i) => i.id);
-    const { data: txnRows } = ids.length
-      ? await supabase.from("stock_transactions").select("*").in("item_id", ids)
-      : { data: [] };
-    const { data: balances } = await supabase.rpc("get_supplier_balances");
-    setItems(itemRows || []);
-    setAllTxns(txnRows || []);
-    setSupplierOwed((balances || []).reduce((s, b) => s + Math.max(0, Number(b.balance)), 0));
-    setLoading(false);
+    try {
+      const { data: itemRows } = await supabase.from("stock_available").select("id, name, item_code, purchase_price, sale_price, qty_remaining, reorder_level").eq("category", category);
+      const idSet = new Set((itemRows || []).map((i) => i.id));
+      const [sales, orders, rets, purch, supRets, balancesRes] = await Promise.all([
+        fetchAll(() => supabase.from("counter_sale_items").select("id, stock_item_id, line_total, counter_sales!inner(entry_date)")),
+        fetchAll(() => supabase.from("dental_order_items").select("id, stock_item_id, line_total, dental_orders!inner(status, delivered_at)").eq("dental_orders.status", "delivered")),
+        fetchAll(() => supabase.from("sale_return_lines").select("id, stock_item_id, qty, unit_price, sale_returns!inner(status, decided_at)").eq("sale_returns.status", "approved")),
+        fetchAll(() => supabase.from("purchase_order_lines").select("id, stock_item_id, line_total, purchase_orders!inner(entry_type, status, entry_date)").eq("purchase_orders.entry_type", "purchase").eq("purchase_orders.status", "active")),
+        fetchAll(() => supabase.from("supplier_returns").select("id, stock_item_id, total_value, entry_date")),
+        supabase.rpc("get_supplier_balances"),
+      ]);
+      const txns = [
+        ...sales.map((r) => ({ item_id: r.stock_item_id, type: "sale", total: Number(r.line_total || 0), transaction_date: r.counter_sales?.entry_date })),
+        ...orders.map((r) => ({ item_id: r.stock_item_id, type: "sale", total: Number(r.line_total || 0), transaction_date: cairoDate(r.dental_orders?.delivered_at) })),
+        ...rets.map((r) => ({ item_id: r.stock_item_id, type: "sale", total: -Number(r.qty || 0) * Number(r.unit_price || 0), transaction_date: cairoDate(r.sale_returns?.decided_at) })),
+        ...purch.map((r) => ({ item_id: r.stock_item_id, type: "purchase", total: Number(r.line_total || 0), transaction_date: r.purchase_orders?.entry_date })),
+        ...supRets.map((r) => ({ item_id: r.stock_item_id, type: "purchase", total: -Number(r.total_value || 0), transaction_date: r.entry_date })),
+      ].filter((t) => idSet.has(t.item_id));
+      setItems(itemRows || []);
+      setAllTxns(txns);
+      setSupplierOwed((balancesRes.data || []).reduce((s, b) => s + Math.max(0, Number(b.balance)), 0));
+    } finally {
+      setLoading(false);
+    }
   }
 
   const years = [...new Set(allTxns.filter((t) => t.transaction_date).map((t) => t.transaction_date.slice(0, 4)))].sort().reverse();
@@ -63,7 +86,7 @@ export default function StockAnalytics() {
       inventoryPotentialProfit: acc.inventoryPotentialProfit + r.inventoryPotentialProfit,
       totalPurchased: acc.totalPurchased + r.totalPurchased,
       totalSold: acc.totalSold + r.totalSold,
-      lowStock: acc.lowStock + (r.qty <= 5 ? 1 : 0),
+      lowStock: acc.lowStock + (r.qty <= Number(r.reorder_level ?? 3) ? 1 : 0),
     }),
     { inventoryCost: 0, inventoryPotentialRevenue: 0, inventoryPotentialProfit: 0, totalPurchased: 0, totalSold: 0, lowStock: 0 }
   );
@@ -109,20 +132,20 @@ export default function StockAnalytics() {
       <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
 
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -10, marginBottom: 16 }}>
-        Inventory value below always reflects current stock on hand (real quantities × real prices), the period filter above applies only to Recorded Purchases/Sales, which are transaction history, not a point-in-time snapshot.
+        Inventory value below always reflects current stock on hand (real quantities × real prices), the period filter above applies only to Purchases and Sales, which are transaction history, not a point-in-time snapshot.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}>
         <KpiCard label="Inventory Cost (on hand)" value={totals.inventoryCost} />
         <KpiCard label="Potential Revenue (on hand)" value={totals.inventoryPotentialRevenue} />
         <KpiCard label="Potential Profit (on hand)" value={totals.inventoryPotentialProfit} highlight />
-        <KpiCard label="Low Stock Items (≤5)" value={totals.lowStock} isCount warn={totals.lowStock > 0} />
+        <KpiCard label="At / Below Reorder Level" value={totals.lowStock} isCount warn={totals.lowStock > 0} />
         <KpiCard label="Owed to Suppliers (all)" value={supplierOwed} warn={supplierOwed > 0} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 24 }}>
-        <KpiCard label="Recorded Purchases (transactions)" value={totals.totalPurchased} small />
-        <KpiCard label="Recorded Sales (transactions)" value={totals.totalSold} small />
+        <KpiCard label="Purchases (net of supplier returns)" value={totals.totalPurchased} small />
+        <KpiCard label="Sales (net of customer returns)" value={totals.totalSold} small />
       </div>
 
       {loading && <p style={{ color: theme.gray }}>Loading...</p>}
@@ -158,11 +181,6 @@ export default function StockAnalytics() {
         )}
       </div>
 
-      {!hasAnyTransactions && (
-        <p style={{ fontSize: 11, color: "#bbb", marginTop: 12 }}>
-          No purchase or sale transactions have been recorded through the system yet, that activity will appear here once staff use Stock → Transaction.
-        </p>
-      )}
     </div>
   );
 }
