@@ -7,7 +7,9 @@ import { normalizePeriod } from "../../../../lib/payroll";
 //
 // Scan types carry the defaults: whether a report counts toward the daily
 // baseline, whether it is a standalone bonus (Dental Photography), and the
-// default report and raw data rates. Each employee can override any rate.
+// default report, external report and raw data rates. Each employee can
+// override any rate. External reports (done for external clients) have their
+// own price, default 0 until the clinic sets one.
 // Everything here is HR-guarded and runs with the service role, like the
 // rest of payroll.
 
@@ -41,7 +43,7 @@ export async function GET(req) {
   if (url.searchParams.get("types")) {
     const { data, error } = await supabaseAdmin
       .from("exam_types")
-      .select("id, name, category, is_active, counts_in_report_baseline, standalone_bonus, default_report_bonus, default_raw_bonus")
+      .select("id, name, category, is_active, counts_in_report_baseline, standalone_bonus, default_report_bonus, default_raw_bonus, default_external_bonus")
       .order("category")
       .order("name");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -56,7 +58,7 @@ export async function GET(req) {
     const [{ data: types, error }, { data: overrides }] = await Promise.all([
       supabaseAdmin
         .from("exam_types")
-        .select("id, name, counts_in_report_baseline, standalone_bonus, default_report_bonus, default_raw_bonus")
+        .select("id, name, counts_in_report_baseline, standalone_bonus, default_report_bonus, default_raw_bonus, default_external_bonus")
         .or("counts_in_report_baseline.eq.true,standalone_bonus.eq.true")
         .order("name"),
       supabaseAdmin.from("employee_bonus_rates").select("*").eq("employee_id", empId),
@@ -71,8 +73,10 @@ export async function GET(req) {
         standalone: t.standalone_bonus,
         default_report_rate: Number(t.default_report_bonus || 0),
         default_raw_rate: Number(t.default_raw_bonus || 0),
+        default_external_rate: Number(t.default_external_bonus || 0),
         report_rate: o.report_rate ?? null,
         raw_rate: o.raw_rate ?? null,
+        external_rate: o.external_rate ?? null,
         updated_by_name: o.updated_by_name || null,
       };
     });
@@ -120,7 +124,8 @@ export async function POST(req) {
     }
     const rep = num(body.defaultReportBonus);
     const raw = num(body.defaultRawBonus);
-    if (Number.isNaN(rep) || Number.isNaN(raw)) {
+    const ext = num(body.defaultExternalBonus);
+    if (Number.isNaN(rep) || Number.isNaN(raw) || Number.isNaN(ext)) {
       return NextResponse.json({ error: "Rates must be zero or more." }, { status: 400 });
     }
     const patch = {
@@ -128,6 +133,7 @@ export async function POST(req) {
       standalone_bonus: !!body.standalone,
       default_report_bonus: rep ?? 0,
       default_raw_bonus: raw ?? 0,
+      default_external_bonus: ext ?? 0,
     };
     const { error } = await supabaseAdmin.from("exam_types").update(patch).eq("id", body.examTypeId);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -135,17 +141,19 @@ export async function POST(req) {
     return NextResponse.json({ ok: true });
   }
 
-  // A blank rate means "use the default", so clearing both removes the override.
+  // A blank rate means "use the default", so clearing all three (report, raw
+  // and external) removes the override.
   if (body.action === "save_employee_rate") {
     const rep = num(body.reportRate);
     const raw = num(body.rawRate);
-    if (Number.isNaN(rep) || Number.isNaN(raw)) {
+    const ext = num(body.externalRate);
+    if (Number.isNaN(rep) || Number.isNaN(raw) || Number.isNaN(ext)) {
       return NextResponse.json({ error: "Rates must be zero or more, or left blank for the default." }, { status: 400 });
     }
     if (!body.employeeId || !body.examTypeId) {
       return NextResponse.json({ error: "Employee and scan type are required." }, { status: 400 });
     }
-    if (rep === null && raw === null) {
+    if (rep === null && raw === null && ext === null) {
       const { error } = await supabaseAdmin
         .from("employee_bonus_rates")
         .delete()
@@ -159,6 +167,7 @@ export async function POST(req) {
           exam_type_id: body.examTypeId,
           report_rate: rep,
           raw_rate: raw,
+          external_rate: ext,
           updated_by_name: staff.name || "Unknown",
           updated_at: new Date().toISOString(),
         },
@@ -170,6 +179,7 @@ export async function POST(req) {
       exam_type_id: body.examTypeId,
       report_rate: rep,
       raw_rate: raw,
+      external_rate: ext,
     });
     return NextResponse.json({ ok: true });
   }

@@ -30,7 +30,7 @@ export default function BonusRatesPanel({ employeeId }) {
     const j = await res.json();
     if (!res.ok) { setError(j.error || "Could not load rates."); return; }
     setRows(j.rates || []);
-    setDraft(Object.fromEntries((j.rates || []).map((r) => [r.exam_type_id, { report: r.report_rate ?? "", raw: r.raw_rate ?? "" }])));
+    setDraft(Object.fromEntries((j.rates || []).map((r) => [r.exam_type_id, { report: r.report_rate ?? "", external: r.external_rate ?? "", raw: r.raw_rate ?? "" }])));
   }
 
   async function save(r) {
@@ -39,7 +39,7 @@ export default function BonusRatesPanel({ employeeId }) {
     const res = await fetch("/api/hr/bonus-rates", {
       method: "POST",
       headers: await authHeaders(),
-      body: JSON.stringify({ action: "save_employee_rate", employeeId, examTypeId: r.exam_type_id, reportRate: d.report, rawRate: d.raw }),
+      body: JSON.stringify({ action: "save_employee_rate", employeeId, examTypeId: r.exam_type_id, reportRate: d.report, externalRate: d.external, rawRate: d.raw }),
     });
     const j = await res.json();
     setBusy(null);
@@ -53,22 +53,26 @@ export default function BonusRatesPanel({ employeeId }) {
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 14 }}>
         What this person earns per scan type. Leave a cell blank to use the clinic default. Report bonus is paid only
         on eligible reports beyond the daily baseline (or on days with no shift); raw data bonus is paid on every upload.
-        Standalone types are always paid.
+        Standalone types are always paid. Reports done for external clients are priced separately in their own column
+        (default 0 unless set).
       </p>
       {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
             <th style={th}>Scan type</th>
-            <th style={th}>Report bonus (EGP)</th>
-            <th style={th}>Raw data bonus (EGP)</th>
+            <th style={th}>Reports (EGP)</th>
+            <th style={th}>External reports (EGP)</th>
+            <th style={th}>Raw data uploaded (EGP)</th>
             <th style={th}></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => {
-            const d = draft[r.exam_type_id] || { report: "", raw: "" };
-            const changed = String(d.report) !== String(r.report_rate ?? "") || String(d.raw) !== String(r.raw_rate ?? "");
+            const d = draft[r.exam_type_id] || { report: "", external: "", raw: "" };
+            const changed = String(d.report) !== String(r.report_rate ?? "")
+              || String(d.external ?? "") !== String(r.external_rate ?? "")
+              || String(d.raw) !== String(r.raw_rate ?? "");
             return (
               <tr key={r.exam_type_id}>
                 <td style={td}>
@@ -78,6 +82,10 @@ export default function BonusRatesPanel({ employeeId }) {
                 <td style={td}>
                   <input style={inp} type="number" min="0" placeholder={formatMoney(r.default_report_rate)} value={d.report}
                     onChange={(e) => setDraft({ ...draft, [r.exam_type_id]: { ...d, report: e.target.value } })} />
+                </td>
+                <td style={td}>
+                  <input style={inp} type="number" min="0" placeholder={formatMoney(r.default_external_rate)} value={d.external ?? ""}
+                    onChange={(e) => setDraft({ ...draft, [r.exam_type_id]: { ...d, external: e.target.value } })} />
                 </td>
                 <td style={td}>
                   <input style={inp} type="number" min="0" placeholder={formatMoney(r.default_raw_rate)} value={d.raw}

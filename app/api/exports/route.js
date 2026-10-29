@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { requireStaff } from "../../../lib/requireStaff";
 import { REPORTS, reportList } from "../../../lib/reports";
+import { payrollWorkbook } from "../../../lib/payrollWorkbook";
 
 // Admin only, checked server-side. Several of these carry salary, full
 // financial history and patient contact details, so the check cannot live in
@@ -31,6 +32,9 @@ export async function GET(req) {
   const from = url.searchParams.get("from") || `${today.slice(0, 4)}-01-01`;
   const to = url.searchParams.get("to") || today;
   const period = url.searchParams.get("period") || "";
+  if (report.monthly && !/^\d{4}-\d{2}$/.test(period)) {
+    return NextResponse.json({ error: "Pick a month first." }, { status: 400 });
+  }
   const format = url.searchParams.get("format") === "csv" ? "csv" : "xlsx";
   const preview = url.searchParams.get("preview") === "1";
 
@@ -51,7 +55,19 @@ export async function GET(req) {
     return NextResponse.json({ error: "Nothing to export for that period." }, { status: 404 });
   }
 
-  const stamp = report.dated ? `${from}_to_${to}` : today;
+  // The payroll month is its own workbook: a payroll sheet with totals, the
+  // items waiting for approval, and the rules it was calculated by.
+  if (report.monthly && format === "xlsx") {
+    const buf = await payrollWorkbook(period, staff.name || staff.email);
+    return new NextResponse(buf, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="payroll_${period}.xlsx"`,
+      },
+    });
+  }
+
+  const stamp = report.monthly ? period : report.dated ? `${from}_to_${to}` : today;
   const filename = `${key}_${stamp}`;
 
   if (format === "csv") {

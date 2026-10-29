@@ -243,30 +243,27 @@ export default function EmployeePortalPage() {
           {data.employee?.hr_id}
         </p>
 
-        {/* Eight tabs stretched to equal width made "Fix Attendance" wrap and
-            pushed the whole row taller than its neighbours. They size to their
-            own words now and scroll sideways, which is how a phone handles a
-            row that does not fit - rather than shrinking every label until none
-            of them read well. */}
+        {/* Tabs size to their own words and wrap onto a second line on a
+            phone. A sideways-scrolling row hid the last tabs (Vacations,
+            Excuses) off-screen, so staff could not find where to ask for
+            leave. Labels carry Arabic too so everyone recognises them. */}
         <div
           style={{
             display: "flex",
+            flexWrap: "wrap",
             gap: 6,
             marginBottom: 20,
-            overflowX: "auto",
-            paddingBottom: 4,
-            scrollbarWidth: "none",
           }}
         >
           {[
-            { key: "overview", label: "Overview" },
-            { key: "schedule", label: "Schedule" },
-            { key: "swaps", label: "Swaps" },
-            { key: "attendance", label: "Fix Attendance" },
-            { key: "payslips", label: "Payslips" },
-            { key: "vacations", label: "Vacations" },
-            { key: "excuses", label: "Excuses" },
-            { key: "transfers", label: "Cash Transfers" },
+            { key: "overview", label: "Overview · نظرة عامة" },
+            { key: "schedule", label: "Schedule · الجدول" },
+            { key: "swaps", label: "Swaps · تبديل" },
+            { key: "attendance", label: "Fix Attendance · تصحيح الحضور" },
+            { key: "payslips", label: "Payslips · المرتبات" },
+            { key: "vacations", label: "Vacations · إجازات" },
+            { key: "excuses", label: "Excuses · أذونات" },
+            { key: "transfers", label: "Cash Transfers · تحويلات نقدية" },
           ].map((t) => (
             <button
               key={t.key}
@@ -965,6 +962,7 @@ function VacationsTab({ leaveRequests, onSubmitted }) {
 function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
   const [showForm, setShowForm] = useState(false);
   const [excuseRuleId, setExcuseRuleId] = useState("");
+  const [excuseDate, setExcuseDate] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -974,20 +972,26 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
       setError("Pick an excuse type.");
       return;
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(excuseDate)) {
+      setError("Pick the date of the excuse. / اختر تاريخ الإذن.");
+      return;
+    }
     setSaving(true);
     setError("");
     const res = await fetch("/api/portal/employee/excuse-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ excuseRuleId, note }),
+      body: JSON.stringify({ excuseRuleId, excuseDate, note }),
     });
     setSaving(false);
     if (!res.ok) {
-      setError("Could not submit excuse.");
+      const j = await res.json().catch(() => ({}));
+      setError(j.error || "Could not submit excuse.");
       return;
     }
     setShowForm(false);
     setExcuseRuleId("");
+    setExcuseDate("");
     setNote("");
     onSubmitted();
   }
@@ -1011,6 +1015,8 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
+          <label style={labelStyle}>Date of the excuse / تاريخ الإذن</label>
+          <input type="date" required value={excuseDate} onChange={(e) => setExcuseDate(e.target.value)} style={inp} />
           <label style={labelStyle}>Note (optional)</label>
           <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} placeholder="Add any detail for admin to review" />
           {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
@@ -1030,8 +1036,13 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
             <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{s.excuse_rules?.name || "Excuse"}</span>
             <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[s.status], color: statusColor[s.status], fontWeight: 700, textTransform: "capitalize" }}>{s.status}</span>
           </div>
+          {s.excuse_date && (
+            <div style={{ fontSize: 12, color: theme.navy, marginTop: 4 }}>
+              Date of the excuse / تاريخ الإذن: <strong>{String(s.excuse_date).slice(0, 10)}</strong>
+            </div>
+          )}
           {s.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>{s.note}</div>}
-          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{new Date(s.created_at).toLocaleDateString()}</div>
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>Submitted {new Date(s.created_at).toLocaleDateString()}</div>
         </div>
       ))}
     </div>

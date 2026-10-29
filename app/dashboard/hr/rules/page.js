@@ -79,6 +79,7 @@ export default function RulesPage() {
       body: JSON.stringify({
         action: "save_type", examTypeId: id, countsInBaseline: d.counts_in_report_baseline,
         standalone: d.standalone_bonus, defaultReportBonus: d.default_report_bonus, defaultRawBonus: d.default_raw_bonus,
+        defaultExternalBonus: d.default_external_bonus,
       }),
     });
     const j = await res.json();
@@ -139,15 +140,16 @@ export default function RulesPage() {
         <p style={{ fontSize: 12, color: theme.gray, marginTop: -6 }}>
           Eligible = counts toward the daily report baseline and earns the report bonus when extra.
           Standalone = always earns both bonuses, outside the baseline (e.g. Dental Photography).
+          External report = the bonus for a report done for an external client (0 unless set).
         </p>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr><th style={th}>Scan type</th><th style={th}>Eligible</th><th style={th}>Standalone</th><th style={th}>Report (EGP)</th><th style={th}>Raw data (EGP)</th><th style={th}></th></tr>
+            <tr><th style={th}>Scan type</th><th style={th}>Eligible</th><th style={th}>Standalone</th><th style={th}>Report (EGP)</th><th style={th}>External report (EGP)</th><th style={th}>Raw data (EGP)</th><th style={th}></th></tr>
           </thead>
           <tbody>
             {types.filter((t) => t.is_active).map((t) => {
               const d = typeDraft[t.id] || t;
-              const changed = ["counts_in_report_baseline", "standalone_bonus", "default_report_bonus", "default_raw_bonus"].some((k) => String(d[k]) !== String(t[k]));
+              const changed = ["counts_in_report_baseline", "standalone_bonus", "default_report_bonus", "default_external_bonus", "default_raw_bonus"].some((k) => String(d[k]) !== String(t[k]));
               const set = (k, v) => setTypeDraft({ ...typeDraft, [t.id]: { ...d, [k]: v } });
               return (
                 <tr key={t.id}>
@@ -155,6 +157,7 @@ export default function RulesPage() {
                   <td style={td}><input type="checkbox" checked={!!d.counts_in_report_baseline} onChange={(e) => set("counts_in_report_baseline", e.target.checked)} /></td>
                   <td style={td}><input type="checkbox" checked={!!d.standalone_bonus} onChange={(e) => set("standalone_bonus", e.target.checked)} /></td>
                   <td style={td}><input style={inp} type="number" min="0" value={d.default_report_bonus} onChange={(e) => set("default_report_bonus", e.target.value)} /></td>
+                  <td style={td}><input style={inp} type="number" min="0" value={d.default_external_bonus ?? ""} placeholder="0" onChange={(e) => set("default_external_bonus", e.target.value)} /></td>
                   <td style={td}><input style={inp} type="number" min="0" value={d.default_raw_bonus} onChange={(e) => set("default_raw_bonus", e.target.value)} /></td>
                   <td style={td}>{changed && <button onClick={() => saveType(t.id)} style={{ background: theme.navy, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>Save</button>}</td>
                 </tr>

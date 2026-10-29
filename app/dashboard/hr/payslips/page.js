@@ -81,10 +81,41 @@ export default function PayslipsPage() {
     loadSlip();
   }
 
+  async function decideAdjustment(a, status) {
+    let amount = null;
+    if (status === "approved") {
+      const v = prompt(`Approve "${a.label}". Amount in EGP (leave as is to approve the proposed figure):`, String(a.amount));
+      if (v === null) return;
+      amount = v === "" ? null : Number(v);
+    } else if (!confirm(`Reject "${a.label}" (${formatMoney(a.amount)} EGP)? It will not reach the payslip.`)) {
+      return;
+    }
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "decide_adjustment", id: a.id, status, amount }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(j.error || "Could not save that decision."); return; }
+    loadSlip();
+  }
+
   const STATUS = {
+    present: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Worked" },
     worked: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Worked" },
+    extra_day: { bg: "#e3f2fd", fg: "#1565c0", label: "Off-roster day" },
     absent: { bg: "#fdecea", fg: "#ba1a1a", label: "Absent" },
+    excused: { bg: "#f3e5f5", fg: "#6a1b9a", label: "Excused" },
+    missing_signout: { bg: "#fff8e1", fg: "#a97c00", label: "No sign-out" },
     needs_review: { bg: "#fff8e1", fg: "#a97c00", label: "No sign-out" },
+    future: { bg: "#f2f2f2", fg: "#777", label: "Upcoming" },
+    onboarding: { bg: "#f2f2f2", fg: "#777", label: "First day" },
+    before_account: { bg: "#f2f2f2", fg: "#777", label: "Before account" },
+    no_clock_data: { bg: "#f2f2f2", fg: "#777", label: "No clock" },
+  };
+  const ADJ_STATUS = {
+    pending: { bg: "#fff8e1", fg: "#a97c00", label: "Waiting for approval" },
+    approved: { bg: "#e6f4ea", fg: "#1e7a3c", label: "Approved" },
   };
 
   async function decideOvertime(status) {
@@ -98,7 +129,7 @@ export default function PayslipsPage() {
         period,
         status,
         hours: otHours === "" ? slip?.overtimeHours : Number(otHours),
-        amount: Number(otAmount),
+        amount: otAmount === "" ? Number(slip?.overtimeIndicativeValue || 0) : Number(otAmount),
         note: otNote || null,
       }),
     });
@@ -313,27 +344,46 @@ export default function PayslipsPage() {
             </div>
           )}
 
-          {slip.attendanceBalance && (
+          {slip.month && (
             <div style={{ ...card, marginBottom: 18 }}>
               <h3 style={{ color: theme.navy, marginTop: 0 }}>
                 Time balance this month
                 <span style={{ fontSize: 11, fontWeight: 400, color: theme.gray, marginLeft: 8 }}>
-                  {slip.attendanceBalance.mode === "monthly" ? "Lateness is balanced over the whole month" : "Lateness is balanced day by day"}
+                  Every minute counts, no grace. Early arrival and staying late count up to 60 min each per day.
                 </span>
               </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, fontSize: 13, color: theme.navy }}>
-                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>LATE (OVER GRACE)</div>{slip.attendanceBalance.late_counted_minutes} min</div>
-                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>EARLY + STAYED LATE</div>{Number(slip.attendanceBalance.credit_offset_minutes) + Number(slip.attendanceBalance.credit_ot_day_minutes)} min</div>
-                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>NOT COVERED</div><span style={{ color: Number(slip.attendanceBalance.uncovered_late_minutes) > 0 ? "#ba1a1a" : theme.navy }}>{slip.attendanceBalance.uncovered_late_minutes} min</span></div>
-                <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>OVERTIME</div>{slip.attendanceBalance.overtime_minutes} min</div>
-              </div>
-              <p style={{ fontSize: 12, color: theme.gray, margin: "10px 0 0" }}>
-                Grace-period lateness: {slip.attendanceBalance.grace_minutes} min.
-                {Number(slip.attendanceBalance.late_deduction) > 0 && ` Uncovered lateness costs ${formatMoney(slip.attendanceBalance.late_deduction)} EGP.`}
-                {Number(slip.attendanceBalance.early_leave_deduction) > 0 && ` Early leave without excuse: ${slip.attendanceBalance.early_leave_minutes} min, ${formatMoney(slip.attendanceBalance.early_leave_deduction)} EGP.`}
-                {Number(slip.attendanceBalance.absent_days) > 0 && ` Absent: ${slip.attendanceBalance.absent_dates}.`}
-                {" "}Deductions reach the payslip only after approval in Deductions.
-              </p>
+              {slip.attendanceExempt ? (
+                <p style={{ fontSize: 13, color: theme.navy, margin: 0 }}>
+                  Attendance-exempt (no clock). Paid the expected base with no attendance items.
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, fontSize: 13, color: theme.navy }}>
+                    <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>LATE</div><span style={{ color: "#ba1a1a" }}>−{slip.month.late_minutes} min</span></div>
+                    <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>LEFT EARLY</div><span style={{ color: "#ba1a1a" }}>−{slip.month.early_leave_minutes} min</span></div>
+                    <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>EARLY + STAYED LATE</div><span style={{ color: "#1e7a3c" }}>+{slip.month.credit_minutes} min</span></div>
+                    <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>OFF-ROSTER DAYS</div><span style={{ color: "#1e7a3c" }}>+{slip.month.extra_minutes} min</span>{Number(slip.month.extra_days) > 0 ? ` (${slip.month.extra_days} d)` : ""}</div>
+                    <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>NET BALANCE</div><strong style={{ color: Number(slip.month.net_minutes) < 0 ? "#ba1a1a" : "#1e7a3c" }}>{Number(slip.month.net_minutes) > 0 ? "+" : ""}{slip.month.net_minutes} min</strong></div>
+                    <div><div style={{ fontSize: 10, color: theme.gray, fontWeight: 700 }}>{Number(slip.month.net_minutes) < 0 ? "DEDUCTION ×2" : "OVERTIME ×2"}</div><strong style={{ color: Number(slip.month.time_value) < 0 ? "#ba1a1a" : "#1e7a3c" }}>{formatMoney(Math.abs(Number(slip.month.time_value)))} EGP</strong></div>
+                  </div>
+                  <p style={{ fontSize: 12, color: theme.gray, margin: "10px 0 0" }}>
+                    Expected pay: <strong style={{ color: theme.navy }}>{formatMoney(slip.month.base)} EGP</strong>
+                    {Number(slip.month.manual_adjustments) !== 0 && <> (manual items {formatMoney(slip.month.manual_adjustments)})</>}.
+                    {Number(slip.month.absent_days) > 0 && ` Absent: ${slip.month.absent_dates}, ${formatMoney(slip.month.absence_deduction)} EGP (2 days each, 1 with an approved permission).`}
+                    {slip.month.perfect_attendance && ` Perfect attendance: ${formatMoney(slip.month.perfect_attendance_bonus)} EGP proposed (${Number(slip.month.perfect_attendance_pct)}%).`}
+                    {Number(slip.month.needs_review_days) > 0 && ` ${slip.month.needs_review_days} day(s) with no sign-out: ${slip.month.needs_review_dates}.`}
+                    {!slip.month.month_complete && " The month is still running, so these figures move until the last day."}
+                    {" "}Nothing here reaches the payslip until it is approved.
+                  </p>
+                  {slip.pendingDeductions.length > 0 && (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#fff8e1", fontSize: 12, color: "#6b5200" }}>
+                      <strong>Waiting for approval in Deductions:</strong>{" "}
+                      {slip.pendingDeductions.map((d) => `${d.kind === "late" ? "time balance" : d.kind} ${formatMoney(d.amount)} EGP`).join(" · ")}.{" "}
+                      <a href="/dashboard/hr/deductions" style={{ color: theme.navy, fontWeight: 700 }}>Open Deductions</a>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -373,22 +423,22 @@ export default function PayslipsPage() {
                 <>
                   <p style={{ fontSize: 13, color: theme.navy, margin: "0 0 10px" }}>
                     <strong>{Number(slip.overtimeHours).toFixed(2)} hours</strong> recorded beyond the schedule.
-                    At the overtime rate that would be {formatMoney(slip.overtimeIndicativeValue)} EGP, shown only as
-                    a reference — enter whatever it is actually worth.
+                    Net balance × minute rate × 2 = <strong>{formatMoney(slip.overtimeIndicativeValue)} EGP</strong>.
+                    Approve as is, or type a different amount.
                   </p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <input type="number" step="0.01" placeholder={`Hours (max ${Number(slip.overtimeHours).toFixed(2)})`}
                       value={otHours} onChange={(e) => setOtHours(e.target.value)}
                       style={{ ...inp, width: 170 }} />
-                    <input type="number" step="0.01" placeholder="Amount in EGP"
+                    <input type="number" step="0.01" placeholder={`${formatMoney(slip.overtimeIndicativeValue)} EGP`}
                       value={otAmount} onChange={(e) => setOtAmount(e.target.value)}
                       style={{ ...inp, width: 150 }} />
                     <input type="text" placeholder="Reason (optional)"
                       value={otNote} onChange={(e) => setOtNote(e.target.value)}
                       style={{ ...inp, flex: 1, minWidth: 180 }} />
-                    <button onClick={() => decideOvertime("approved")} disabled={otBusy || !otAmount}
+                    <button onClick={() => decideOvertime("approved")} disabled={otBusy}
                       style={{ background: theme.navy, color: "#fff", border: "none", borderRadius: 8,
-                               padding: "9px 16px", fontWeight: 700, cursor: "pointer", opacity: otBusy || !otAmount ? 0.5 : 1 }}>
+                               padding: "9px 16px", fontWeight: 700, cursor: "pointer", opacity: otBusy ? 0.5 : 1 }}>
                       Approve
                     </button>
                     <button onClick={() => decideOvertime("waived")} disabled={otBusy}
@@ -415,7 +465,15 @@ export default function PayslipsPage() {
               {[...slip.bonuses, ...slip.deductions].map((a) => (
                 <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f2f2f2" }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy }}>{a.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy }}>
+                      {a.label}
+                      {ADJ_STATUS[a.status] && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, marginLeft: 8,
+                                       background: ADJ_STATUS[a.status].bg, color: ADJ_STATUS[a.status].fg }}>
+                          {ADJ_STATUS[a.status].label}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 11, color: theme.gray }}>
                       {a.occurred_on || "—"}{a.note ? ` · ${a.note}` : ""}{a.created_by_name ? ` · by ${a.created_by_name}` : ""}
                     </div>
@@ -424,6 +482,18 @@ export default function PayslipsPage() {
                     <span style={{ fontWeight: 800, color: a.kind === "bonus" ? "#1e7a3c" : "#ba1a1a" }}>
                       {a.kind === "bonus" ? "+" : "−"}{formatMoney(a.amount)}
                     </span>
+                    {a.status === "pending" && (
+                      <>
+                        <button onClick={() => decideAdjustment(a, "approved")}
+                          style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Approve
+                        </button>
+                        <button onClick={() => decideAdjustment(a, "rejected")}
+                          style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Reject
+                        </button>
+                      </>
+                    )}
                     <button onClick={() => removeAdjustment(a.id)}
                       style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: "#ba1a1a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                       Remove
@@ -464,15 +534,22 @@ export default function PayslipsPage() {
 
             <div style={card}>
               <h3 style={{ color: theme.navy, marginTop: 0 }}>Attendance</h3>
-              {slip.days.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No scheduled days this month.</p>}
+              {slip.days.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No attendance recorded this month.</p>}
               <div style={{ maxHeight: 380, overflowY: "auto" }}>
                 {slip.days.map((d) => {
-                  const st = STATUS[d.status];
+                  const st = STATUS[d.status] || { bg: "#f2f2f2", fg: "#777", label: d.status };
+                  const bits = [
+                    d.signedIn && `${d.signedIn}–${d.signedOut || "?"}`,
+                    d.late > 0 && `late ${d.late}m`,
+                    d.leftEarly > 0 && `left early ${d.leftEarly}m`,
+                    d.early > 0 && `early ${Math.min(d.early, 60)}m`,
+                    d.after > 0 && `stayed ${Math.min(d.after, 60)}m`,
+                  ].filter(Boolean).join(" · ");
                   return (
                     <div key={d.date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
                       <span style={{ fontSize: 12, color: theme.navy }}>
                         {new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                        <span style={{ color: theme.gray }}> · {d.hours.toFixed(1)}h</span>
+                        <span style={{ color: theme.gray }}> · {d.hours.toFixed(1)}h{bits ? ` · ${bits}` : ""}</span>
                       </span>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: st.bg, color: st.fg }}>
                         {st.label}

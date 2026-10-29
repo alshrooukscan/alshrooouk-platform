@@ -17,6 +17,7 @@ export default function ExportsPage() {
   const [reports, setReports] = useState([]);
   const [from, setFrom] = useState(firstOfMonth());
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -36,6 +37,7 @@ export default function ExportsPage() {
   function params(r) {
     const p = new URLSearchParams({ report: r.key });
     if (r.dated) { p.set("from", from); p.set("to", to); }
+    if (r.monthly) p.set("period", month);
     return p;
   }
 
@@ -165,6 +167,12 @@ export default function ExportsPage() {
                   {r.dated && <span style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#fff8e1", padding: "2px 7px", borderRadius: 999, marginLeft: 8 }}>PERIOD</span>}
                 </div>
                 <p style={{ fontSize: 12, color: theme.gray, margin: "6px 0 12px", minHeight: 32 }}>{r.description}</p>
+                {r.monthly && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: theme.navy }}>Month</span>
+                    <input type="month" style={inp} value={month} onChange={(e) => setMonth(e.target.value)} />
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => doPreview(r)} disabled={busy.startsWith(r.key)}
                     style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>

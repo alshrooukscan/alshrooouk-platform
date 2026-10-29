@@ -173,6 +173,12 @@ export async function POST(req) {
       occurred_on: occurredOn || null,
       created_by_id: staff.id,
       created_by_name: staff.name,
+      source: "manual",
+      // An admin entering an item is the decision. Anyone else with HR access
+      // proposes it, and it waits for an admin on the Payslips page.
+      ...(staff.role === "admin"
+        ? { status: "approved", decided_by_id: staff.id, decided_by_name: staff.name, decided_at: new Date().toISOString() }
+        : { status: "pending" }),
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true, amount: Math.round(amount * 100) / 100 });
@@ -272,6 +278,28 @@ export async function POST(req) {
     const { error } = await supabaseAdmin.from("payroll_adjustments").delete().eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
+  }
+
+  // Approve or reject a proposed plus or minus (perfect attendance, an item
+  // HR entered). Nothing proposed reaches a payslip until an admin decides it.
+  if (action === "decide_adjustment") {
+    if (staff.role !== "admin") {
+      return NextResponse.json({ error: "Only an admin can approve or reject a payroll item." }, { status: 403 });
+    }
+    const { id, status, amount, note } = body;
+    if (!id || !["approved", "rejected"].includes(status)) {
+      return NextResponse.json({ error: "Pick approve or reject." }, { status: 400 });
+    }
+    const amt = amount === undefined || amount === null || amount === "" ? null : Number(amount);
+    if (amt !== null && (!isFinite(amt) || amt < 0)) {
+      return NextResponse.json({ error: "The amount must be zero or more." }, { status: 400 });
+    }
+    const { data, error } = await supabaseAdmin.rpc("adjustment_decide", {
+      p_id: id, p_status: status, p_by_id: staff.id, p_by_name: staff.name || staff.email,
+      p_amount: amt, p_note: note || null,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true, adjustment: data });
   }
 
   if (action === "decide_exception") {
