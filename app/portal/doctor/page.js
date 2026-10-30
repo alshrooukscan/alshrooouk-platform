@@ -34,6 +34,7 @@ export default function DoctorPortalPage() {
   const [query, setQuery] = useState("");
   const [orders, setOrders] = useState([]);
   const [itemRequests, setItemRequests] = useState([]);
+  const [pickups, setPickups] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -55,6 +56,7 @@ export default function DoctorPortalPage() {
           .then((o) => {
             setOrders(o.orders || []);
             setItemRequests(o.itemRequests || []);
+            setPickups(o.pickups || []);
           })
           .catch(() => {});
       })
@@ -263,7 +265,47 @@ export default function DoctorPortalPage() {
           </div>
         )}
 
-        {view === "orders" && orders.length === 0 && itemRequests.length === 0 && (
+        {/* Items picked up at reception, with what each cost. These are most of
+            what clinics take, and they were missing from this tab entirely. */}
+        {view === "orders" && pickups.length > 0 && (
+          <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
+            <h3 style={{ color: theme.navy, margin: "0 0 2px" }}>Picked up at reception</h3>
+            <div style={{ fontSize: 13, color: "#8a6d00", fontWeight: 700, marginBottom: 6 }} dir="rtl">مسحوبات من الاستقبال</div>
+            <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 8px" }}>
+              {pickups.length} pickup{pickups.length === 1 ? "" : "s"}, newest first. The unpaid ones make up the balance above.
+            </p>
+            {pickups.map((x) => (
+              <div key={x.id} style={{ borderTop: "1px solid #f0f0f0", padding: "10px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{Number(x.amount).toLocaleString()} EGP</div>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
+                    background: x.status === "open" || x.status === "partly" ? "#fff8e1" : "#e7f6ec",
+                    color: x.status === "open" || x.status === "partly" ? "#8a6d00" : "#1e7a3c" }}>
+                    {x.status === "open" ? "Not paid yet · لسه مادفعش"
+                      : x.status === "partly" ? "Partly paid · مدفوع جزء"
+                      : x.status === "settled" ? "Paid later · اتدفع"
+                      : "Paid at pickup · مدفوع"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: theme.gray, margin: "3px 0 6px" }}>
+                  {new Date(x.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  {x.receipt_no ? ` \u00b7 ${x.receipt_no}` : ""}{x.discount_percent > 0 ? ` \u00b7 ${x.discount_percent}% discount` : ""}
+                </div>
+                {x.items.map((l, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12, padding: "2px 0", color: theme.navy }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div dir="auto" style={{ fontWeight: 600 }}>{l.item_name}</div>
+                      <div dir="ltr" style={{ color: theme.gray, fontSize: 11 }}>{l.quantity} × {Number(l.unit_price).toLocaleString()} EGP</div>
+                    </div>
+                    <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{Number(l.line_total).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {view === "orders" && orders.length === 0 && itemRequests.length === 0 && pickups.length === 0 && (
           <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", color: theme.gray, fontSize: 14 }}>
             No supply orders yet. Use &quot;Request Dental Stock Items&quot; above to place one.
           </div>
