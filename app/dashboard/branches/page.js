@@ -6,6 +6,7 @@ import { usePermissions } from "../../../lib/usePermissions";
 import DocumentsUploader from "../../../components/DocumentsUploader";
 import WorkforceCalendar from "../../../components/WorkforceCalendar";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 const CATEGORY_LABELS = {
   "2d": "2D",
@@ -16,6 +17,7 @@ const CATEGORY_LABELS = {
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
 
 export default function BranchesPage() {
+  const { t } = useT();
   const { profile, isAdmin } = usePermissions();
   useAutoRefresh(["branches", "exam_types"], () => {
     load();
@@ -169,14 +171,13 @@ export default function BranchesPage() {
   return (
     <div>
       <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>
-        Scan Center Management
+        {t("Scan Center Management")}
       </p>
       <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>
-        Branch Management
+        {t("Branch Management")}
       </h1>
       <p style={{ color: theme.gray, margin: "0 0 24px" }}>
-        Add branches, mark them active or inactive, and set each one's Drive
-        folder and location.
+        {t("Add branches, mark them active or inactive, and set each one's Drive folder and location.")}
       </p>
 
       {isAdmin && (
@@ -190,11 +191,10 @@ export default function BranchesPage() {
           }}
         >
           <h3 style={{ color: theme.navy, marginTop: 0 }}>
-            Workforce Schedule
+            {t("Workforce Schedule")}
           </h3>
           <p style={{ color: theme.gray, fontSize: 13, margin: "0 0 16px" }}>
-            Weekly shift times per branch. Select one or more employees and one
-            or more days, then apply a time or mark a day off.
+            {t("Weekly shift times per branch. Select one or more employees and one or more days, then apply a time or mark a day off.")}
           </p>
           <div style={{ marginBottom: 16 }}>
             <select
@@ -208,7 +208,7 @@ export default function BranchesPage() {
                 minWidth: 220,
               }}
             >
-              <option value="">Select a branch...</option>
+              <option value="">{t("Select a branch...")}</option>
               {branches
                 .filter((b) => b.is_active)
                 .map((b) => (
@@ -231,7 +231,7 @@ export default function BranchesPage() {
         }}
       >
         {!loading && branches.length === 0 && (
-          <p style={{ color: theme.gray, fontSize: 13 }}>No branches yet.</p>
+          <p style={{ color: theme.gray, fontSize: 13 }}>{t("No branches yet.")}</p>
         )}
         {branches.map((b) => (
           <div
@@ -266,7 +266,7 @@ export default function BranchesPage() {
                     fontWeight: 600,
                   }}
                 >
-                  {expandedBranch === b.id ? "Close" : "Show Details"}
+                  {expandedBranch === b.id ? t("Close") : t("Show Details")}
                 </button>
                 <label
                   style={{
@@ -276,7 +276,7 @@ export default function BranchesPage() {
                     fontSize: 13,
                   }}
                 >
-                  {b.is_active ? "Active" : "Inactive"}
+                  {b.is_active ? t("Active") : t("Inactive")}
                   <input
                     type="checkbox"
                     checked={b.is_active}
@@ -298,8 +298,7 @@ export default function BranchesPage() {
               >
                 <div>
                   <span style={{ fontSize: 11, color: theme.gray }}>
-                    Drive folder ID for this branch (root for anything filed
-                    under it)
+                    {t("Drive folder ID for this branch (root for anything filed under it)")}
                   </span>
                   <input
                     style={inp}
@@ -310,7 +309,7 @@ export default function BranchesPage() {
                         drive_folder_id: e.target.value,
                       })
                     }
-                    placeholder="Drive folder ID"
+                    placeholder={t("Drive folder ID")}
                   />
                   <p
                     style={{
@@ -319,14 +318,14 @@ export default function BranchesPage() {
                       margin: "4px 0 0",
                     }}
                   >
-                    Share this folder with
-                    elsherouk-drive-uploader@elsherouk-drive-integration.iam.gserviceaccount.com
+                    {t("Share this folder with")}{" "}
+                    <Ltr>elsherouk-drive-uploader@elsherouk-drive-integration.iam.gserviceaccount.com</Ltr>
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <span style={{ fontSize: 11, color: theme.gray }}>
-                      Latitude
+                      {t("Latitude")}
                     </span>
                     <input
                       style={inp}
@@ -342,7 +341,7 @@ export default function BranchesPage() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <span style={{ fontSize: 11, color: theme.gray }}>
-                      Longitude
+                      {t("Longitude")}
                     </span>
                     <input
                       style={inp}
@@ -358,7 +357,7 @@ export default function BranchesPage() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <span style={{ fontSize: 11, color: theme.gray }}>
-                      Radius (m)
+                      {t("Radius (m)")}
                     </span>
                     <input
                       style={inp}
@@ -377,7 +376,7 @@ export default function BranchesPage() {
                   onClick={() => saveBranchDetails(b)}
                   style={{ ...smallPrimary, alignSelf: "flex-start" }}
                 >
-                  Save
+                  {t("Save")}
                 </button>
                 <div style={{ marginTop: 6 }}>
                   <DocumentsUploader
@@ -406,7 +405,7 @@ export default function BranchesPage() {
                       fontSize: 14,
                     }}
                   >
-                    Scan Types &amp; Pricing
+                    {t("Scan Types & Pricing")}
                   </h4>
                   <p
                     style={{
@@ -416,10 +415,8 @@ export default function BranchesPage() {
                       marginBottom: 16,
                     }}
                   >
-                    Every scan type available when adding a new patient scan,
-                    and whether it shows in the pending-reports tracking once
-                    that's live.
-                    {!isAdmin && " Price changes require an admin."}
+                    {t("Every scan type available when adding a new patient scan, and whether it shows in the pending-reports tracking once that's live.")}
+                    {!isAdmin && ` ${t("Price changes require an admin.")}`}
                   </p>
 
                   {CATEGORY_ORDER.map((cat) => {
@@ -439,7 +436,7 @@ export default function BranchesPage() {
                             marginBottom: 8,
                           }}
                         >
-                          {CATEGORY_LABELS[cat]}
+                          {t(CATEGORY_LABELS[cat])}
                         </div>
                         {items.map((exam) => (
                           <div key={exam.id} style={{ borderBottom: "1px solid #f5f5f5", opacity: exam.is_active ? 1 : 0.5 }}>
@@ -472,11 +469,11 @@ export default function BranchesPage() {
                                       price: e.target.value,
                                     })
                                   }
-                                  placeholder="Price"
+                                  placeholder={t("Price")}
                                   disabled={!isAdmin}
                                   title={
                                     !isAdmin
-                                      ? "Only an admin can change the price"
+                                      ? t("Only an admin can change the price")
                                       : ""
                                   }
                                 />
@@ -500,7 +497,7 @@ export default function BranchesPage() {
                                       })
                                     }
                                   />
-                                  Requires Report
+                                  {t("Requires Report")}
                                 </label>
                                 <button
                                   onClick={() => saveExam(exam)}
@@ -511,7 +508,7 @@ export default function BranchesPage() {
                                     fontSize: 12,
                                   }}
                                 >
-                                  Save
+                                  {t("Save")}
                                 </button>
                                 <button
                                   onClick={() => setEditingExamId(null)}
@@ -523,7 +520,7 @@ export default function BranchesPage() {
                                     cursor: "pointer",
                                   }}
                                 >
-                                  Cancel
+                                  {t("Cancel")}
                                 </button>
                               </>
                             ) : (
@@ -546,7 +543,7 @@ export default function BranchesPage() {
                                   }}
                                 >
                                   {exam.price != null
-                                    ? `${Number(exam.price).toFixed(2)} EGP`
+                                    ? t("{amount} EGP", { amount: Number(exam.price).toFixed(2) })
                                     : "—"}
                                 </span>
                                 <span
@@ -559,8 +556,8 @@ export default function BranchesPage() {
                                   }}
                                 >
                                   {exam.requires_report
-                                    ? "Requires report"
-                                    : "No report needed"}
+                                    ? t("Requires report")
+                                    : t("No report needed")}
                                 </span>
                                 <button
                                   onClick={() => startEditExam(exam)}
@@ -573,7 +570,7 @@ export default function BranchesPage() {
                                     fontWeight: 600,
                                   }}
                                 >
-                                  Edit
+                                  {t("Edit")}
                                 </button>
                                 {/* The stages this scan goes through, and how
                                     long each should take. Paid and Invoice
@@ -590,7 +587,7 @@ export default function BranchesPage() {
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {stepsFor === exam.id ? "Hide steps" : "Steps"}
+                                  {stepsFor === exam.id ? t("Hide steps") : t("Steps")}
                                 </button>
                                 <label
                                   style={{
@@ -601,7 +598,7 @@ export default function BranchesPage() {
                                     color: theme.gray,
                                   }}
                                 >
-                                  {exam.is_active ? "Active" : "Inactive"}
+                                  {exam.is_active ? t("Active") : t("Inactive")}
                                   <input
                                     type="checkbox"
                                     checked={exam.is_active}
@@ -639,7 +636,7 @@ export default function BranchesPage() {
                       onChange={(e) =>
                         setNewExam({ ...newExam, name: e.target.value })
                       }
-                      placeholder="New scan type name"
+                      placeholder={t("New scan type name")}
                     />
                     <input
                       style={{ ...smallInp, width: 90 }}
@@ -647,9 +644,9 @@ export default function BranchesPage() {
                       onChange={(e) =>
                         setNewExam({ ...newExam, price: e.target.value })
                       }
-                      placeholder="Price"
+                      placeholder={t("Price")}
                       disabled={!isAdmin}
-                      title={!isAdmin ? "Only an admin can set the price" : ""}
+                      title={!isAdmin ? t("Only an admin can set the price") : ""}
                     />
                     <select
                       style={{ ...smallInp, width: 100 }}
@@ -660,7 +657,7 @@ export default function BranchesPage() {
                     >
                       {CATEGORY_ORDER.map((c) => (
                         <option key={c} value={c}>
-                          {CATEGORY_LABELS[c]}
+                          {t(CATEGORY_LABELS[c])}
                         </option>
                       ))}
                     </select>
@@ -684,14 +681,14 @@ export default function BranchesPage() {
                           })
                         }
                       />
-                      Requires Report
+                      {t("Requires Report")}
                     </label>
                     <button
                       onClick={() => addExamType(b.id)}
                       disabled={addingExam}
                       style={smallPrimary}
                     >
-                      + Add Scan Type
+                      {t("+ Add Scan Type")}
                     </button>
                   </div>
                 </div>
@@ -704,10 +701,10 @@ export default function BranchesPage() {
             style={{ ...inp, marginBottom: 0 }}
             value={newBranch}
             onChange={(e) => setNewBranch(e.target.value)}
-            placeholder="New branch name"
+            placeholder={t("New branch name")}
           />
           <button onClick={addBranch} style={smallPrimary}>
-            + Add Branch
+            {t("+ Add Branch")}
           </button>
         </div>
       </div>
@@ -749,6 +746,7 @@ const smallInp = {
 // changed but they cannot be deleted, because years of visits store their
 // completion in dedicated columns on the visit itself.
 function ExamSteps({ examTypeId, examName, onClose }) {
+  const { t } = useT();
   const [steps, setSteps] = useState([]);
   const [hidden, setHidden] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -770,7 +768,7 @@ function ExamSteps({ examTypeId, examName, onClose }) {
   useEffect(() => { load(); }, [load]);
 
   async function addStep() {
-    if (!draft.name.trim()) return setError("Give the step a name.");
+    if (!draft.name.trim()) return setError(tx("Give the step a name."));
     setSaving(true);
     setError("");
     const nextOrder = steps.length ? Math.max(...steps.map((s) => s.sort_order)) + 1 : 1;
@@ -799,8 +797,8 @@ function ExamSteps({ examTypeId, examName, onClose }) {
     // themselves are deleted outright, since nothing else refers to them.
     const built = !!step.legacy_field;
     const msg = built
-      ? `Hide "${step.name}" from ${examName}? It stops appearing on visits. Completions already recorded are kept, and you can bring it back.`
-      : `Remove "${step.name}" from ${examName}? Visits already past this step keep their record of it.`;
+      ? tx("Hide \"{step}\" from {exam}? It stops appearing on visits. Completions already recorded are kept, and you can bring it back.", { step: step.name, exam: examName })
+      : tx("Remove \"{step}\" from {exam}? Visits already past this step keep their record of it.", { step: step.name, exam: examName });
     if (!confirm(msg)) return;
 
     if (built) {
@@ -832,16 +830,16 @@ function ExamSteps({ examTypeId, examName, onClose }) {
     <div style={{ margin: "0 0 12px", padding: 14, background: "#f7f8fa", borderRadius: 8, border: "1px solid #e5e7eb", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: theme.navy }}>
-          Steps for {examName}
+          {t("Steps for {exam}", { exam: examName })}
           <div style={{ fontWeight: 400, color: theme.gray, marginTop: 2 }}>
-            Shown on every visit with this scan, between Paid and Invoice Generated.
+            {t("Shown on every visit with this scan, between Paid and Invoice Generated.")}
           </div>
         </div>
         {/* Opening the panel replaced the Steps button with nothing to press,
             so the only way out was to find the button again behind it. */}
         <button
           onClick={onClose}
-          title="Close"
+          title={t("Close")}
           style={{
             border: "1px solid #ddd",
             background: "#fff",
@@ -860,7 +858,7 @@ function ExamSteps({ examTypeId, examName, onClose }) {
       </div>
 
       {loading ? (
-        <p style={{ fontSize: 12, color: theme.gray }}>Loading...</p>
+        <p style={{ fontSize: 12, color: theme.gray }}>{t("Loading...")}</p>
       ) : (
         <>
           {steps.map((st, idx) => (
@@ -875,18 +873,18 @@ function ExamSteps({ examTypeId, examName, onClose }) {
                 type="number"
                 min="0"
                 defaultValue={st.target_minutes ?? ""}
-                placeholder="mins"
+                placeholder={t("mins")}
                 onBlur={(e) => updateStep(st, { target_minutes: e.target.value === "" ? null : Number(e.target.value) })}
                 style={{ ...box, width: 80 }}
               />
               <span style={{ fontSize: 11, color: theme.gray }}>
-                {st.target_minutes ? humanMinutes(st.target_minutes) : "no target"}
+                {st.target_minutes ? humanMinutes(st.target_minutes) : t("no target")}
               </span>
               <button onClick={() => move(st, -1)} disabled={idx === 0} style={arrowBtn}>&uarr;</button>
               <button onClick={() => move(st, 1)} disabled={idx === steps.length - 1} style={arrowBtn}>&darr;</button>
               {st.legacy_field && (
-                <span style={{ fontSize: 10, color: theme.gray }} title="Built in - completions are stored on the visit itself, so hiding this keeps them">
-                  built in
+                <span style={{ fontSize: 10, color: theme.gray }} title={t("Built in - completions are stored on the visit itself, so hiding this keeps them")}>
+                  {t("built in")}
                 </span>
               )}
               {/* A built-in step can be renamed but still writes the same column
@@ -895,15 +893,15 @@ function ExamSteps({ examTypeId, examName, onClose }) {
                   step actually stores is now said out loud. */}
               {st.canonical_name && st.name !== st.canonical_name && (
                 <span
-                  title={`Whatever this is called, ticking it records "${st.canonical_name}" on the visit.`}
+                  title={t("Whatever this is called, ticking it records \"{name}\" on the visit.", { name: st.canonical_name })}
                   style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#FBF7EF",
                            border: "1px solid #E4D5B0", borderRadius: 999, padding: "2px 8px" }}
                 >
-                  records: {st.canonical_name}
+                  {t("records: {name}", { name: st.canonical_name })}
                 </span>
               )}
               <button onClick={() => removeStep(st)} style={{ ...arrowBtn, color: "#b42318" }}>
-                {st.legacy_field ? "Hide" : "Remove"}
+                {st.legacy_field ? t("Hide") : t("Remove")}
               </button>
             </div>
           ))}
@@ -911,26 +909,26 @@ function ExamSteps({ examTypeId, examName, onClose }) {
           {hidden.length > 0 && (
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ddd" }}>
               <div style={{ fontSize: 11, color: theme.gray, marginBottom: 6 }}>
-                Hidden from visits. Completions already recorded are kept.
+                {t("Hidden from visits. Completions already recorded are kept.")}
               </div>
               {hidden.map((st) => (
                 <div key={st.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 12, color: theme.gray, textDecoration: "line-through" }}>{st.name}</span>
-                  <button onClick={() => restoreStep(st)} style={arrowBtn}>Bring back</button>
+                  <button onClick={() => restoreStep(st)} style={arrowBtn}>{t("Bring back")}</button>
                 </div>
               ))}
             </div>
           )}
 
           {steps.length === 0 && (
-            <p style={{ fontSize: 12, color: theme.gray }}>No steps yet. Visits will show only Paid and Invoice Generated.</p>
+            <p style={{ fontSize: 12, color: theme.gray }}>{t("No steps yet. Visits will show only Paid and Invoice Generated.")}</p>
           )}
 
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <input
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder="New step name"
+              placeholder={t("New step name")}
               style={{ ...box, width: 190 }}
             />
             <input
@@ -938,7 +936,7 @@ function ExamSteps({ examTypeId, examName, onClose }) {
               min="0"
               value={draft.target_minutes}
               onChange={(e) => setDraft({ ...draft, target_minutes: e.target.value })}
-              placeholder="mins"
+              placeholder={t("mins")}
               style={{ ...box, width: 80 }}
             />
             <button
@@ -946,16 +944,16 @@ function ExamSteps({ examTypeId, examName, onClose }) {
               disabled={saving}
               style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
             >
-              Add step
+              {t("Add step")}
             </button>
             <button
               onClick={onClose}
               style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", fontSize: 12, cursor: "pointer" }}
             >
-              Done
+              {t("Done")}
             </button>
           </div>
-          {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{error}</p>}
+          {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{t(error)}</p>}
         </>
       )}
     </div>
@@ -974,8 +972,8 @@ const arrowBtn = {
 // "90" reads as nothing in particular; "1h 30m" reads as a target.
 function humanMinutes(mins) {
   const m = Number(mins) || 0;
-  if (m < 60) return `${m}m`;
+  if (m < 60) return tx("{m}m", { m });
   const h = Math.floor(m / 60);
   const rest = m % 60;
-  return rest ? `${h}h ${rest}m` : `${h}h`;
+  return rest ? tx("{h}h {m}m", { h, m: rest }) : tx("{n}h", { n: h });
 }

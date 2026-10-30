@@ -4,8 +4,10 @@ import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
 import { doctorLabel } from "../../../../lib/format";
 import { theme } from "../../../../lib/theme";
+import { useT } from "../../../../lib/i18n";
 
 export default function DriveReviewPage() {
+  const { t } = useT();
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
@@ -52,15 +54,15 @@ export default function DriveReviewPage() {
   return (
     <div>
       <p style={{ fontSize: 12, color: theme.gray }}>
-        <Link href="/dashboard/settings" style={{ color: theme.gray }}>Settings</Link> &gt; Drive Name Review
+        <Link href="/dashboard/settings" style={{ color: theme.gray }}>{t("Settings")}</Link> &gt; {t("Drive Name Review")}
       </p>
-      <h1 style={{ color: theme.navy, margin: "4px 0" }}>Drive Folder Name Matches</h1>
+      <h1 style={{ color: theme.navy, margin: "4px 0" }}>{t("Drive Folder Name Matches")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20, maxWidth: 720 }}>
-        Patients with no linked Drive folder whose name closely resembles an unlinked Drive folder. Nothing here has been connected automatically, some pairs that look similar are actually different people (e.g., "Emad Ahmed" vs "Eman Ahmed"). Review each one, don't just approve by confidence score alone.
+        {t("Patients with no linked Drive folder whose name closely resembles an unlinked Drive folder. Nothing here has been connected automatically, some pairs that look similar are actually different people (e.g., \"Emad Ahmed\" vs \"Eman Ahmed\"). Review each one, don't just approve by confidence score alone.")}
       </p>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
-        <span style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>Minimum confidence:</span>
+        <span style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>{t("Minimum confidence:")}</span>
         {[0, 0.82, 0.90, 0.95].map((v) => (
           <button
             key={v}
@@ -76,16 +78,16 @@ export default function DriveReviewPage() {
               cursor: "pointer",
             }}
           >
-            {v === 0 ? "All" : `${Math.round(v * 100)}%+`}
+            {v === 0 ? t("All") : `${Math.round(v * 100)}%+`}
           </button>
         ))}
-        <span style={{ fontSize: 12, color: theme.gray, marginLeft: "auto" }}>{visible.length} pending</span>
+        <span style={{ fontSize: 12, color: theme.gray, marginInlineStart: "auto" }}>{t("{n} pending", { n: visible.length })}</span>
       </div>
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
       {!loading && visible.length === 0 && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: theme.gray }}>
-          No pending matches at this confidence level.
+          {t("No pending matches at this confidence level.")}
         </div>
       )}
 
@@ -122,20 +124,20 @@ export default function DriveReviewPage() {
               <Link href={`/dashboard/patients/${c.patient_id}`} target="_blank" style={{ fontWeight: 700, color: theme.navy, textDecoration: "none" }}>
                 {c.patient_name}
               </Link>
-              <span style={{ color: theme.gray, fontSize: 13 }}> — patient in system</span>
+              <span style={{ color: theme.gray, fontSize: 13 }}> — {t("patient in system")}</span>
               <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
                 {c.referringDoctor
-                  ? `Referred by ${doctorLabel(c.referringDoctor.name)} (clinic ${c.referringDoctor.clinic_code})`
-                  : "No referring doctor on file"}
+                  ? t("Referred by {doctor} (clinic {code})", { doctor: doctorLabel(c.referringDoctor.name), code: c.referringDoctor.clinic_code })
+                  : t("No referring doctor on file")}
               </div>
               {c.driveConfirmed && (
                 <div style={{ fontSize: 11, color: "#1e7a3c", fontWeight: 700, marginTop: 4 }}>
-                  ✓ Confirmed - this folder sits inside {c.referringDoctor?.name}'s own Drive folder
+                  ✓ {t("Confirmed - this folder sits inside {name}'s own Drive folder", { name: c.referringDoctor?.name })}
                 </div>
               )}
               {c.parentLookupFailed && (
                 <div style={{ fontSize: 11, color: "#a97c00", marginTop: 4 }}>
-                  Could not check Drive folder location - review manually
+                  {t("Could not check Drive folder location - review manually")}
                 </div>
               )}
             </div>
@@ -143,13 +145,13 @@ export default function DriveReviewPage() {
               <a href={`https://drive.google.com/drive/folders/${c.drive_folder_id}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: theme.gold, textDecoration: "none" }}>
                 {c.folder_name}
               </a>
-              <span style={{ color: theme.gray, fontSize: 13 }}> — Drive folder</span>
+              <span style={{ color: theme.gray, fontSize: 13 }}> — {t("Drive folder")}</span>
             </div>
             <button onClick={() => handleApprove(c)} disabled={busyId === c.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-              {busyId === c.id ? "..." : "Same Person, Link"}
+              {busyId === c.id ? "..." : t("Same Person, Link")}
             </button>
             <button onClick={() => handleReject(c)} disabled={busyId === c.id} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
-              Not a Match
+              {t("Not a Match")}
             </button>
           </div>
         ))}

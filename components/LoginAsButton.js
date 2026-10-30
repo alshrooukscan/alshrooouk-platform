@@ -3,6 +3,7 @@ import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { usePermissions } from "../lib/usePermissions";
+import { useT } from "../lib/i18n";
 
 // One-click "see what this user sees", dropped straight onto the patient,
 // doctor, employee and client pages so an admin never has to go hunting
@@ -12,6 +13,7 @@ import { usePermissions } from "../lib/usePermissions";
 // server mints a short-lived impersonation session and the portal skips its
 // forced password-change gate for it. Admin-only; renders nothing otherwise.
 export default function LoginAsButton({ type, id, name, size = "normal" }) {
+  const { t } = useT();
   const { isAdmin } = usePermissions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -50,7 +52,7 @@ export default function LoginAsButton({ type, id, name, size = "normal" }) {
       <button
         onClick={go}
         disabled={busy}
-        title={`Open ${name || "this user"}'s portal exactly as they see it`}
+        title={t("Open {name}'s portal exactly as they see it", { name: name || t("this user") })}
         style={{
           padding: small ? "6px 12px" : "9px 16px",
           borderRadius: 8,
@@ -63,9 +65,9 @@ export default function LoginAsButton({ type, id, name, size = "normal" }) {
           whiteSpace: "nowrap",
         }}
       >
-        {busy ? "Opening..." : "Login As"}
+        {busy ? t("Opening...") : t("Login As")}
       </button>
-      {error && <span style={{ color: "#ba1a1a", fontSize: 11 }}>{error}</span>}
+      {error && <span style={{ color: "#ba1a1a", fontSize: 11 }}>{t(error)}</span>}
     </span>
   );
 }

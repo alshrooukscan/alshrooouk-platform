@@ -6,6 +6,7 @@ import { theme } from "../../lib/theme";
 import Sidebar from "../../components/Sidebar";
 import { usePermissions } from "../../lib/usePermissions";
 import Loading from "../../lib/Loading";
+import { useT } from "../../lib/i18n";
 
 // Keys here must match what the sidebar offers each person. Where the two
 // disagree, staff are shown a link and then refused when they follow it.
@@ -70,6 +71,7 @@ function permissionForPath(pathname) {
 }
 
 export default function DashboardLayout({ children }) {
+  const { t } = useT();
   const [ready, setReady] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -136,7 +138,7 @@ export default function DashboardLayout({ children }) {
   if (!profile) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.navy, textAlign: "center", padding: 24 }}>
-        Your account isn't set up with access yet. Ask an admin to add you in Settings &gt; Staff Users.
+        {t("Your account isn't set up with access yet. Ask an admin to add you in Settings > Staff Users.")}
       </div>
     );
   }
@@ -147,8 +149,8 @@ export default function DashboardLayout({ children }) {
         <Sidebar />
         <main style={{ flex: 1, padding: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ textAlign: "center", color: theme.gray }}>
-            <h2 style={{ color: theme.navy }}>Access restricted</h2>
-            <p>You don't have permission to view this section. Ask an admin to grant access.</p>
+            <h2 style={{ color: theme.navy }}>{t("Access restricted")}</h2>
+            <p>{t("You don't have permission to view this section. Ask an admin to grant access.")}</p>
           </div>
         </main>
       </div>

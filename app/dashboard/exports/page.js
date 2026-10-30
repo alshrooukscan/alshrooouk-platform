@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
+import { useT } from "../../../lib/i18n";
 
 const card = { background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" };
 const inp = { padding: "9px 11px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13 };
@@ -13,6 +14,7 @@ function firstOfMonth() {
 }
 
 export default function ExportsPage() {
+  const { t } = useT();
   const { isAdmin, loading: permLoading } = usePermissions();
   const [reports, setReports] = useState([]);
   const [from, setFrom] = useState(firstOfMonth());
@@ -77,14 +79,13 @@ export default function ExportsPage() {
     URL.revokeObjectURL(link.href);
   }
 
-  if (permLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (permLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
   if (!isAdmin) {
     return (
       <div style={card}>
-        <h2 style={{ color: theme.navy, marginTop: 0 }}>Exports are admin only</h2>
+        <h2 style={{ color: theme.navy, marginTop: 0 }}>{t("Exports are admin only")}</h2>
         <p style={{ color: theme.gray, fontSize: 14 }}>
-          These reports contain salaries, full financial history and patient contact details, so access is limited to
-          admins.
+          {t("These reports contain salaries, full financial history and patient contact details, so access is limited to admins.")}
         </p>
       </div>
     );
@@ -94,48 +95,47 @@ export default function ExportsPage() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Export Centre</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Export Centre")}</h1>
       <p style={{ color: theme.gray, marginBottom: 18 }}>
-        Excel keeps numbers as numbers and carries an About sheet recording who pulled the file and when. CSV is there
-        for anything that needs importing elsewhere.
+        {t("Excel keeps numbers as numbers and carries an About sheet recording who pulled the file and when. CSV is there for anything that needs importing elsewhere.")}
       </p>
 
       <div style={{ ...card, marginBottom: 18, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: theme.navy }}>Period</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: theme.navy }}>{t("Period")}</span>
         <input type="date" style={inp} value={from} onChange={(e) => setFrom(e.target.value)} />
-        <span style={{ color: theme.gray }}>to</span>
+        <span style={{ color: theme.gray }}>{t("to")}</span>
         <input type="date" style={inp} value={to} onChange={(e) => setTo(e.target.value)} />
         {[
           ["This month", firstOfMonth(), new Date().toISOString().slice(0, 10)],
           ["This year", `${new Date().getFullYear()}-01-01`, new Date().toISOString().slice(0, 10)],
           ["All time", "2000-01-01", new Date().toISOString().slice(0, 10)],
-        ].map(([label, f, t]) => (
-          <button key={label} onClick={() => { setFrom(f); setTo(t); }}
+        ].map(([label, f, toDate]) => (
+          <button key={label} onClick={() => { setFrom(f); setTo(toDate); }}
             style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-            {label}
+            {t(label)}
           </button>
         ))}
-        <span style={{ fontSize: 11, color: theme.gray }}>Applies only to reports marked with a period.</span>
+        <span style={{ fontSize: 11, color: theme.gray }}>{t("Applies only to reports marked with a period.")}</span>
       </div>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
       {preview && (
-        <div style={{ ...card, marginBottom: 18, borderLeft: `4px solid ${theme.gold}` }}>
+        <div style={{ ...card, marginBottom: 18, borderInlineStart: `4px solid ${theme.gold}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={{ color: theme.navy, margin: 0 }}>
-              {preview.report.label} — {preview.count.toLocaleString()} row{preview.count === 1 ? "" : "s"}
+              {t(preview.report.label)} — {preview.count === 1 ? t("1 row") : t("{n} rows", { n: preview.count.toLocaleString() })}
             </h3>
             <button onClick={() => setPreview(null)} style={{ border: "none", background: "none", color: theme.gray, cursor: "pointer", fontSize: 18 }}>×</button>
           </div>
           {preview.count === 0 ? (
-            <p style={{ fontSize: 13, color: theme.gray }}>Nothing matches that period.</p>
+            <p style={{ fontSize: 13, color: theme.gray }}>{t("Nothing matches that period.")}</p>
           ) : (
             <div style={{ overflowX: "auto", marginTop: 10 }}>
               <table style={{ borderCollapse: "collapse", fontSize: 11, width: "100%" }}>
                 <thead>
                   <tr>{preview.columns.map((c) => (
-                    <th key={c} style={{ textAlign: "left", padding: "6px 10px", borderBottom: "2px solid #eee", color: theme.navy, whiteSpace: "nowrap" }}>{c}</th>
+                    <th key={c} style={{ textAlign: "start", padding: "6px 10px", borderBottom: "2px solid #eee", color: theme.navy, whiteSpace: "nowrap" }}>{c}</th>
                   ))}</tr>
                 </thead>
                 <tbody>
@@ -148,7 +148,7 @@ export default function ExportsPage() {
               </table>
               {preview.count > preview.sample.length && (
                 <p style={{ fontSize: 11, color: theme.gray, marginTop: 8 }}>
-                  Showing the first {preview.sample.length}. The file has all {preview.count.toLocaleString()}.
+                  {t("Showing the first {n}. The file has all {total}.", { n: preview.sample.length, total: preview.count.toLocaleString() })}
                 </p>
               )}
             </div>
@@ -158,25 +158,25 @@ export default function ExportsPage() {
 
       {groups.map((g) => (
         <div key={g} style={{ marginBottom: 22 }}>
-          <h3 style={{ color: theme.navy, fontSize: 14, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>{g}</h3>
+          <h3 style={{ color: theme.navy, fontSize: 14, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>{t(g)}</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 12 }}>
             {reports.filter((r) => r.group === g).map((r) => (
               <div key={r.key} style={card}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: theme.navy }}>
-                  {r.label}
-                  {r.dated && <span style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#fff8e1", padding: "2px 7px", borderRadius: 999, marginLeft: 8 }}>PERIOD</span>}
+                  {t(r.label)}
+                  {r.dated && <span style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#fff8e1", padding: "2px 7px", borderRadius: 999, marginInlineStart: 8 }}>{t("PERIOD")}</span>}
                 </div>
-                <p style={{ fontSize: 12, color: theme.gray, margin: "6px 0 12px", minHeight: 32 }}>{r.description}</p>
+                <p style={{ fontSize: 12, color: theme.gray, margin: "6px 0 12px", minHeight: 32 }}>{t(r.description)}</p>
                 {r.monthly && (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: theme.navy }}>Month</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: theme.navy }}>{t("Month")}</span>
                     <input type="month" style={inp} value={month} onChange={(e) => setMonth(e.target.value)} />
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => doPreview(r)} disabled={busy.startsWith(r.key)}
                     style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    {busy === r.key + ":preview" ? "..." : "Preview"}
+                    {busy === r.key + ":preview" ? "..." : t("Preview")}
                   </button>
                   <button onClick={() => download(r, "xlsx")} disabled={busy.startsWith(r.key)}
                     style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>

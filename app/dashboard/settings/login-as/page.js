@@ -3,8 +3,20 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../../lib/supabase";
 import { theme } from "../../../../lib/theme";
 import { usePermissions } from "../../../../lib/usePermissions";
+import { useT, Ltr } from "../../../../lib/i18n";
+
+// Tab ids are sent to the API as the login-as type; only the labels translate.
+const TAB_LABEL = { patient: "Patient", doctor: "Doctor", employee: "Employee", client: "Client", staff: "Staff" };
+const SEARCH_PLACEHOLDER = {
+  patient: "Search patients by name...",
+  doctor: "Search doctors by name...",
+  employee: "Search employees by name...",
+  client: "Search clients by name...",
+  staff: "Search staff by name...",
+};
 
 export default function LoginAsPage() {
+  const { t, tCode } = useT();
   const { isAdmin, loading: permsLoading } = usePermissions();
   const [tab, setTab] = useState("patient");
   const [query, setQuery] = useState("");
@@ -68,30 +80,30 @@ export default function LoginAsPage() {
   }
 
   if (!permsLoading && !isAdmin) {
-    return <p style={{ color: theme.gray }}>Admin access required.</p>;
+    return <p style={{ color: theme.gray }}>{t("Admin access required.")}</p>;
   }
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Login As</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Login As")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        See exactly what a specific patient, doctor, employee, client, or staff member sees - no password needed, it opens their real portal straight away in a new tab. Your own session isn't affected.
+        {t("See exactly what a specific patient, doctor, employee, client, or staff member sees - no password needed, it opens their real portal straight away in a new tab. Your own session isn't affected.")}
       </p>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {["patient", "doctor", "employee", "client", "staff"].map((t) => (
+        {["patient", "doctor", "employee", "client", "staff"].map((k) => (
           <button
-            key={t}
+            key={k}
             onClick={() => {
-              setTab(t);
+              setTab(k);
               setResults([]);
               setQuery("");
             }}
             style={{
               padding: "8px 18px",
               borderRadius: 8,
-              border: `1px solid ${tab === t ? theme.gold : "#ddd"}`,
-              background: tab === t ? theme.goldLight : "#fff",
+              border: `1px solid ${tab === k ? theme.gold : "#ddd"}`,
+              background: tab === k ? theme.goldLight : "#fff",
               color: theme.navy,
               fontWeight: 700,
               fontSize: 13,
@@ -99,7 +111,7 @@ export default function LoginAsPage() {
               textTransform: "capitalize",
             }}
           >
-            {t}
+            {t(TAB_LABEL[k])}
           </button>
         ))}
       </div>
@@ -107,13 +119,13 @@ export default function LoginAsPage() {
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder={`Search ${tab}s by name...`}
+        placeholder={t(SEARCH_PLACEHOLDER[tab])}
         style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, marginBottom: 16, boxSizing: "border-box" }}
       />
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginBottom: 12 }}>{error}</p>}
-      {loading && <p style={{ color: theme.gray, fontSize: 13 }}>Searching...</p>}
-      {!loading && query.length >= 2 && results.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No matches.</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginBottom: 12 }}>{t(error)}</p>}
+      {loading && <p style={{ color: theme.gray, fontSize: 13 }}>{t("Searching...")}</p>}
+      {!loading && query.length >= 2 && results.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("No matches.")}</p>}
 
       <div style={{ display: "grid", gap: 8 }}>
         {results.map((r) => (
@@ -132,11 +144,11 @@ export default function LoginAsPage() {
             <div>
               <div style={{ fontWeight: 700, color: theme.navy }}>{r.name}</div>
               <div style={{ fontSize: 12, color: theme.gray }}>
-                {tab === "patient" && r.mobile}
+                {tab === "patient" && <Ltr>{r.mobile}</Ltr>}
                 {tab === "doctor" && r.clinic_code}
-                {tab === "employee" && `${r.hr_id}${Object.values(r.permissions || {}).some(Boolean) ? " · has dashboard access" : ""}`}
+                {tab === "employee" && `${r.hr_id}${Object.values(r.permissions || {}).some(Boolean) ? ` · ${t("has dashboard access")}` : ""}`}
                 {tab === "client" && `${r.username || ""}${r.contact_phone ? " · " + r.contact_phone : ""}`}
-                {tab === "staff" && `${r.email} · ${r.role}`}
+                {tab === "staff" && `${r.email} · ${tCode(r.role)}`}
               </div>
             </div>
             {/* Single click straight into the portal - the old two-step confirm
@@ -146,7 +158,7 @@ export default function LoginAsPage() {
               onClick={() => handleLoginAs(r)}
               style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 700 }}
             >
-              Login As
+              {t("Login As")}
             </button>
           </div>
         ))}

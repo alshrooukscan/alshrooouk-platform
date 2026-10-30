@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { uploadFileToDrive } from "../lib/uploadToDrive";
+import { useT } from "../lib/i18n";
 
 // Shared document list + upload for both employee hiring paperwork and
 // branch legal documents - same shape either way (a custom name, a file,
 // who uploaded it), routed to the right Drive folder server-side based on
 // entityType.
 export default function DocumentsUploader({ entityType, entityId, profile, disabledReason }) {
+  const { t } = useT();
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -84,45 +86,45 @@ export default function DocumentsUploader({ entityType, entityId, profile, disab
   return (
     <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 style={{ color: theme.navy, margin: 0 }}>Documents</h3>
+        <h3 style={{ color: theme.navy, margin: 0 }}>{t("Documents")}</h3>
         {!disabledReason && (
           <button
             onClick={() => setShowForm((v) => !v)}
             style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12 }}
           >
-            {showForm ? "Cancel" : "+ Add Document"}
+            {showForm ? t("Cancel") : t("+ Add Document")}
           </button>
         )}
       </div>
 
-      {disabledReason && <p style={{ fontSize: 12, color: "#a97c00", background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>{disabledReason}</p>}
+      {disabledReason && <p style={{ fontSize: 12, color: "#a97c00", background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>{t(disabledReason)}</p>}
 
       {showForm && !disabledReason && (
         <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>File Name</label>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("File Name")}</label>
           <input
             value={fileName}
             onChange={(e) => setFileName(e.target.value)}
-            placeholder="e.g. National ID, Contract, Certificate"
+            placeholder={t("e.g. National ID, Contract, Certificate")}
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box", marginBottom: 10 }}
           />
-          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>File</label>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("File")}</label>
           <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ marginBottom: 10 }} />
-          {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+          {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
           <button
             onClick={handleUpload}
             disabled={uploading}
             style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13, position: "relative", overflow: "hidden" }}
           >
             {uploading && (
-              <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.25)", transition: "width 0.15s linear" }} />
+              <div style={{ position: "absolute", inset: 0, insetInlineStart: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.25)", transition: "width 0.15s linear" }} />
             )}
-            <span style={{ position: "relative" }}>{uploading ? `Uploading... ${uploadProgress}%` : "Upload"}</span>
+            <span style={{ position: "relative" }}>{uploading ? t("Uploading... {pct}%", { pct: uploadProgress }) : t("Upload")}</span>
           </button>
         </div>
       )}
 
-      {!loading && docs.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No documents uploaded yet.</p>}
+      {!loading && docs.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("No documents uploaded yet.")}</p>}
       <div style={{ display: "grid", gap: 8 }}>
         {docs.map((d) => (
           <a

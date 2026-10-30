@@ -1,11 +1,13 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { theme } from "../lib/theme";
+import { useT } from "../lib/i18n";
 
 // Generic "Send WhatsApp" dropdown - options are just {label, onClick} pairs,
 // so the same component serves the patient (5 options), doctor (4), and
 // client (3) message-type sets without needing separate implementations.
 export default function WhatsAppDropdown({ options, buttonStyle, label = "Send WhatsApp" }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -23,10 +25,10 @@ export default function WhatsAppDropdown({ options, buttonStyle, label = "Send W
         onClick={() => setOpen((v) => !v)}
         style={buttonStyle || { padding: "7px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
       >
-        {label} {"\u25be"}
+        {t(label)} {"\u25be"}
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.12)", minWidth: 160, zIndex: 30, overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "110%", insetInlineStart: 0, background: "#fff", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.12)", minWidth: 160, zIndex: 30, overflow: "hidden" }}>
           {options.map((opt) => (
             <button
               key={opt.label}
@@ -34,11 +36,11 @@ export default function WhatsAppDropdown({ options, buttonStyle, label = "Send W
                 setOpen(false);
                 opt.onClick();
               }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", border: "none", background: "#fff", cursor: "pointer", fontSize: 13, color: theme.navy }}
+              style={{ display: "block", width: "100%", textAlign: "start", padding: "10px 14px", border: "none", background: "#fff", cursor: "pointer", fontSize: 13, color: theme.navy }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#faf9fb")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
             >
-              {opt.label}
+              {t(opt.label)}
             </button>
           ))}
         </div>

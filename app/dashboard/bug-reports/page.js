@@ -4,6 +4,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx } from "../../../lib/i18n";
 
 const ERROR_TYPES = [
   { key: "application_error", label: "Application error / page crashed" },
@@ -24,6 +25,7 @@ const STATUS_STYLE = {
 };
 
 export default function BugReportsPage() {
+  const { t, tCode, isAr } = useT();
   const [reports, setReports] = useState([]);
   useAutoRefresh(["bug_reports"], () => { load(); });
   const [canTriage, setCanTriage] = useState(false);
@@ -84,8 +86,8 @@ export default function BugReportsPage() {
 
   async function submit() {
     setError("");
-    if (!form.errorType) return setError("Choose what kind of problem this is.");
-    if (!form.description.trim()) return setError("Please describe what happened.");
+    if (!form.errorType) return setError(tx("Choose what kind of problem this is."));
+    if (!form.description.trim()) return setError(tx("Please describe what happened."));
     setBusy(true);
     try {
       let screenshotDriveId = null;
@@ -151,16 +153,16 @@ export default function BugReportsPage() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Report a Problem</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Report a Problem")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
         {canTriage
-          ? "Everything staff have reported. You are the only person who sees this full list."
-          : "Tell us what went wrong and it goes straight to Moamen. You can see your own reports and their status below."}
+          ? t("Everything staff have reported. You are the only person who sees this full list.")
+          : t("Tell us what went wrong and it goes straight to Moamen. You can see your own reports and their status below.")}
       </p>
 
       {sent && (
         <div style={{ background: "#e6f4ea", border: "1px solid #b7dfc4", borderRadius: 10, padding: "12px 16px", marginBottom: 18, color: "#1e7a3c", fontSize: 13, fontWeight: 600 }}>
-          Thank you — your report was sent. You can follow its status in the list below.
+          {t("Thank you — your report was sent. You can follow its status in the list below.")}
         </div>
       )}
 
@@ -168,34 +170,34 @@ export default function BugReportsPage() {
         onClick={() => { setShowForm((v) => !v); setSent(false); }}
         style={{ padding: "11px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 18 }}
       >
-        {showForm ? "Cancel" : "+ Report a Problem"}
+        {showForm ? t("Cancel") : t("+ Report a Problem")}
       </button>
 
       {showForm && (
         <div style={{ background: "#fff", borderRadius: 14, padding: 22, marginBottom: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 0 }}>{error}</p>}
+          {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 0 }}>{t(error)}</p>}
 
-          <label style={lbl}>What kind of problem is it?</label>
+          <label style={lbl}>{t("What kind of problem is it?")}</label>
           <select style={inp} value={form.errorType} onChange={(e) => setForm({ ...form, errorType: e.target.value })}>
-            <option value="">Choose one...</option>
-            {ERROR_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            <option value="">{t("Choose one...")}</option>
+            {ERROR_TYPES.map((et) => <option key={et.key} value={et.key}>{t(et.label)}</option>)}
           </select>
 
-          <label style={lbl}>Which page? (link or page name)</label>
-          <input style={inp} value={form.pageUrl} placeholder="e.g. Patient page for Ahmed Ali"
+          <label style={lbl}>{t("Which page? (link or page name)")}</label>
+          <input style={inp} value={form.pageUrl} placeholder={t("e.g. Patient page for Ahmed Ali")}
             onChange={(e) => setForm({ ...form, pageUrl: e.target.value })} />
 
-          <label style={lbl}>What happened? Please be specific.</label>
+          <label style={lbl}>{t("What happened? Please be specific.")}</label>
           <textarea style={{ ...inp, minHeight: 100, fontFamily: "inherit" }}
             value={form.description}
-            placeholder="What were you doing, what did you expect, and what happened instead?"
+            placeholder={t("What were you doing, what did you expect, and what happened instead?")}
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
 
-          <label style={lbl}>Exact error message, if one appeared (optional)</label>
-          <input style={inp} value={form.errorMessage} placeholder="Copy the message exactly if you can"
+          <label style={lbl}>{t("Exact error message, if one appeared (optional)")}</label>
+          <input style={inp} value={form.errorMessage} placeholder={t("Copy the message exactly if you can")}
             onChange={(e) => setForm({ ...form, errorMessage: e.target.value })} />
 
-          <label style={lbl}>Screenshot (optional, but it helps a lot)</label>
+          <label style={lbl}>{t("Screenshot (optional, but it helps a lot)")}</label>
           <input type="file" accept="image/*" style={{ ...inp, padding: 8 }}
             onChange={(e) => setShot(e.target.files?.[0] || null)} />
           {progress !== null && (
@@ -203,13 +205,13 @@ export default function BugReportsPage() {
               <div style={{ height: 6, background: "#eee", borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${progress}%`, background: theme.gold }} />
               </div>
-              <span style={{ fontSize: 11, color: theme.gray }}>Uploading screenshot {progress}%</span>
+              <span style={{ fontSize: 11, color: theme.gray }}>{t("Uploading screenshot {pct}%", { pct: progress })}</span>
             </div>
           )}
 
           <button onClick={submit} disabled={busy}
             style={{ padding: "11px 22px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer" }}>
-            {busy ? "Sending..." : "Send Report"}
+            {busy ? t("Sending...") : t("Send Report")}
           </button>
         </div>
       )}
@@ -223,17 +225,17 @@ export default function BugReportsPage() {
               style={{ padding: "7px 16px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
                 background: filter === f ? theme.navy : "#fff", color: filter === f ? "#fff" : theme.navy,
                 boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>
-              {f === "all" ? "All" : STATUS_STYLE[f].label}
+              {f === "all" ? t("All") : tCode(f)}
               {f !== "all" && ` (${reports.filter((r) => r.status === f).length})`}
             </button>
           ))}
         </div>
       )}
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
       {!loading && shown.length === 0 && (
         <p style={{ color: theme.gray, fontSize: 13 }}>
-          {canTriage ? "Nothing reported yet." : "You haven't reported anything yet."}
+          {canTriage ? t("Nothing reported yet.") : t("You haven't reported anything yet.")}
         </p>
       )}
 
@@ -243,14 +245,14 @@ export default function BugReportsPage() {
           <div key={r.id} style={{ background: "#fff", borderRadius: 12, padding: 18, marginBottom: 12, boxShadow: "0 2px 12px rgba(39,33,77,0.05)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 6 }}>
               <span style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
-                {ERROR_TYPES.find((t) => t.key === r.error_type)?.label || r.error_type}
+                {t(ERROR_TYPES.find((et) => et.key === r.error_type)?.label || r.error_type)}
               </span>
               <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: s.bg, color: s.fg, whiteSpace: "nowrap" }}>
-                {s.label}
+                {tCode(STATUS_STYLE[r.status] ? r.status : "open")}
               </span>
             </div>
             <div style={{ fontSize: 11, color: theme.gray, marginBottom: 8 }}>
-              {r.reporter_name || "Unknown"} &middot; {new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              {r.reporter_name || t("Unknown")} &middot; {new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               {r.page_url && <> &middot; {r.page_url.length > 60 ? r.page_url.slice(0, 60) + "..." : r.page_url}</>}
             </div>
             <div style={{ fontSize: 13, color: theme.navy, whiteSpace: "pre-wrap", marginBottom: 8 }}>{r.description}</div>
@@ -262,13 +264,13 @@ export default function BugReportsPage() {
             {r.screenshot_drive_id && (
               <a href={`https://drive.google.com/file/d/${r.screenshot_drive_id}/view`} target="_blank" rel="noreferrer"
                 style={{ fontSize: 12, fontWeight: 700, color: theme.gold, textDecoration: "none" }}>
-                View screenshot &rarr;
+                {t("View screenshot")} {isAr ? "\u2190" : "\u2192"}
               </a>
             )}
             {r.admin_notes && (
               <div style={{ marginTop: 10, background: theme.goldLight || "#fff8e1", border: "1px solid #f0d58c", borderRadius: 8, padding: "10px 12px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#8a6d00", marginBottom: 4 }}>
-                  Update from {r.resolved_by_name || "the team"}
+                  {t("Update from {name}", { name: r.resolved_by_name || t("the team") })}
                 </div>
                 <div style={{ fontSize: 13, color: theme.navy, whiteSpace: "pre-wrap" }} dir="auto">{r.admin_notes}</div>
               </div>
@@ -278,7 +280,7 @@ export default function BugReportsPage() {
                 <textarea
                   value={noteDrafts[r.id] ?? r.admin_notes ?? ""}
                   onChange={(e) => setNoteDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
-                  placeholder="Reply to whoever reported this - what you found, what you changed, or what you need from them."
+                  placeholder={t("Reply to whoever reported this - what you found, what you changed, or what you need from them.")}
                   rows={2}
                   dir="auto"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }}
@@ -288,7 +290,7 @@ export default function BugReportsPage() {
                   disabled={noteBusy === r.id || (noteDrafts[r.id] ?? r.admin_notes ?? "") === (r.admin_notes ?? "")}
                   style={{ marginTop: 6, padding: "6px 14px", borderRadius: 7, border: "none", background: theme.navy, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                 >
-                  {noteBusy === r.id ? "Saving..." : "Send update"}
+                  {noteBusy === r.id ? t("Saving...") : t("Send update")}
                 </button>
               </div>
             )}
@@ -299,7 +301,7 @@ export default function BugReportsPage() {
                     style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #ddd",
                       background: r.status === st ? theme.navy : "#fff", color: r.status === st ? "#fff" : theme.navy,
                       fontSize: 11, fontWeight: 700, cursor: r.status === st ? "default" : "pointer" }}>
-                    {STATUS_STYLE[st].label}
+                    {tCode(st)}
                   </button>
                 ))}
               </div>
@@ -317,8 +319,9 @@ const lbl = { display: "block", fontSize: 11, fontWeight: 700, color: "#48464E",
 // four small readings rather than a dashboard: what kind of thing breaks, where
 // it breaks, who is hitting it, and whether the rate is rising or falling.
 function SupportInsights({ data }) {
+  const { t, tCode } = useT();
   const [open, setOpen] = useState(false);
-  const label = (k) => (ERROR_TYPES.find((t) => t.key === k)?.label || k).replace(/ \/ .*/, "");
+  const label = (k) => t((ERROR_TYPES.find((et) => et.key === k)?.label || k).replace(/ \/ .*/, ""));
   const max = (rows) => Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r[1] : r.raised)));
 
   const Bar = ({ name, value, of, tone = theme.navy }) => (
@@ -329,7 +332,7 @@ function SupportInsights({ data }) {
       <div style={{ flex: 1, height: 16, background: "#f1f2f6", borderRadius: 4, overflow: "hidden" }}>
         <div style={{ width: `${(value / of) * 100}%`, height: "100%", background: tone, borderRadius: 4 }} />
       </div>
-      <div style={{ width: 28, textAlign: "right", fontSize: 12, fontWeight: 700, color: theme.navy }}>{value}</div>
+      <div style={{ width: 28, textAlign: "end", fontSize: 12, fontWeight: 700, color: theme.navy }}>{value}</div>
     </div>
   );
 
@@ -346,30 +349,30 @@ function SupportInsights({ data }) {
         onClick={() => setOpen((v) => !v)}
         style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.gold, fontWeight: 700, fontSize: 13, marginBottom: 10 }}
       >
-        {open ? "Hide trends" : "Show trends"}
+        {open ? t("Hide trends") : t("Show trends")}
       </button>
 
       {open && (
         <div style={{ background: "#f7f8fa", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
-            <Stat label="Total raised" value={data.total} />
-            <Stat label="Open" value={data.open} tone={data.open ? "#a97c00" : theme.navy} />
-            <Stat label="In progress" value={data.inProgress} />
-            <Stat label="Resolved" value={data.resolved} tone="#1e7a3c" />
+            <Stat label={t("Total raised")} value={data.total} />
+            <Stat label={tCode("open")} value={data.open} tone={data.open ? "#a97c00" : theme.navy} />
+            <Stat label={tCode("in_progress")} value={data.inProgress} />
+            <Stat label={tCode("resolved")} value={data.resolved} tone="#1e7a3c" />
             {/* Median, not average: one ticket left over a weekend drags a mean
                 far enough to make a good week look bad. */}
-            <Stat label="Typical time to resolve" value={data.medianHours === null ? "—" : `${data.medianHours}h`} />
+            <Stat label={t("Typical time to resolve")} value={data.medianHours === null ? "—" : t("{n}h", { n: data.medianHours })} />
           </div>
 
-          <Section title="What kind of thing breaks">
+          <Section title={t("What kind of thing breaks")}>
             {data.byType.map(([k, v]) => <Bar key={k} name={label(k)} value={v} of={max(data.byType)} />)}
           </Section>
 
-          <Section title="Where it breaks">
+          <Section title={t("Where it breaks")}>
             {data.byPage.map(([k, v]) => <Bar key={k} name={k} value={v} of={max(data.byPage)} tone="#7a6cc4" />)}
           </Section>
 
-          <Section title="Who is reporting">
+          <Section title={t("Who is reporting")}>
             {data.byReporter.map((r) => (
               <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
                 <div style={{ width: 200, fontSize: 12, color: theme.navy }}>{r.name}</div>
@@ -377,14 +380,14 @@ function SupportInsights({ data }) {
                   <div style={{ width: `${(r.resolved / max(data.byReporter)) * 100}%`, background: "#1e7a3c" }} />
                   <div style={{ width: `${((r.raised - r.resolved) / max(data.byReporter)) * 100}%`, background: "#e0b84c" }} />
                 </div>
-                <div style={{ width: 70, textAlign: "right", fontSize: 11, color: theme.gray }}>
-                  {r.resolved}/{r.raised} done
+                <div style={{ width: 70, textAlign: "end", fontSize: 11, color: theme.gray }}>
+                  {t("{done}/{total} done", { done: r.resolved, total: r.raised })}
                 </div>
               </div>
             ))}
           </Section>
 
-          <Section title="By month">
+          <Section title={t("By month")}>
             {data.byMonth.map(([k, v]) => <Bar key={k} name={k} value={v} of={max(data.byMonth)} tone="#4a90d9" />)}
           </Section>
         </div>

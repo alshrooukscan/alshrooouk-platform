@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { theme } from "../lib/theme";
 import LoginAsButton from "./LoginAsButton";
+import { useT } from "../lib/i18n";
 
 // Shared "generate login / reset password" UI for patient, doctor, and employee
 // cards. Each caller supplies its own onGenerate() that calls the right
@@ -10,6 +11,7 @@ import LoginAsButton from "./LoginAsButton";
 // fresh temp password), so this component only needs one action, labeled
 // differently depending on whether an account already exists.
 export default function PortalAccessCard({ hasAccount, username, defaultUsername, onGenerate, buildWhatsAppLink, loginAs }) {
+  const { t } = useT();
   const [usernameDraft, setUsernameDraft] = useState(username || defaultUsername || "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -36,27 +38,27 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
 
   return (
     <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-      <h3 style={{ color: theme.navy, marginTop: 0, marginBottom: 4 }}>Portal Access</h3>
+      <h3 style={{ color: theme.navy, marginTop: 0, marginBottom: 4 }}>{t("Portal Access")}</h3>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: 0, marginBottom: 16 }}>
-        The username and password used to log in to their own portal.
+        {t("The username and password used to log in to their own portal.")}
       </p>
 
       {result ? (
         <div style={{ background: "#e8f5e9", borderRadius: 8, padding: 16 }}>
           <p style={{ fontSize: 12, color: "#2e7d32", fontWeight: 700, margin: "0 0 10px" }}>
-            Share these now - the password won't be shown again after you leave this page.
+            {t("Share these now - the password won't be shown again after you leave this page.")}
           </p>
           <div style={{ fontSize: 14, marginBottom: 6 }}>
-            <strong>Username:</strong> {result.username}
+            <strong>{t("Username:")}</strong> {result.username}
           </div>
           <div style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <strong>Password:</strong>
+            <strong>{t("Password:")}</strong>
             <code style={{ background: "#fff", padding: "3px 10px", borderRadius: 4, fontSize: 14 }}>{result.password}</code>
             <button
               onClick={() => navigator.clipboard?.writeText(result.password)}
               style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid #cde5cf", background: "#fff", cursor: "pointer", color: theme.navy, fontWeight: 600 }}
             >
-              Copy
+              {t("Copy")}
             </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -67,41 +69,41 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
                 rel="noreferrer"
                 style={{ padding: "8px 16px", borderRadius: 8, background: "#25D366", color: "#fff", fontWeight: 700, textDecoration: "none", fontSize: 13 }}
               >
-                Send via WhatsApp
+                {t("Send via WhatsApp")}
               </a>
             )}
             <button
               onClick={() => setResult(null)}
               style={{ fontSize: 12, color: theme.gray, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
             >
-              Done
+              {t("Done")}
             </button>
           </div>
         </div>
       ) : hasAccount && confirmingReset ? (
         <div style={{ background: "#fff8e1", borderRadius: 8, padding: 16 }}>
           <p style={{ fontSize: 13, color: "#a97c00", fontWeight: 700, margin: "0 0 4px" }}>
-            Reset this password now?
+            {t("Reset this password now?")}
           </p>
           <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 14px" }}>
-            Any password shared with {username} earlier - including one from an old screenshot or message - will stop working immediately.
+            {t("Any password shared with {username} earlier - including one from an old screenshot or message - will stop working immediately.", { username })}
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setConfirmingReset(false)}
               style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 }}
             >
-              Cancel
+              {t("Cancel")}
             </button>
             <button onClick={handleGenerate} disabled={busy} style={btnStyle}>
-              {busy ? "Resetting..." : "Yes, Reset Now"}
+              {busy ? t("Resetting...") : t("Yes, Reset Now")}
             </button>
           </div>
         </div>
       ) : hasAccount ? (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 12, color: theme.gray }}>Username</div>
+            <div style={{ fontSize: 12, color: theme.gray }}>{t("Username")}</div>
             <div style={{ fontSize: 15, color: theme.navy, fontWeight: 700 }}>{username}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -109,7 +111,7 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
                 is when they want to check what this person actually sees. */}
             {loginAs && <LoginAsButton type={loginAs.type} id={loginAs.id} name={loginAs.name} size="small" />}
             <button onClick={() => setConfirmingReset(true)} disabled={busy} style={btnStyle}>
-              Reset Password
+              {t("Reset Password")}
             </button>
           </div>
         </div>
@@ -118,15 +120,15 @@ export default function PortalAccessCard({ hasAccount, username, defaultUsername
           <input
             value={usernameDraft}
             onChange={(e) => setUsernameDraft(e.target.value)}
-            placeholder="Username"
+            placeholder={t("Username")}
             style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
           />
           <button onClick={handleGenerate} disabled={busy} style={btnStyle}>
-            {busy ? "Generating..." : "Generate Login"}
+            {busy ? t("Generating...") : t("Generate Login")}
           </button>
         </div>
       )}
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8, marginBottom: 0 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8, marginBottom: 0 }}>{t(error)}</p>}
     </div>
   );
 }

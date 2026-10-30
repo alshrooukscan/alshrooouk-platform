@@ -5,8 +5,10 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { MODULES } from "../../../lib/modules";
+import { useT, tx } from "../../../lib/i18n";
 
 export default function SettingsPage() {
+  const { t } = useT();
   const { isAdmin, loading: permsLoading } = usePermissions();
   const [staffUsers, setStaffUsers] = useState([]);
   const [showAddUser, setShowAddUser] = useState(false);
@@ -32,17 +34,17 @@ export default function SettingsPage() {
   }
 
   async function promoteToAdmin(user) {
-    if (!confirm(`Make ${user.name} an admin? They will get full access to every page, bypassing the per-module permissions below.`)) return;
+    if (!confirm(tx("Make {name} an admin? They will get full access to every page, bypassing the per-module permissions below.", { name: user.name }))) return;
     await supabase.from("staff_profiles").update({ role: "admin" }).eq("id", user.id);
     loadAll();
   }
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 24 }}>Settings</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 24 }}>{t("Settings")}</h1>
 
       {!permsLoading && isAdmin && (
-        <Section title="Drive Folder Name Review" subtitle="1,765 patients found with a similarly-named, unlinked Drive folder. Review and link the real matches.">
+        <Section title={t("Drive Folder Name Review")} subtitle={t("1,765 patients found with a similarly-named, unlinked Drive folder. Review and link the real matches.")}>
           <Link
             href="/dashboard/settings/drive-review"
             style={{
@@ -56,13 +58,13 @@ export default function SettingsPage() {
               fontSize: 13,
             }}
           >
-            Review Matches
+            {t("Review Matches")}
           </Link>
         </Section>
       )}
 
       {!permsLoading && isAdmin && (
-        <Section title="Unmatched Scans" subtitle="Scans the CBCT gateway received but couldn't match to a visit automatically. Attach each one to the right patient by hand.">
+        <Section title={t("Unmatched Scans")} subtitle={t("Scans the CBCT gateway received but couldn't match to a visit automatically. Attach each one to the right patient by hand.")}>
           <Link
             href="/dashboard/settings/unmatched-scans"
             style={{
@@ -76,21 +78,21 @@ export default function SettingsPage() {
               fontSize: 13,
             }}
           >
-            Review Unmatched Scans
+            {t("Review Unmatched Scans")}
           </Link>
         </Section>
       )}
 
       {!permsLoading && isAdmin && (
-        <Section title="Staff Users" subtitle="Admin only. Control which parts of the system each staff member can access.">
+        <Section title={t("Staff Users")} subtitle={t("Admin only. Control which parts of the system each staff member can access.")}>
           {staffUsers.map((u) => (
             <div key={u.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div>
                   <span style={{ color: theme.navy, fontWeight: 700 }}>{u.name}</span>
-                  <span style={{ color: theme.gray, fontSize: 12, marginLeft: 8 }}>{u.email}</span>
+                  <span style={{ color: theme.gray, fontSize: 12, marginInlineStart: 8 }}>{u.email}</span>
                   {u.role === "admin" && (
-                    <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: theme.goldLight, color: theme.navy, fontWeight: 700 }}>ADMIN</span>
+                    <span style={{ marginInlineStart: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: theme.goldLight, color: theme.navy, fontWeight: 700 }}>{t("ADMIN")}</span>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -99,11 +101,11 @@ export default function SettingsPage() {
                       onClick={() => promoteToAdmin(u)}
                       style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}
                     >
-                      Promote to Admin
+                      {t("Promote to Admin")}
                     </button>
                   )}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                    {u.is_active ? "Active" : "Disabled"}
+                    {u.is_active ? t("Active") : t("Disabled")}
                     <input type="checkbox" checked={u.is_active} onChange={() => toggleUserActive(u)} />
                   </label>
                 </div>
@@ -124,14 +126,14 @@ export default function SettingsPage() {
                         cursor: "pointer",
                       }}
                     >
-                      {m.label}
+                      {t(m.label)}
                     </button>
                   ))}
                 </div>
               )}
             </div>
           ))}
-          <button onClick={() => setShowAddUser(true)} style={{ ...smallPrimary, marginTop: 12 }}>+ Add Staff User</button>
+          <button onClick={() => setShowAddUser(true)} style={{ ...smallPrimary, marginTop: 12 }}>{t("+ Add Staff User")}</button>
         </Section>
       )}
 
@@ -141,6 +143,7 @@ export default function SettingsPage() {
 }
 
 function AddUserModal({ onClose, onSaved }) {
+  const { t } = useT();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [permissions, setPermissions] = useState({});
@@ -154,7 +157,7 @@ function AddUserModal({ onClose, onSaved }) {
 
   async function handleSave() {
     if (!name || !email) {
-      setError("Name and email are required.");
+      setError(tx("Name and email are required."));
       return;
     }
     setSaving(true);
@@ -177,24 +180,24 @@ function AddUserModal({ onClose, onSaved }) {
 
   if (result) {
     return (
-      <Modal title="Staff User Created" onClose={onClose}>
-        <p style={{ fontSize: 13, color: theme.gray }}>Share these credentials with {name}. This password is shown only once.</p>
+      <Modal title={t("Staff User Created")} onClose={onClose}>
+        <p style={{ fontSize: 13, color: theme.gray }}>{t("Share these credentials with {name}. This password is shown only once.", { name })}</p>
         <div style={{ background: "#faf9fb", borderRadius: 8, padding: 12, fontSize: 13, marginBottom: 16 }}>
-          <div><strong>Email:</strong> {result.email}</div>
-          <div><strong>Temporary Password:</strong> {result.tempPassword}</div>
+          <div><strong>{t("Email:")}</strong> {result.email}</div>
+          <div><strong>{t("Temporary Password:")}</strong> {result.tempPassword}</div>
         </div>
-        <button onClick={onClose} style={primaryBtn}>Done</button>
+        <button onClick={onClose} style={primaryBtn}>{t("Done")}</button>
       </Modal>
     );
   }
 
   return (
-    <Modal title="Add Staff User" onClose={onClose}>
-      <FieldLabel>Full Name</FieldLabel>
+    <Modal title={t("Add Staff User")} onClose={onClose}>
+      <FieldLabel>{t("Full Name")}</FieldLabel>
       <input style={inp} value={name} onChange={(e) => setName(e.target.value)} />
-      <FieldLabel>Email</FieldLabel>
+      <FieldLabel>{t("Email")}</FieldLabel>
       <input style={inp} value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
-      <FieldLabel>Access Permissions</FieldLabel>
+      <FieldLabel>{t("Access Permissions")}</FieldLabel>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
         {MODULES.map((m) => (
           <button
@@ -211,12 +214,12 @@ function AddUserModal({ onClose, onSaved }) {
               cursor: "pointer",
             }}
           >
-            {m.label}
+            {t(m.label)}
           </button>
         ))}
       </div>
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
-      <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Creating..." : "Create User"}</button>
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
+      <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? t("Creating...") : t("Create User")}</button>
     </Modal>
   );
 }

@@ -6,6 +6,8 @@ import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { usePermissions } from "../lib/usePermissions";
 import { useAutoRefresh } from "../lib/useAutoRefresh";
+import { useT, tx } from "../lib/i18n";
+import LanguageToggle from "../lib/i18n/LanguageToggle";
 import {
   LayoutDashboard,
   ScanLine,
@@ -127,6 +129,7 @@ const NAV = [
 ];
 
 export default function Sidebar() {
+  const { t, tCode, isAr } = useT();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -171,7 +174,7 @@ export default function Sidebar() {
     });
     setSwitchingPortal(false);
     if (!res.ok) {
-      alert("Could not open your employee dashboard.");
+      alert(tx("Could not open your employee dashboard."));
       return;
     }
     window.open("/portal/employee", "_blank");
@@ -246,12 +249,14 @@ export default function Sidebar() {
       {!isNarrowScreen && (
         <button
           onClick={toggleCollapse}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
           style={{
             position: "absolute",
             top: 18,
-            right: collapsed ? "50%" : 14,
-            transform: collapsed ? "translateX(50%)" : "none",
+            insetInlineEnd: collapsed ? "50%" : 14,
+            // Centred when collapsed: insetInlineEnd 50% is right:50% in English
+            // (shift +50%) and left:50% in Arabic (shift -50%).
+            transform: collapsed ? (isAr ? "translateX(-50%)" : "translateX(50%)") : "none",
             background: "rgba(255,255,255,0.08)",
             border: "1px solid rgba(255,255,255,0.15)",
             color: "#fff",
@@ -266,11 +271,13 @@ export default function Sidebar() {
             zIndex: 2,
           }}
         >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          {/* Points the way the sidebar will move: toward its own edge to collapse,
+              away from it to expand. In Arabic the sidebar sits on the right. */}
+          {(collapsed !== isAr) ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       )}
 
-      <div style={{ marginBottom: collapsed ? 20 : 32, marginTop: collapsed ? 28 : 0, paddingLeft: collapsed ? 0 : 8, textAlign: collapsed ? "center" : "left" }}>
+      <div style={{ marginBottom: collapsed ? 20 : 32, marginTop: collapsed ? 28 : 0, paddingInlineStart: collapsed ? 0 : 8, textAlign: collapsed ? "center" : "start" }}>
         <img src="/logo-mark.png" alt="Al Shrooouk" style={{ height: collapsed ? 36 : 44, width: "auto", display: "block", margin: collapsed ? "0 auto" : "0 0 6px 0" }} />
         {!collapsed && (
           <>
@@ -289,7 +296,7 @@ export default function Sidebar() {
       {profile && !collapsed && (
         <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px", marginBottom: 20 }}>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
-            Signed in as
+            {t("Signed in as")}
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginTop: 2 }}>{profile.name}</div>
           <div
@@ -306,7 +313,7 @@ export default function Sidebar() {
               color: profile.role === "admin" ? theme.navy : "#fff",
             }}
           >
-            {profile.role}
+            {tCode(profile.role)}
           </div>
 
           {/* Signing out belongs beside the name of the account being signed
@@ -315,7 +322,7 @@ export default function Sidebar() {
               somebody else logged in is the whole problem Ahmed raised. */}
           <button
             onClick={handleLogout}
-            title="Log Out"
+            title={t("Log Out")}
             style={{
               marginTop: 10,
               width: "100%",
@@ -329,9 +336,10 @@ export default function Sidebar() {
             }}
           >
             <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <LogOut size={13} /> Log Out
+              <LogOut size={13} /> {t("Log Out")}
             </span>
           </button>
+          <LanguageToggle style={{ marginTop: 8, width: "100%", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", fontSize: 12 }} />
         </div>
       )}
 
@@ -340,7 +348,7 @@ export default function Sidebar() {
           answer on screen, and the full name is in the tooltip. */}
       {profile && collapsed && (
         <div
-          title={`Signed in as ${profile.name} (${profile.role})`}
+          title={t("Signed in as {name} ({role})", { name: profile.name, role: tCode(profile.role) })}
           style={{
             width: 34, height: 34, borderRadius: 999, marginBottom: 16,
             background: profile.role === "admin" ? theme.gold : "rgba(255,255,255,0.15)",
@@ -364,7 +372,7 @@ export default function Sidebar() {
         // the foot of an icon strip.
         <button
           onClick={handleLogout}
-          title="Log Out"
+          title={t("Log Out")}
           style={{
             background: "transparent",
             border: "1px solid rgba(255,255,255,0.2)",
@@ -378,6 +386,9 @@ export default function Sidebar() {
         >
           <LogOut size={16} />
         </button>
+      )}
+      {profile && collapsed && (
+        <LanguageToggle compact style={{ marginBottom: 16, width: 44, padding: "4px 2px", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", fontSize: 10 }} />
       )}
 
       <nav style={{ flex: 1, width: "100%" }}>
@@ -404,7 +415,7 @@ export default function Sidebar() {
                   }}
                 >
                   <item.icon size={13} strokeWidth={2.5} />
-                  <span style={{ flex: 1 }}>{item.label}</span>
+                  <span style={{ flex: 1 }}>{t(item.label)}</span>
                   {/* Rolled up from the group's children, so work inside a
                       group is visible without reading every entry under it. */}
                   {groupCount(item) > 0 && (
@@ -432,7 +443,7 @@ export default function Sidebar() {
         <button
           onClick={handleOpenEmployeeDashboard}
           disabled={switchingPortal}
-          title="Open your own employee portal in a new tab"
+          title={t("Open your own employee portal in a new tab")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -451,7 +462,7 @@ export default function Sidebar() {
           }}
         >
           <ExternalLink size={13} />
-          {switchingPortal ? "Opening..." : "Employee Dashboard"}
+          {switchingPortal ? t("Opening...") : t("Employee Dashboard")}
         </button>
       )}
 
@@ -462,7 +473,7 @@ export default function Sidebar() {
       {!profile && (
         <button
           onClick={handleLogout}
-          title="Log Out"
+          title={t("Log Out")}
           style={{
             background: "transparent",
             border: "1px solid rgba(255,255,255,0.2)",
@@ -476,21 +487,25 @@ export default function Sidebar() {
         >
           {collapsed ? <LogOut size={16} /> : (
             <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <LogOut size={14} /> Log Out
+              <LogOut size={14} /> {t("Log Out")}
             </span>
           )}
         </button>
+      )}
+      {!profile && (
+        <LanguageToggle compact={collapsed} style={{ marginTop: 8, width: collapsed ? 44 : "100%", padding: collapsed ? "4px 2px" : "8px 12px", fontSize: collapsed ? 10 : 12, color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} />
       )}
     </aside>
   );
 }
 
 function NavLink({ item, active, collapsed, indent, count = 0 }) {
+  const { t } = useT();
   const hasWork = count > 0;
   return (
     <Link
       href={item.href}
-      title={item.label}
+      title={t(item.label)}
       style={{
         display: "flex",
         alignItems: "center",
@@ -498,7 +513,7 @@ function NavLink({ item, active, collapsed, indent, count = 0 }) {
         gap: 10,
         padding: collapsed ? "12px 0" : "9px 12px",
         marginBottom: 3,
-        marginLeft: indent ? 10 : 0,
+        marginInlineStart: indent ? 10 : 0,
         borderRadius: 8,
         textDecoration: "none",
         color: active ? theme.navy : "#e8e6f0",
@@ -517,7 +532,7 @@ function NavLink({ item, active, collapsed, indent, count = 0 }) {
         {collapsed && hasWork && (
           <span
             style={{
-              position: "absolute", top: -5, right: -7, minWidth: 15, height: 15,
+              position: "absolute", top: -5, insetInlineEnd: -7, minWidth: 15, height: 15,
               padding: "0 3px", borderRadius: 999, background: "#ba1a1a", color: "#fff",
               fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center",
               justifyContent: "center", lineHeight: 1,
@@ -527,7 +542,7 @@ function NavLink({ item, active, collapsed, indent, count = 0 }) {
           </span>
         )}
       </span>
-      {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+      {!collapsed && <span style={{ flex: 1 }}>{t(item.label)}</span>}
       {!collapsed && hasWork && (
         <span
           style={{

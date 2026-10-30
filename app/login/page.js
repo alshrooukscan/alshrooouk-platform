@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
+import { useT } from "../../lib/i18n";
+import LanguageToggle from "../../lib/i18n/LanguageToggle";
 
 // The one and only login page. Staff (Supabase Auth), and patients/doctors/
 // employees (the custom portal username/password system) are two genuinely
@@ -10,6 +12,7 @@ import { theme } from "../../lib/theme";
 // ONE form - this tries staff auth first, and falls back to the portal
 // system if that doesn't match, routing to the right place either way.
 export default function LoginPage() {
+  const { t, isAr } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -93,15 +96,17 @@ export default function LoginPage() {
           padding: 40,
           width: 360,
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
+          position: "relative",
         }}
       >
+        <LanguageToggle compact style={{ position: "absolute", top: 14, insetInlineEnd: 14, color: theme.navy }} />
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <img src="/logo-full.png" alt="Al Shrooouk Scan & Lab" style={{ height: 90, width: "auto", margin: "0 auto 8px" }} />
-          <h1 style={{ fontSize: 20, color: theme.navy, margin: "8px 0 4px" }}>Log In</h1>
-          <p style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>Staff, patients, doctors, and employees all log in here.</p>
+          <h1 style={{ fontSize: 20, color: theme.navy, margin: "8px 0 4px" }}>{t("Log In")}</h1>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{t("Staff, patients, doctors, and employees all log in here.")}</p>
         </div>
 
-        <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>Email or Username</label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{t("Email or Username")}</label>
         <input
           type="text"
           value={email}
@@ -111,26 +116,26 @@ export default function LoginPage() {
           style={inputStyle}
         />
 
-        <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>Password</label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{t("Password")}</label>
         <div style={{ position: "relative" }}>
           <input
             type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            style={{ ...inputStyle, paddingRight: 40 }}
+            style={{ ...inputStyle, ...(isAr ? { paddingLeft: 40 } : { paddingRight: 40 }) }}
           />
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-            style={{ position: "absolute", right: 10, top: 8, background: "none", border: "none", cursor: "pointer", padding: 4, color: theme.gray }}
+            aria-label={showPassword ? t("Hide password") : t("Show password")}
+            style={{ position: "absolute", insetInlineEnd: 10, top: 8, background: "none", border: "none", cursor: "pointer", padding: 4, color: theme.gray }}
           >
             {showPassword ? <EyeOffIcon /> : <EyeIcon />}
           </button>
         </div>
 
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
         <button
           type="submit"
@@ -147,7 +152,7 @@ export default function LoginPage() {
             cursor: "pointer",
           }}
         >
-          {loading ? "Logging in..." : "Log In"}
+          {loading ? t("Logging in...") : t("Log In")}
         </button>
       </form>
     </div>
