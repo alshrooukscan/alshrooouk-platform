@@ -89,6 +89,26 @@ export default function DashboardLayout({ children }) {
     return () => sub.subscription.unsubscribe();
   }, [router]);
 
+  // Employees start at Action Center (30 Oct 2026). Whatever way they come in
+  // (staff login, the portal's "Open staff dashboard", a magic link), the
+  // first time the dashboard opens in a session a non-admin is taken to Action
+  // Center, where their own work is. Done here rather than in each link, so no
+  // new address has to be added to Supabase's allowed redirects. After that
+  // first landing, choosing Dashboard in the sidebar opens it as normal.
+  // Read once, when the layout first mounts, so it holds steady while the
+  // redirect happens.
+  const [isFirstLanding] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return !sessionStorage.getItem("dash_landed"); } catch { return false; }
+  });
+  const sendToActionCenter = ready && !permsLoading && profile && profile.role !== "admin" && pathname === "/dashboard" && isFirstLanding;
+  useEffect(() => {
+    if (!ready || permsLoading || !profile) return;
+    try { if (!sessionStorage.getItem("dash_landed")) sessionStorage.setItem("dash_landed", "1"); } catch {}
+    if (sendToActionCenter) router.replace("/dashboard/action-center");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, permsLoading, profile]);
+
   const required = permissionForPath(pathname);
   const adminOnly = ADMIN_ROUTES.some((p) => pathname.startsWith(p));
   const lacksRequired = required?.anyOf
@@ -96,7 +116,7 @@ export default function DashboardLayout({ children }) {
     : !!required && !can(required);
   const denied = ready && !permsLoading && (lacksRequired || (adminOnly && profile?.role !== "admin"));
 
-  if (!ready || permsLoading) {
+  if (!ready || permsLoading || sendToActionCenter) {
     return <Loading />;
   }
 
