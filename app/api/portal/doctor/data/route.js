@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
+import { buildAccountEntries } from "../../../../../lib/arStatement";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
 
@@ -79,24 +80,31 @@ export async function GET() {
     }
   }
 
-  for (const owner of owners) {
-    if (!owner.id) continue;
-    const { data: ledger } = await supabaseAdmin
-      .from("customer_ar_ledger")
-      .select("direction, amount")
-      .eq("customer_type", owner.type)
-      .eq("customer_id", owner.id);
-    clinicOwes += (ledger || []).reduce(
-      (sum, l) => sum + (l.direction === "charge" ? Number(l.amount) : -Number(l.amount)),
-      0
-    );
-  }
+  // What the balance is made of: every sale and order with its items at the
+  // price charged, every payment and return, oldest first. Dr. Amr Mansour
+  // (clinic 358, 30 Oct 2026) saw "owes 415" over an empty Supply Orders tab -
+  // the 415 came from items picked up at reception, which that tab never shows.
+  let account = { entries: [], totals: { charged: 0, paid: 0, balance: 0 } };
+  try {
+    account = await buildAccountEntries(owners.filter((o) => o.id));
+  } catch { /* the balance below still shows */ }
+  clinicOwes = account.totals.balance;
+  // Only what the doctor needs, newest stretch first: everything since the
+  // account was last clear, plus up to 40 earlier lines for the full history.
+  let openFrom = 0;
+  account.entries.forEach((e, i) => { if (e.running <= 0.005) openFrom = i + 1; });
+  const trim = (e) => ({ id: e.id, date: e.date, brand: e.brand, kind: e.kind, label: e.label, receipt_no: e.receipt_no,
+    payment_method: e.payment_method, note: e.note, amount: e.amount, lines: e.lines, difference: e.difference, running: e.running });
+  const accountOpen = account.entries.slice(openFrom).map(trim);
+  const accountHistory = account.entries.slice(Math.max(0, openFrom - 40), openFrom).map(trim);
 
   return NextResponse.json({
     doctor,
     visits: visits || [],
     clinicOwes: Math.round(clinicOwes * 100) / 100,
     clinicName,
+    accountOpen,
+    accountHistory,
     mustChangePassword: session.impersonated ? false : !!doctor?.must_change_password,
     impersonatedBy: session.impersonatedBy || null,
   });

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import DoctorAccount from "../../../components/DoctorAccount";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
 import { formatVisitDate, doctorLabel } from "../../../lib/format";
@@ -176,6 +177,9 @@ export default function DoctorPortalPage() {
               {Number(data.clinicOwes).toLocaleString()} EGP
             </div>
           </div>
+        )}
+        {Number(data.clinicOwes || 0) > 0 && (
+          <DoctorAccount open={data.accountOpen || []} history={data.accountHistory || []} balance={data.clinicOwes} />
         )}
 
         {/* Patients and supply orders are two different jobs a doctor comes
