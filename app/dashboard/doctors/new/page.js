@@ -8,8 +8,10 @@ import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { doctorPortalWhatsAppLink } from "../../../../lib/whatsapp";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 import { APP_URL } from "../../../../lib/appUrl";
+import { useT, tx } from "../../../../lib/i18n";
 
 export default function NewDoctorPage() {
+  const { t, isAr } = useT();
   const router = useRouter();
   const [branches, setBranches] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -49,7 +51,7 @@ export default function NewDoctorPage() {
     e.preventDefault();
     setError("");
     if (!form.name || !form.clinic_code) {
-      setError("Name and Clinic Code are required.");
+      setError(tx("Name and Clinic Code are required."));
       return;
     }
     setSaving(true);
@@ -73,7 +75,7 @@ export default function NewDoctorPage() {
     if (err) {
       setSaving(false);
       if (err.code === "23505") {
-        setError(`A doctor with Clinic Code "${form.clinic_code}" and this exact name is already registered. If this is a different doctor sharing a clinic code, that's fine, just make sure the name differs.`);
+        setError(tx("A doctor with Clinic Code \"{code}\" and this exact name is already registered. If this is a different doctor sharing a clinic code, that's fine, just make sure the name differs.", { code: form.clinic_code }));
       } else {
         setError(err.message);
       }
@@ -107,76 +109,76 @@ export default function NewDoctorPage() {
               : null
           }
           onContinue={() => router.push(`/dashboard/doctors/${newDoctorId}`)}
-          continueLabel="Continue to Profile"
+          continueLabel={t("Continue to Profile")}
         />
       )}
-      <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>DOCTORS DIRECTORY</p>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Register New Physician</h1>
+      <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>{t("DOCTORS DIRECTORY")}</p>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Register New Physician")}</h1>
       <p style={{ color: theme.gray, marginBottom: 24 }}>
-        This profile will be used for lab result delivery and referral tracking.
+        {t("This profile will be used for lab result delivery and referral tracking.")}
       </p>
 
       <form onSubmit={handleSubmit}>
-        <Section title="Physician Profile">
-          <Field label="Full Name (including titles)">
-            <input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., Dr. Ahmed Youssef" />
+        <Section title={t("Physician Profile")}>
+          <Field label={t("Full Name (including titles)")}>
+            <input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("e.g., Dr. Ahmed Youssef")} />
           </Field>
           <Row>
-            <Field label="Primary Contact Number">
+            <Field label={t("Primary Contact Number")}>
               <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </Field>
-            <Field label="Second Contact Number (optional)">
+            <Field label={t("Second Contact Number (optional)")}>
               <input style={inp} value={form.phone_2} onChange={(e) => setForm({ ...form, phone_2: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </Field>
           </Row>
-          <Field label="Email Address">
+          <Field label={t("Email Address")}>
             <input style={inp} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="doctor@clinic.com" />
           </Field>
         </Section>
 
-        <Section title="Practice Information">
-          <Field label="Clinic / Hospital Name">
-            <input style={inp} value={form.clinic_name} onChange={(e) => setForm({ ...form, clinic_name: e.target.value })} placeholder="e.g., Al Hayat Medical Center" />
+        <Section title={t("Practice Information")}>
+          <Field label={t("Clinic / Hospital Name")}>
+            <input style={inp} value={form.clinic_name} onChange={(e) => setForm({ ...form, clinic_name: e.target.value })} placeholder={t("e.g., Al Hayat Medical Center")} />
           </Field>
           <Row>
-            <Field label="Unique Clinic Code">
-              <input style={inp} value={form.clinic_code} onChange={(e) => setForm({ ...form, clinic_code: e.target.value })} placeholder="e.g., 1021" />
+            <Field label={t("Unique Clinic Code")}>
+              <input style={inp} value={form.clinic_code} onChange={(e) => setForm({ ...form, clinic_code: e.target.value })} placeholder={t("e.g., 1021")} />
               {existingDoctors.length > 0 && (
                 <div style={{ background: "#fff8e1", border: "1px solid #ffe0b2", borderRadius: 8, padding: 10, marginTop: -8, marginBottom: 16, fontSize: 12 }}>
                   <span style={{ color: "#a97c00", fontWeight: 600 }}>
-                    Already registered with this clinic code: {existingDoctors.map((d) => `${d.name} (${d.clinic_name || "—"})`).join(", ")}.
+                    {t("Already registered with this clinic code: {list}.", { list: existingDoctors.map((d) => `${d.name} (${d.clinic_name || "—"})`).join(", ") })}
                   </span>{" "}
                   {existingDoctors.map((d) => (
-                    <a key={d.id} href={`/dashboard/doctors/${d.id}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, fontWeight: 700, textDecoration: "none", marginRight: 10 }}>
-                      Open {d.name}'s profile →
+                    <a key={d.id} href={`/dashboard/doctors/${d.id}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, fontWeight: 700, textDecoration: "none", marginInlineEnd: 10 }}>
+                      {t("Open {name}'s profile", { name: d.name })} {isAr ? "←" : "→"}
                     </a>
                   ))}
-                  <div style={{ color: theme.gray, marginTop: 4 }}>If this is a genuinely different doctor, that's fine, just make sure the name is different too.</div>
+                  <div style={{ color: theme.gray, marginTop: 4 }}>{t("If this is a genuinely different doctor, that's fine, just make sure the name is different too.")}</div>
                 </div>
               )}
             </Field>
-            <Field label="Primary Associated Branch">
+            <Field label={t("Primary Associated Branch")}>
               <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
-                <option value="">Select branch</option>
+                <option value="">{t("Select branch")}</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </Field>
           </Row>
-          <Field label="Discount %">
+          <Field label={t("Discount %")}>
             <input style={inp} value={form.discount_pct} onChange={(e) => setForm({ ...form, discount_pct: e.target.value })} placeholder="0" />
           </Field>
         </Section>
 
-        {error && <p style={{ color: "#ba1a1a", marginBottom: 12 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", marginBottom: 12 }}>{t(error)}</p>}
 
         <button
           type="submit"
           disabled={saving}
           style={{ padding: "14px 32px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}
         >
-          {saving ? "Registering..." : "Register Doctor"}
+          {saving ? t("Registering...") : t("Register Doctor")}
         </button>
       </form>
     </div>

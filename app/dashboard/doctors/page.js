@@ -7,8 +7,10 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 export default function DoctorsPage() {
+  const { t } = useT();
   const { isAdmin } = usePermissions();
   useAutoRefresh(["doctors", "visits"], () => { load(); });
   const [doctors, setDoctors] = useState([]);
@@ -106,23 +108,23 @@ export default function DoctorsPage() {
     const result = await res.json();
     setLoginAsBusy(null);
     if (result.redirect) window.open(result.redirect, "_blank");
-    else alert(result.error || "Could not log in as this doctor");
+    else alert(result.error ? tx(result.error) : tx("Could not log in as this doctor"));
   }
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>NETWORK MANAGEMENT</p>
-          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Referring Doctors</h1>
-          <p style={{ color: theme.gray, margin: 0 }}>Manage your network of affiliated clinics and referring physicians.</p>
+          <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>{t("NETWORK MANAGEMENT")}</p>
+          <h1 style={{ color: theme.navy, margin: "4px 0" }}>{t("Referring Doctors")}</h1>
+          <p style={{ color: theme.gray, margin: 0 }}>{t("Manage your network of affiliated clinics and referring physicians.")}</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={() => exportToCsv("doctors.csv", filtered.map((d) => ({ Name: d.name, "Clinic Code": d.clinic_code, "Clinic Name": d.clinic_name || "", Phone: d.phone || "", "Has Drive Folder": d.drive_folder_id ? "Yes" : "No" })))}
             style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 14 }}
           >
-            Export CSV
+            {t("Export CSV")}
           </button>
           <Link
             href="/dashboard/doctors/new"
@@ -137,7 +139,7 @@ export default function DoctorsPage() {
               whiteSpace: "nowrap",
             }}
           >
-            + New Doctor
+            {t("+ New Doctor")}
           </Link>
         </div>
       </div>
@@ -145,11 +147,11 @@ export default function DoctorsPage() {
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search by name, clinic code, or phone..."
+        placeholder={t("Search by name, clinic code, or phone...")}
         style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, marginBottom: 20, boxSizing: "border-box" }}
       />
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
         {filtered.map((d) => (
@@ -174,12 +176,12 @@ export default function DoctorsPage() {
                     shout louder than a referral relationship going quiet. */}
                 {Number(owed[d.clinic_code] || 0) > 0 && (
                   <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00", fontWeight: 700, whiteSpace: "nowrap" }}>
-                    Owes {Number(owed[d.clinic_code]).toLocaleString()} EGP
+                    {t("Owes {amount} EGP", { amount: Number(owed[d.clinic_code]).toLocaleString() })}
                   </span>
                 )}
                 {engagement[d.id] && (
                   <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a", fontWeight: 700, whiteSpace: "nowrap" }}>
-                    Low Engagement
+                    {t("Low Engagement")}
                   </span>
                 )}
               </div>
@@ -187,8 +189,8 @@ export default function DoctorsPage() {
             <div style={{ fontSize: 12, color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{d.clinic_code}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>{d.clinic_name}</div>
             <div style={{ fontSize: 13, color: theme.gray }}>
-              {formatPhone(d.phone)}
-              {d.phone_2 && <span> · {formatPhone(d.phone_2)}</span>}
+              <Ltr>{formatPhone(d.phone)}</Ltr>
+              {d.phone_2 && <span> · <Ltr>{formatPhone(d.phone_2)}</Ltr></span>}
             </div>
             {isAdmin && (
               <button
@@ -196,7 +198,7 @@ export default function DoctorsPage() {
                 disabled={loginAsBusy === d.id}
                 style={{ marginTop: 10, padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
               >
-                {loginAsBusy === d.id ? "..." : "Login As"}
+                {loginAsBusy === d.id ? "..." : t("Login As")}
               </button>
             )}
           </Link>
@@ -205,7 +207,7 @@ export default function DoctorsPage() {
 
       {!loading && filtered.length === 0 && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, color: theme.gray, textAlign: "center" }}>
-          No doctors yet. Register the first one above.
+          {t("No doctors yet. Register the first one above.")}
         </div>
       )}
     </div>

@@ -11,6 +11,7 @@ import PortalAccessCard from "../../../../components/PortalAccessCard";
 import ClientReportPricing from "../../../../components/ClientReportPricing";
 import ClientAccountCard from "../../../../components/ClientAccountCard";
 import { APP_URL } from "../../../../lib/appUrl";
+import { useT, tx, Ltr } from "../../../../lib/i18n";
 import {
   clientPortalWhatsAppLink,
   clientPortalLinkWhatsAppLink,
@@ -23,6 +24,7 @@ import {
 // on this screen at all. This page gives a client the same handling a doctor
 // and a patient already have.
 export default function ClientDetailPage() {
+  const { t } = useT();
   const { id } = useParams();
   const router = useRouter();
   const [client, setClient] = useState(null);
@@ -46,14 +48,14 @@ export default function ClientDetailPage() {
 
   async function saveEdits() {
     setSaving(true); setError("");
-    if (!form.name.trim()) { setError("A client needs a name."); setSaving(false); return; }
+    if (!form.name.trim()) { setError(tx("A client needs a name.")); setSaving(false); return; }
     const { error: e } = await supabase
       .from("clients")
       .update({ name: form.name.trim(), contact_phone: form.contact_phone.trim() || null, contact_email: form.contact_email.trim() || null })
       .eq("id", id);
     setSaving(false);
     if (e) { setError(e.message); return; }
-    setEditing(false); setNotice("Saved.");
+    setEditing(false); setNotice(tx("Saved."));
     load();
   }
 
@@ -71,20 +73,20 @@ export default function ClientDetailPage() {
     if (upErr) { setError(upErr.message); setUploading(false); return; }
     const { data: pub } = supabase.storage.from("client-logos").getPublicUrl(path);
     await supabase.from("clients").update({ logo_url: pub.publicUrl }).eq("id", client.id);
-    setUploading(false); setNotice("Logo updated. It appears on their portal.");
+    setUploading(false); setNotice(tx("Logo updated. It appears on their portal."));
     load();
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!client) return <p style={{ color: theme.gray }}>This client could not be found.</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!client) return <p style={{ color: theme.gray }}>{t("This client could not be found.")}</p>;
 
   const portalUrl = `${APP_URL}/portal`;
 
   return (
     <div>
       <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>
-        <Link href="/dashboard" style={{ color: theme.gray }}>Dashboard</Link> &gt;{" "}
-        <Link href="/dashboard/clients" style={{ color: theme.gray }}>Clients</Link> &gt; {client.name}
+        <Link href="/dashboard" style={{ color: theme.gray }}>{t("Dashboard")}</Link> &gt;{" "}
+        <Link href="/dashboard/clients" style={{ color: theme.gray }}>{t("Clients")}</Link> &gt; {client.name}
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18, flexWrap: "wrap" }}>
@@ -92,74 +94,74 @@ export default function ClientDetailPage() {
           <img src={client.logo_url} alt="" style={{ height: 52, width: 52, objectFit: "contain", borderRadius: 10, border: "1px solid #eee", background: "#fff" }} />
         ) : (
           <div style={{ height: 52, width: 52, borderRadius: 10, border: "1px dashed #ddd", display: "flex", alignItems: "center", justifyContent: "center", color: theme.gray, fontSize: 10, textAlign: "center" }}>
-            no logo
+            {t("no logo")}
           </div>
         )}
         <div style={{ flex: 1, minWidth: 200 }}>
           <h1 style={{ color: theme.navy, margin: 0 }}>{client.name}</h1>
           <p style={{ color: theme.gray, margin: "2px 0 0", fontSize: 13 }}>
-            {client.contact_phone || "no phone"}
-            {" · "}Username: {client.username || "no login yet"}
+            {client.contact_phone ? <Ltr>{client.contact_phone}</Ltr> : t("no phone")}
+            {" · "}{t("Username:")} {client.username || t("no login yet")}
           </p>
         </div>
         {/* Full size: it was a small pale button at the far edge and easy to miss. */}
         {client.username && <LoginAsButton type="client" id={client.id} name={client.name} />}
       </div>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
-      {notice && <p style={{ color: "#1e7a3c", fontSize: 13 }}>{notice}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
+      {notice && <p style={{ color: "#1e7a3c", fontSize: 13 }}>{t(notice)}</p>}
 
       <ClientAccountCard client={client} />
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <h3 style={{ color: theme.navy, margin: 0, fontSize: 15 }}>Details</h3>
+          <h3 style={{ color: theme.navy, margin: 0, fontSize: 15 }}>{t("Details")}</h3>
           {!editing && (
-            <button onClick={() => setEditing(true)} style={btn("#fff", theme.navy, true)}>Edit</button>
+            <button onClick={() => setEditing(true)} style={btn("#fff", theme.navy, true)}>{t("Edit")}</button>
           )}
         </div>
 
         {!editing ? (
           <div style={{ fontSize: 13, color: theme.navy, display: "grid", gap: 6 }}>
-            <div><span style={{ color: theme.gray }}>Name: </span>{client.name}</div>
-            <div><span style={{ color: theme.gray }}>Phone: </span>{client.contact_phone || "not recorded"}</div>
-            <div><span style={{ color: theme.gray }}>Email: </span>{client.contact_email || "not recorded"}</div>
+            <div><span style={{ color: theme.gray }}>{t("Name:")} </span>{client.name}</div>
+            <div><span style={{ color: theme.gray }}>{t("Phone:")} </span>{client.contact_phone ? <Ltr>{client.contact_phone}</Ltr> : t("not recorded")}</div>
+            <div><span style={{ color: theme.gray }}>{t("Email:")} </span>{client.contact_email ? <Ltr>{client.contact_email}</Ltr> : t("not recorded")}</div>
           </div>
         ) : (
           <div>
-            <label style={lbl}>Name</label>
+            <label style={lbl}>{t("Name")}</label>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inp} />
-            <label style={lbl}>Phone</label>
+            <label style={lbl}>{t("Phone")}</label>
             <input value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} style={inp} />
-            <label style={lbl}>Email</label>
+            <label style={lbl}>{t("Email")}</label>
             <input value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} style={inp} />
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-              <button onClick={saveEdits} disabled={saving} style={btn(theme.navy, "#fff")}>{saving ? "Saving..." : "Save"}</button>
-              <button onClick={() => { setEditing(false); setError(""); }} style={btn("#fff", theme.navy, true)}>Cancel</button>
+              <button onClick={saveEdits} disabled={saving} style={btn(theme.navy, "#fff")}>{saving ? t("Saving...") : t("Save")}</button>
+              <button onClick={() => { setEditing(false); setError(""); }} style={btn("#fff", theme.navy, true)}>{t("Cancel")}</button>
             </div>
           </div>
         )}
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 16 }}>
-        <h3 style={{ color: theme.navy, margin: "0 0 4px", fontSize: 15 }}>Their logo</h3>
+        <h3 style={{ color: theme.navy, margin: "0 0 4px", fontSize: 15 }}>{t("Their logo")}</h3>
         <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 12px" }}>
-          Shown on this client&apos;s portal in place of ours. Their patients see that page, so it should carry their name, not ours.
+          {t("Shown on this client's portal in place of ours. Their patients see that page, so it should carry their name, not ours.")}
         </p>
         {/* The current logo stays on show. The file picker only ever said "No
             file chosen", which read as if the logo had not been kept. */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           {client.logo_url ? (
-            <img src={client.logo_url} alt={`${client.name} logo`} style={{ height: 88, width: 88, objectFit: "contain", borderRadius: 12, border: "1px solid #eee", background: "#fff", padding: 6 }} />
+            <img src={client.logo_url} alt={t("{name} logo", { name: client.name })} style={{ height: 88, width: 88, objectFit: "contain", borderRadius: 12, border: "1px solid #eee", background: "#fff", padding: 6 }} />
           ) : (
-            <div style={{ height: 88, width: 88, borderRadius: 12, border: "1px dashed #ddd", display: "flex", alignItems: "center", justifyContent: "center", color: theme.gray, fontSize: 11, textAlign: "center" }}>no logo yet</div>
+            <div style={{ height: 88, width: 88, borderRadius: 12, border: "1px dashed #ddd", display: "flex", alignItems: "center", justifyContent: "center", color: theme.gray, fontSize: 11, textAlign: "center" }}>{t("no logo yet")}</div>
           )}
           <div>
             <div style={{ fontSize: 12, color: client.logo_url ? "#1e7a3c" : theme.gray, fontWeight: 700, marginBottom: 8 }}>
-              {client.logo_url ? "✓ Saved. Shown on their portal." : "Upload their logo to show it on their portal."}
+              {client.logo_url ? `✓ ${t("Saved. Shown on their portal.")}` : t("Upload their logo to show it on their portal.")}
             </div>
             <label style={{ display: "inline-block", padding: "8px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`, color: theme.navy, fontWeight: 700, fontSize: 12, cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.6 : 1 }}>
-              {uploading ? "Uploading..." : client.logo_url ? "Replace logo" : "Upload logo"}
+              {uploading ? t("Uploading...") : client.logo_url ? t("Replace logo") : t("Upload logo")}
               <input type="file" accept="image/*" onChange={(e) => uploadLogo(e.target.files?.[0])} disabled={uploading} style={{ display: "none" }} />
             </label>
           </div>
@@ -196,15 +198,15 @@ export default function ClientDetailPage() {
 
       {client.contact_phone && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginTop: 16 }}>
-          <h3 style={{ color: theme.navy, margin: "0 0 4px", fontSize: 15 }}>Message them</h3>
+          <h3 style={{ color: theme.navy, margin: "0 0 4px", fontSize: 15 }}>{t("Message them")}</h3>
           <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 12px" }}>
-            Sending the portal link never changes their password. Use Reset above only when they have lost it.
+            {t("Sending the portal link never changes their password. Use Reset above only when they have lost it.")}
           </p>
           <WhatsAppDropdown
             buttonStyle={btn("#fff", theme.navy, true)}
             options={[
               {
-                label: "Portal link",
+                label: t("Portal link"),
                 onClick: () =>
                   window.open(
                     clientPortalLinkWhatsAppLink({
@@ -216,7 +218,7 @@ export default function ClientDetailPage() {
                     "_blank"
                   ),
               },
-              { label: "Direct (empty)", onClick: () => window.open(directWhatsAppLink(client.contact_phone), "_blank") },
+              { label: t("Direct (empty)"), onClick: () => window.open(directWhatsAppLink(client.contact_phone), "_blank") },
             ]}
           />
         </div>

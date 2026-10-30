@@ -19,8 +19,10 @@ import { logActivity } from "../../../../lib/activityLog";
 import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { useAutoRefresh } from "../../../../lib/useAutoRefresh";
 import { APP_URL } from "../../../../lib/appUrl";
+import { useT, Ltr } from "../../../../lib/i18n";
 
 export default function DoctorProfilePage() {
+  const { t, tCode, isAr } = useT();
   const { id } = useParams();
   const router = useRouter();
   const { isAdmin, profile } = usePermissions();
@@ -106,8 +108,8 @@ export default function DoctorProfilePage() {
     load();
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!doctor) return <p style={{ color: theme.gray }}>Doctor not found.</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!doctor) return <p style={{ color: theme.gray }}>{t("Doctor not found.")}</p>;
 
   const thisMonth = visits.filter((v) => {
     const d = new Date(v.exam_date);
@@ -125,15 +127,15 @@ export default function DoctorProfilePage() {
             <h1 style={{ color: theme.navy, margin: 0 }}>{doctor.name}</h1>
             <p style={{ color: theme.gold, fontWeight: 600, margin: "4px 0" }}>{doctor.clinic_code} · {doctor.clinic_name}</p>
             <p style={{ color: theme.gray, margin: 0 }}>
-              {formatPhone(doctor.phone)}
-              {doctor.phone_2 && ` · ${formatPhone(doctor.phone_2)}`}
-              {doctor.email ? ` · ${doctor.email}` : ""}
+              <Ltr>{formatPhone(doctor.phone)}</Ltr>
+              {doctor.phone_2 && <> · <Ltr>{formatPhone(doctor.phone_2)}</Ltr></>}
+              {doctor.email ? <> · <Ltr>{doctor.email}</Ltr></> : ""}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
           {isAdmin && (
             <button onClick={startEditInfo} style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-              Edit
+              {t("Edit")}
             </button>
           )}
           {isAdmin && (
@@ -160,58 +162,58 @@ export default function DoctorProfilePage() {
         </div>
         ) : (
         <div>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Edit Doctor Info</h3>
-          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Admin only.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Edit Doctor Info")}</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>{t("Admin only.")}</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label style={editLabel}>Name</label>
+              <label style={editLabel}>{t("Name")}</label>
               <input style={editInp} value={infoDraft.name} onChange={(e) => setInfoDraft({ ...infoDraft, name: e.target.value })} />
             </div>
             <div>
-              <label style={editLabel}>Clinic Code</label>
+              <label style={editLabel}>{t("Clinic Code")}</label>
               <input style={editInp} value={infoDraft.clinic_code} onChange={(e) => setInfoDraft({ ...infoDraft, clinic_code: e.target.value })} />
             </div>
             <div>
-              <label style={editLabel}>Clinic Name</label>
+              <label style={editLabel}>{t("Clinic Name")}</label>
               <input style={editInp} value={infoDraft.clinic_name} onChange={(e) => setInfoDraft({ ...infoDraft, clinic_name: e.target.value })} />
             </div>
             <div>
-              <label style={editLabel}>Branch</label>
+              <label style={editLabel}>{t("Branch")}</label>
               <select style={editInp} value={infoDraft.branch_id} onChange={(e) => setInfoDraft({ ...infoDraft, branch_id: e.target.value })}>
-                <option value="">None</option>
+                <option value="">{t("None")}</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label style={editLabel}>Phone</label>
+              <label style={editLabel}>{t("Phone")}</label>
               <input style={editInp} value={infoDraft.phone} onChange={(e) => setInfoDraft({ ...infoDraft, phone: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </div>
             <div>
-              <label style={editLabel}>Phone 2</label>
+              <label style={editLabel}>{t("Phone 2")}</label>
               <input style={editInp} value={infoDraft.phone_2} onChange={(e) => setInfoDraft({ ...infoDraft, phone_2: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </div>
             <div>
-              <label style={editLabel}>Email</label>
+              <label style={editLabel}>{t("Email")}</label>
               <input style={editInp} value={infoDraft.email} onChange={(e) => setInfoDraft({ ...infoDraft, email: e.target.value })} />
             </div>
             <div>
-              <label style={editLabel}>Discount %</label>
+              <label style={editLabel}>{t("Discount %")}</label>
               <input style={editInp} type="number" value={infoDraft.discount_pct} onChange={(e) => setInfoDraft({ ...infoDraft, discount_pct: e.target.value })} />
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
-              <label style={editLabel}>Special Note (auto-added to new visit notes for this doctor)</label>
+              <label style={editLabel}>{t("Special Note (auto-added to new visit notes for this doctor)")}</label>
               <input style={editInp} value={infoDraft.special_note} onChange={(e) => setInfoDraft({ ...infoDraft, special_note: e.target.value })} />
             </div>
           </div>
-          {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
+          {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{t(infoError)}</p>}
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
             <button onClick={() => setEditingInfo(false)} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-              Cancel
+              {t("Cancel")}
             </button>
             <button onClick={handleSaveInfo} disabled={savingInfo} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-              {savingInfo ? "Saving..." : "Save Changes"}
+              {savingInfo ? t("Saving...") : t("Save Changes")}
             </button>
           </div>
         </div>
@@ -241,14 +243,14 @@ export default function DoctorProfilePage() {
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
-        <StatCard label="Total Referred" value={visits.length} />
-        <StatCard label="This Month" value={thisMonth} />
-        <StatCard label="Pending Payments" value={pending} />
+        <StatCard label={t("Total Referred")} value={visits.length} />
+        <StatCard label={t("This Month")} value={thisMonth} />
+        <StatCard label={t("Pending Payments")} value={pending} />
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Referred Patients</h3>
-        {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No referrals yet.</p>}
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Referred Patients")}</h3>
+        {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No referrals yet.")}</p>}
         {visits.map((v) => (
           <div key={v.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div>
@@ -262,20 +264,21 @@ export default function DoctorProfilePage() {
                   {v.patients.name}
                 </a>
               ) : (
-                <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name || "Unknown patient"}</div>
+                <div style={{ fontWeight: 600, color: theme.navy }}>{v.patients?.name || t("Unknown patient")}</div>
               )}
               <div style={{ fontSize: 12, color: theme.gray }}>{(v.scan_types || []).join(", ")}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ textAlign: "right", fontSize: 12, color: theme.gray }}>
+              <div style={{ textAlign: "end", fontSize: 12, color: theme.gray }}>
                 <div style={{ fontWeight: 700, color: theme.navy }}>{formatVisitDate(v.exam_date)}</div>
-                <div>{v.payment_status}</div>
+                <div>{isAr ? tCode(v.payment_status) : v.payment_status}</div>
               </div>
               <WhatsAppDropdown
+                label={t("Send WhatsApp")}
                 buttonStyle={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
                 options={[
                   {
-                    label: "Greeting",
+                    label: t("Greeting"),
                     onClick: async () => {
                       const baseUsername = doctor.username || (doctor.phone || "").replace(/\D/g, "");
                       const username = doctor.username
@@ -287,14 +290,14 @@ export default function DoctorProfilePage() {
                     },
                   },
                   {
-                    label: "Report",
+                    label: t("Report"),
                     onClick: () => window.open(doctorReportWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, patientName: v.patients?.name, scanTypes: (v.scan_types || []).join(", "), examDate: v.exam_date }), "_blank"),
                   },
                   {
-                    label: "Raw Data",
+                    label: t("Raw Data"),
                     onClick: () => window.open(doctorRawDataWhatsAppLink({ mobile: doctor.phone, doctorName: doctor.name, patientName: v.patients?.name, scanTypes: (v.scan_types || []).join(", "), examDate: v.exam_date }), "_blank"),
                   },
-                  { label: "Direct (empty)", onClick: () => window.open(directWhatsAppLink(doctor.phone), "_blank") },
+                  { label: t("Direct (empty)"), onClick: () => window.open(directWhatsAppLink(doctor.phone), "_blank") },
                 ]}
               />
             </div>

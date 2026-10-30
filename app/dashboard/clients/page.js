@@ -6,11 +6,13 @@ import { resolveUniqueUsername } from "../../../lib/uniqueUsername";
 import Link from "next/link";
 import LoginAsButton from "../../../components/LoginAsButton";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 // Real, external clients only - the branch-named pseudo-clients used to
 // attribute internal report requests are deliberately hidden here, since
 // there's nothing for an admin to manage about them.
 export default function ClientsPage() {
+  const { t } = useT();
   const [clients, setClients] = useState([]);
   useAutoRefresh(["clients", "reports"], () => { load(); });
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,7 @@ export default function ClientsPage() {
 
   async function handleAdd() {
     if (!name.trim()) {
-      setError("Enter a client name.");
+      setError(tx("Enter a client name."));
       return;
     }
     setSaving(true);
@@ -79,39 +81,39 @@ export default function ClientsPage() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Clients Management</h1>
-      <p style={{ color: theme.gray, margin: "0 0 24px" }}>External clients who log in to their own portal, upload requests, and see the status of past ones.</p>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("Clients Management")}</h1>
+      <p style={{ color: theme.gray, margin: "0 0 24px" }}>{t("External clients who log in to their own portal, upload requests, and see the status of past ones.")}</p>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ color: theme.navy, margin: 0 }}>All Clients</h3>
+          <h3 style={{ color: theme.navy, margin: 0 }}>{t("All Clients")}</h3>
           <button onClick={() => setShowAdd((v) => !v)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-            {showAdd ? "Cancel" : "+ Add Client"}
+            {showAdd ? t("Cancel") : t("+ Add Client")}
           </button>
         </div>
 
         {showAdd && (
           <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-            <label style={lbl}>Name</label>
-            <input style={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="Client or company name" />
-            <label style={lbl}>Contact Phone</label>
+            <label style={lbl}>{t("Name")}</label>
+            <input style={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Client or company name")} />
+            <label style={lbl}>{t("Contact Phone")}</label>
             <input style={inp} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01xxxxxxxxx" />
-            <label style={lbl}>Contact Email (optional)</label>
+            <label style={lbl}>{t("Contact Email (optional)")}</label>
             <input style={inp} value={email} onChange={(e) => setEmail(e.target.value)} />
-            <label style={lbl}>Their logo (optional)</label>
+            <label style={lbl}>{t("Their logo (optional)")}</label>
             <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} style={{ fontSize: 12 }} />
             <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-              Shown on their portal in place of ours. Their patients see that page. Can be added later.
+              {t("Shown on their portal in place of ours. Their patients see that page. Can be added later.")}
             </p>
 
-            {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+            {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
             <button onClick={handleAdd} disabled={saving} style={{ marginTop: 8, padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-              {saving ? "Creating..." : "Create Client & Generate Login"}
+              {saving ? t("Creating...") : t("Create Client & Generate Login")}
             </button>
           </div>
         )}
 
-        {!loading && clients.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No clients yet.</p>}
+        {!loading && clients.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("No clients yet.")}</p>}
         <div style={{ display: "grid", gap: 8 }}>
           {clients.map((c) => (
             <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
@@ -125,7 +127,7 @@ export default function ClientsPage() {
                 <div>
                   <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{c.name}</div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
-                    {c.contact_phone && `${c.contact_phone} \u00b7 `}Username: {c.username || "not set"}
+                    {c.contact_phone && <><Ltr>{c.contact_phone}</Ltr>{" \u00b7 "}</>}{t("Username:")} {c.username || t("not set")}
                   </div>
                 </div>
               </Link>
@@ -138,14 +140,14 @@ export default function ClientsPage() {
       {createdAccount && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 26, width: 360 }}>
-            <h3 style={{ marginTop: 0, color: theme.navy }}>Client Account Created</h3>
-            <p style={{ fontSize: 13, color: theme.gray }}>Share these with {createdAccount.name} - shown only once.</p>
+            <h3 style={{ marginTop: 0, color: theme.navy }}>{t("Client Account Created")}</h3>
+            <p style={{ fontSize: 13, color: theme.gray }}>{t("Share these with {name} - shown only once.", { name: createdAccount.name })}</p>
             <div style={{ background: "#faf9fb", borderRadius: 8, padding: 14, fontSize: 14 }}>
-              <div><strong>Username:</strong> {createdAccount.username}</div>
-              <div><strong>Password:</strong> {createdAccount.password}</div>
+              <div><strong>{t("Username:")}</strong> {createdAccount.username}</div>
+              <div><strong>{t("Password:")}</strong> {createdAccount.password}</div>
             </div>
             <button onClick={() => setCreatedAccount(null)} style={{ marginTop: 16, width: "100%", padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-              Done
+              {t("Done")}
             </button>
           </div>
         </div>
