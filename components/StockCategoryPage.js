@@ -79,7 +79,7 @@ export default function StockCategoryPage({ category, title }) {
     const needsApproval = ["qty_remaining", "purchase_price", "sale_price"].includes(field);
     if (needsApproval) {
       const { data: sess } = await supabase.auth.getSession();
-      const { error: reqErr } = await supabase.rpc("request_stock_change", {
+      const { data: reqRow, error: reqErr } = await supabase.rpc("request_stock_change", {
         p_item_id: item.id,
         p_field: field,
         p_new_value: value,
@@ -90,6 +90,25 @@ export default function StockCategoryPage({ category, title }) {
       if (reqErr) {
         setCellError(reqErr.message);
         return false;
+      }
+      // An admin's change is their own decision: it is recorded and approved in
+      // one go, so it applies at once and still appears in the change history
+      // with who made it (Mohamed Said, 30 Oct 2026).
+      if (profile?.role === "admin" && reqRow?.id) {
+        const { error: decErr } = await supabase.rpc("decide_stock_change", {
+          p_id: reqRow.id,
+          p_status: "approved",
+          p_by_id: sess.session?.user?.id || null,
+          p_by_name: profile?.name || "Admin",
+          p_note: "Changed directly by an admin",
+        });
+        if (decErr) {
+          setCellError(decErr.message);
+          return false;
+        }
+        setCellError("");
+        if (typeof load === "function") load();
+        return true;
       }
       setCellError(
         `Sent for approval: ${item.name} ${LABEL[field]} ${item[field] ?? "-"} to ${value}. It changes once an admin approves it.`

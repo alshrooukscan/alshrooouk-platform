@@ -11,6 +11,10 @@ import { usePermissions } from "../../lib/usePermissions";
 // screen. Each now loads when its tab is opened. Same components, same
 // behaviour, just not all at once.
 const loading = () => <p style={{ color: theme.gray, padding: 20 }}>Loading...</p>;
+const EXPENSE_LABEL = {
+  rent: "Rent", utilities: "Utilities", maintenance: "Maintenance", supplies: "Supplies / misc purchases",
+  courier: "Courier / rep cash", other: "Other expenses",
+};
 const ScanInsights = dynamic(() => import("../../components/analytics/ScanInsights"), { loading });
 const DoctorAnalytics = dynamic(() => import("../../components/analytics/DoctorAnalytics"), { loading });
 const ClientRequestsAnalytics = dynamic(() => import("../../components/analytics/ClientRequestsAnalytics"), { loading });
@@ -132,6 +136,8 @@ function Overview() {
   const [consolidatedSupplier, setConsolidatedSupplier] = useState(0);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
+  // Revenue by payment method, for one business line or all (30 Oct 2026).
+  const [methodLine, setMethodLine] = useState("all");
   const [drillLoading, setDrillLoading] = useState(false);
   const [filter, setFilter] = useState({ year: "", quarter: "", month: "" });
 
@@ -155,7 +161,7 @@ function Overview() {
   // the live flows actually write, dated on the day the money moved (Cairo).
   async function load() {
     try {
-      const [payments, stockIn, expenses, poPayments, items] = await Promise.all([
+      const [payments, stockIn, expenses, poPayments, items, payslips] = await Promise.all([
         fetchAll(() => supabase.from("visit_payments").select("id, payment_method, amount, paid_at, visits(exam_date, patients(name))")),
         fetchStockCashIn(),
         fetchAll(() =>
@@ -168,6 +174,8 @@ function Overview() {
         ),
         fetchAll(() => supabase.from("purchase_orders").select("id, amount, entry_date, payment_method, is_consolidated, suppliers(name)").eq("entry_type", "payment").eq("status", "active")),
         fetchAll(() => supabase.from("stock_items").select("id, category, qty_remaining")),
+        // Salaries: every issued payslip (30 Oct 2026, actual net profit).
+        fetchAll(() => supabase.from("payroll_runs").select("id, period, net_total, deductions, generated_at, employees(name)")),
       ]);
 
       const rows = [];
@@ -194,9 +202,23 @@ function Overview() {
         if (po.is_consolidated) { consolidated += Math.abs(Number(po.amount || 0)); continue; }
         rows.push({ source_stream: "suppliers", direction: "out", amount: Math.abs(Number(po.amount || 0)), entry_date: po.entry_date, method: po.payment_method, who: po.suppliers?.name || "", kind: "Supplier payment" });
       }
+      // What a payslip costs is what the person earned: the net paid plus the
+      // parts settled out of it (an advance repaid, a staff tab, cash swept).
+      // Those were money the business had already handed over, so taking them
+      // off the net would undercount the salary. Dated on the last day of the
+      // pay month, which is the month the salary belongs to.
+      for (const r of payslips || []) {
+        const settled = (Array.isArray(r.deductions) ? r.deductions : [])
+          .filter((d) => ["advance", "tab", "cash"].includes(d.source))
+          .reduce((t, d) => t + Number(d.amount || 0), 0);
+        const per = String(r.period || "").slice(0, 7);
+        const [y, m] = per.split("-").map(Number);
+        const monthEnd = y && m ? new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10) : cairoDate(r.generated_at);
+        rows.push({ source_stream: "salaries", direction: "out", amount: Number(r.net_total || 0) + settled, entry_date: monthEnd, who: r.employees?.name || "", kind: "Salary" });
+      }
       setConsolidatedSupplier(consolidated);
       setAllLedger(rows);
-      setAllPaymentRows(rows.filter((r) => r.direction === "in" && r.amount > 0).map((r) => ({ payment_method: r.method, amount_paid: r.amount, exam_date: r.entry_date })));
+      setAllPaymentRows(rows.filter((r) => r.direction === "in" && r.amount > 0).map((r) => ({ payment_method: r.method, amount_paid: r.amount, exam_date: r.entry_date, stream: r.source_stream })));
       setDentalUnits(items.filter((i) => i.category === "dental").reduce((s, i) => s + Number(i.qty_remaining || 0), 0));
       setEl3awamaUnits(items.filter((i) => i.category === "el3awama").reduce((s, i) => s + Number(i.qty_remaining || 0), 0));
     } finally {
@@ -233,17 +255,32 @@ function Overview() {
     visa: "Visa",
     card: "Visa",
   };
+  // The migration wrote the literal string "Unknown" for visits whose original
+  // method wasn't captured. Naming that honestly beats calling it
+  // "Unrecognized", which implies a parsing failure we could still fix.
+  const normMethod = (rawIn) => {
+    const raw = (rawIn || "").trim();
+    const key = raw.toLowerCase();
+    return METHOD_LABELS[key] || (key === "unknown" ? "Not recorded (migrated)" : raw ? raw : "Unspecified");
+  };
+  // Every method across all lines, so a method keeps one colour everywhere.
+  const methodOrder = Object.entries(
+    filteredPaymentRows.reduce((acc, r) => { const m = normMethod(r.payment_method); acc[m] = (acc[m] || 0) + Number(r.amount_paid || 0); return acc; }, {})
+  ).sort((a, b) => b[1] - a[1]).map(([m]) => m);
+  const methodColor = (m) => PAYMENT_COLORS[Math.max(methodOrder.indexOf(m), 0) % PAYMENT_COLORS.length];
+  // Business line x method, for the stacked revenue bars and the table.
+  const lineMethod = { scans: {}, el3awama: {}, stock: {} };
+  for (const r of filteredPaymentRows) {
+    const line = lineMethod[r.stream] ? r.stream : null;
+    if (!line) continue;
+    const m = normMethod(r.payment_method);
+    lineMethod[line][m] = (lineMethod[line][m] || 0) + Number(r.amount_paid || 0);
+  }
   const byMethod = {};
   const byMethodCount = {};
   for (const row of filteredPaymentRows) {
-    const raw = (row.payment_method || "").trim();
-    const key = raw.toLowerCase();
-    // The migration wrote the literal string "Unknown" for visits whose original
-    // method wasn't captured. Naming that honestly beats calling it
-    // "Unrecognized", which implies a parsing failure we could still fix.
-    const method =
-      METHOD_LABELS[key] ||
-      (key === "unknown" ? "Not recorded (migrated)" : raw ? raw : "Unspecified");
+    if (methodLine !== "all" && row.stream !== methodLine) continue;
+    const method = normMethod(row.payment_method);
     byMethod[method] = (byMethod[method] || 0) + Number(row.amount_paid || 0);
     byMethodCount[method] = (byMethodCount[method] || 0) + 1;
   }
@@ -283,9 +320,10 @@ function Overview() {
   const cashOutScans = sum("scans", "out");
   const cashOutSuppliers = sum("suppliers", "out");
   const cashOutExpenses = sum("expenses", "out");
+  const cashOutSalaries = sum("salaries", "out");
 
   const totalCashIn = cashInScans + cashInEl3awama + cashInStock;
-  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutSuppliers + cashOutExpenses;
+  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutSuppliers + cashOutExpenses + cashOutSalaries;
   const netPL = totalCashIn - totalCashOut;
 
   const revenueStreams = [
@@ -300,7 +338,13 @@ function Overview() {
     { label: "Stock purchases", value: cashOutStock },
     { label: "Scans-related costs", value: cashOutScans },
     { label: "Supplier payments (Purchase Orders)", value: cashOutSuppliers },
-    { label: "Cash expenses (supplies, utilities, maintenance, other)", value: cashOutExpenses },
+    { label: "Salaries (issued payslips)", value: cashOutSalaries },
+    // Every expense category on its own line, so rent, utilities and the rest
+    // can each be read (30 Oct 2026).
+    ...Object.entries(
+      ledger.filter((l) => l.source_stream === "expenses" && l.direction === "out")
+        .reduce((acc, l) => { const k = EXPENSE_LABEL[l.kind] || (l.kind ? l.kind.replace(/_/g, " ") : "Other"); acc[k] = (acc[k] || 0) + Number(l.amount || 0); return acc; }, {})
+    ).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
   ].filter((e) => e.value > 0);
 
   if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
@@ -335,17 +379,19 @@ function Overview() {
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Stream</h3>
           <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>Click a bar to see the real transactions behind it.</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={revenueStreams}>
+          <ResponsiveContainer width="100%" height={250}>
+            {/* Each business line split by how it was paid (30 Oct 2026). */}
+            <BarChart data={revenueStreams.map((r) => ({ label: r.label, ...lineMethod[{ Scans: "scans", El3awama: "el3awama", Stock: "stock" }[r.label]] }))}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v) => [`${formatMoney(v)} EGP`, "Revenue"]} cursor={{ fill: "rgba(39,33,77,0.05)" }} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} style={{ cursor: "pointer" }} onClick={(d) => d?.label && openRevenueDrill(d.label)}>
-                {revenueStreams.map((r, i) => (
-                  <Cell key={i} fill={r.color} />
-                ))}
-              </Bar>
+              <Tooltip formatter={(v, n) => [`${formatMoney(v)} EGP`, n]} cursor={{ fill: "rgba(39,33,77,0.05)" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {methodOrder.map((m, i) => (
+                <Bar key={m} dataKey={m} stackId="rev" fill={methodColor(m)} style={{ cursor: "pointer" }}
+                  radius={i === methodOrder.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                  onClick={(d) => d?.label && openRevenueDrill(d.label)} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
           <div style={{ marginTop: 12, paddingTop: 16, borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
@@ -363,12 +409,61 @@ function Overview() {
               <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{formatMoney(e.value)} EGP</span>
             </div>
           ))}
+          {expenses.length > 0 && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 4px", fontSize: 14, fontWeight: 800 }}>
+                <span style={{ color: theme.navy }}>Total expenses</span>
+                <span style={{ color: "#ba1a1a" }}>{formatMoney(totalCashOut)} EGP</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 14, fontWeight: 800 }}>
+                <span style={{ color: theme.navy }}>Net profit</span>
+                <span style={{ color: netPL >= 0 ? "#1e7a3c" : "#ba1a1a" }}>{formatMoney(netPL)} EGP</span>
+              </div>
+              <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
+                Salaries count from issued payslips only. Salaries paid outside the system (September) are not included.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
-        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>How customers actually paid, scans and stock together{start ? ", within the selected period" : ""}.</p>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>How customers actually paid{methodLine === "all" ? ", all business lines together" : ""}{start ? ", within the selected period" : ""}.</p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+          {[["all", "All business lines"], ["scans", "Scans"], ["el3awama", "El3awama"], ["stock", "Dental Stock"]].map(([k, l]) => (
+            <button key={k} onClick={() => setMethodLine(k)}
+              style={{ padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                       border: `1px solid ${methodLine === k ? theme.navy : "#ddd"}`, background: methodLine === k ? theme.navy : "#fff", color: methodLine === k ? "#fff" : theme.navy }}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {methodOrder.length > 0 && (
+          <div style={{ overflowX: "auto", marginBottom: 16 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>BUSINESS LINE</th>
+                  {methodOrder.map((m) => <th key={m} style={{ textAlign: "right", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>{m.toUpperCase()}</th>)}
+                  <th style={{ textAlign: "right", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[["scans", "Scans"], ["el3awama", "El3awama"], ["stock", "Dental Stock"]].map(([k, l]) => {
+                  const row = lineMethod[k]; const tot = Object.values(row).reduce((a, b) => a + b, 0);
+                  return (
+                    <tr key={k} onClick={() => setMethodLine(k)} style={{ cursor: "pointer", background: methodLine === k ? "#faf7ef" : "transparent" }}>
+                      <td style={{ padding: "7px 8px", fontWeight: 700, color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{l}</td>
+                      {methodOrder.map((m) => <td key={m} style={{ padding: "7px 8px", textAlign: "right", color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{row[m] ? formatMoney(row[m]) : "-"}</td>)}
+                      <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800, color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{formatMoney(tot)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
         {paymentMethodTotals.some(([m]) => m === "Not recorded (migrated)") && (
           <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
             "Not recorded (migrated)" covers {migratedCount.toLocaleString()} payments brought over from the original Excel files, every one of them dated before September 2026. The method was stored there literally as "Unknown", was never captured at the time, and cannot be recovered from the source. It is not a reporting fault. Every payment taken in the platform since go-live carries its real method.
@@ -381,7 +476,7 @@ function Overview() {
               {paymentMethodTotals.map(([method, total], i) => (
                 <div key={method} style={{ background: "#faf9fb", borderRadius: 12, padding: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: theme.gray, fontWeight: 600 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 999, background: PAYMENT_COLORS[i % PAYMENT_COLORS.length], display: "inline-block" }} />
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: methodColor(method), display: "inline-block" }} />
                     {method.toUpperCase()}
                   </div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy, marginTop: 4 }}>{formatMoney(total)} <span style={{ fontSize: 12, fontWeight: 500 }}>EGP</span></div>
@@ -401,8 +496,8 @@ function Overview() {
                   label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
-                  {paymentMethodTotals.map((_, i) => (
-                    <PieCell key={i} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} />
+                  {paymentMethodTotals.map(([m], i) => (
+                    <PieCell key={i} fill={methodColor(m)} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v, n) => [`${formatMoney(v)} EGP`, n]} />
@@ -414,7 +509,7 @@ function Overview() {
       </div>
 
       <p style={{ fontSize: 11, color: "#999", marginTop: 20 }}>
-        Money in: scan visit payments, dental stock paid at the counter and collected on account. Money out: confirmed cash expenses and supplier payments. All dated on the day the money moved.
+        Money in: scan visit payments, dental stock paid at the counter and collected on account. Money out: confirmed cash expenses by category (rent, utilities and the rest), supplier payments and salaries from issued payslips. All dated on the day the money moved.
         {consolidatedSupplier > 0 && ` The one-off settlement of ${formatMoney(consolidatedSupplier)} EGP for supplier purchases before launch (31 Aug 2026) is kept out of these totals.`}
       </p>
 

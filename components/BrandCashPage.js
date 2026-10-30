@@ -19,6 +19,7 @@ const PAYMENT_METHODS = [
 // that's never actually deducted from pay - a real money-loss risk, not a
 // cosmetic gap.
 const CASH_OUT_CATEGORIES = [
+  { key: "rent", label: "Rent" },
   { key: "utilities", label: "Utilities" },
   { key: "maintenance", label: "Maintenance" },
   { key: "supplies", label: "Supplies / Misc Purchase" },
@@ -226,8 +227,9 @@ function CashOutModal({ brand, employees, profile, onClose, onSaved }) {
     }
     setSaving(true);
     // Cash is physically reconciled and confirmed immediately; anything else
-    // waits in the Confirmation Queue.
-    const status = paymentMethod === "cash" ? "confirmed" : "pending";
+    // waits in the Confirmation Queue - unless an admin is recording it, in
+    // which case it is already their decision (Mohamed Said, 30 Oct 2026).
+    const status = paymentMethod === "cash" || profile?.role === "admin" ? "confirmed" : "pending";
     const { data, error: err } = await supabase
       .from("expense_transactions")
       .insert({
