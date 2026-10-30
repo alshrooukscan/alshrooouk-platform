@@ -17,6 +17,7 @@ export default function ClientPortalPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
   const [scanTypes, setScanTypes] = useState([]);
+  const [requestNote, setRequestNote] = useState("");
   // White label from the first frame: the client's logo on the loading screen,
   // never ours. Remembered on this device, and fetched on its own so it arrives
   // before the rest of the portal.
@@ -69,7 +70,7 @@ export default function ClientPortalPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            scanName: scanName.trim(), dateRequired: dateRequired || undefined,
+            scanName: scanName.trim(), requestNote: requestNote.trim() || null, dateRequired: dateRequired || undefined,
             fileName: file.name, mimeType: file.type, sizeBytes: file.size,
           }),
         });
@@ -153,6 +154,8 @@ export default function ClientPortalPage() {
               {/* Chosen from the list rather than typed, so every request carries
                   the same name as the price list ("cbctq" and "cbct q" were the
                   same scan written two ways). */}
+              <label style={lbl}>What is this for?</label>
+              <input style={inp} value={requestNote} onChange={(e) => setRequestNote(e.target.value)} placeholder="e.g. CBCT report for patient X" />
               <label style={lbl}>Scan type</label>
               <select style={inp} value={scanName} onChange={(e) => setScanName(e.target.value)}>
                 <option value="">Choose the scan type...</option>
@@ -181,6 +184,7 @@ export default function ClientPortalPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <div style={{ fontWeight: 600, color: theme.navy, fontSize: 14 }}>{r.scan_type_name || r.scan_name}</div>
+                  {r.request_note && <div style={{ fontSize: 12, color: theme.navy }} dir="auto">{r.request_note}</div>}
                   <div style={{ fontSize: 12, color: theme.gray }}>Needed by {r.date_required}</div>
                 </div>
                 <span

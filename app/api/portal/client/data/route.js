@@ -28,7 +28,7 @@ export async function GET() {
   const { data: client } = await supabaseAdmin.from("clients").select("id, name, contact_phone, contact_email, must_change_password, logo_url").eq("id", session.id).single();
   const { data: reports } = await supabaseAdmin
     .from("reports")
-    .select("id, scan_name, date_required, status, client_uploaded_file_name, report_file_url, report_file_name, report_files, created_at, completed_at")
+    .select("id, scan_name, request_note, date_required, status, client_uploaded_file_name, report_file_url, report_file_name, report_files, created_at, completed_at")
     .eq("client_id", session.id)
     .order("created_at", { ascending: false });
 
@@ -44,13 +44,14 @@ export async function GET() {
   // request shown under the scan type it resolves to: "cbctq" and "cbct q"
   // both read "3D CBCT Quadrant" (Mohamed Said, 30 Oct 2026).
   const { data: types } = await supabaseAdmin
-    .from("exam_types").select("name, name_aliases, requires_report, is_active").eq("is_active", true);
+    .from("exam_types").select("name, name_aliases, counts_in_report_baseline, is_active").eq("is_active", true);
   const byName = new Map();
   for (const t of types || []) {
     byName.set(t.name.trim().toLowerCase(), t.name);
     for (const a of t.name_aliases || []) if (!byName.has(a.trim().toLowerCase())) byName.set(a.trim().toLowerCase(), t.name);
   }
-  const scanTypes = (types || []).filter((t) => t.requires_report).map((t) => t.name).sort();
+  // Only the scans eligible for reports in the Reports Rule Center.
+  const scanTypes = (types || []).filter((t) => t.counts_in_report_baseline).map((t) => t.name).sort();
   const shaped = (reports || []).map((r) => ({ ...r, scan_type_name: byName.get(String(r.scan_name || "").trim().toLowerCase()) || null }));
 
   return NextResponse.json({ client, reports: shaped, scanTypes, mustChangePassword: session.impersonated ? false : !!client?.must_change_password, impersonatedBy: session.impersonatedBy || null });

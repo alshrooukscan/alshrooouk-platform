@@ -15,14 +15,14 @@ export async function POST(req) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const { scanName, dateRequired, fileName, mimeType, sizeBytes } = await req.json();
+    const { scanName, requestNote, dateRequired, fileName, mimeType, sizeBytes } = await req.json();
     if (!scanName || !fileName || !sizeBytes) {
       return NextResponse.json({ error: "scanName, fileName, and sizeBytes are required." }, { status: 400 });
     }
     const { data: report, error: insertErr } = await supabaseAdmin
       .from("reports")
       .insert({
-        source_type: "client", client_id: session.id, scan_name: scanName,
+        source_type: "client", client_id: session.id, scan_name: scanName, request_note: requestNote ? String(requestNote).slice(0, 300) : null,
         date_required: dateRequired || new Date().toISOString().slice(0, 10),
       }).select().single();
     if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
