@@ -17,21 +17,19 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // Tap-to-login from the WhatsApp account message (30 Oct 2026):
-  // /login#u=<username>&p=<password>. The part after "#" never reaches the
-  // server, so the password is not logged anywhere. It is read once, wiped
-  // from the address bar and history, and used to sign in straight away.
+  // Login link from the WhatsApp account messages: /login#u=<username>.
+  // It fills the username only; the person types their password. (An earlier
+  // version also carried the temporary password and signed in with it, which
+  // failed as soon as they had changed it.) Any old link that still carries a
+  // password has it ignored and wiped from the address bar.
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash.startsWith("#u=")) return;
     const q = new URLSearchParams(window.location.hash.slice(1));
     const u = q.get("u") || "";
-    const p = q.get("p") || "";
     window.history.replaceState(null, "", window.location.pathname);
     if (!u) return;
     setEmail(u);
-    setPassword(p);
-    if (p) signInWith(u, p);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setTimeout(() => document.querySelector('input[type="password"]')?.focus(), 50);
   }, []);
 
   async function handleSubmit(e) {
