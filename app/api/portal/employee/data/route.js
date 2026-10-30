@@ -191,9 +191,26 @@ export async function GET() {
     } catch { /* the portal is still worth serving without it */ }
   }
 
+  // Perfect attendance progress for the month, shown as a goal on the portal.
+  let attendanceGoal = null;
+  try {
+    const { data: m } = await supabaseAdmin.rpc("payroll_month", { p_employee_id: session.id, p_period: accruedPeriod });
+    if (m) {
+      attendanceGoal = {
+        perfect_attendance: !!m.perfect_attendance, perfect_attendance_bonus: Number(m.perfect_attendance_bonus || 0),
+        perfect_attendance_pct: Number(m.perfect_attendance_pct || 10), late_minutes: Number(m.late_minutes || 0),
+        early_leave_minutes: Number(m.early_leave_minutes || 0), absent_days: Number(m.absent_days || 0),
+        present_days: Number(m.present_days || 0), scheduled_days: Number(m.scheduled_days || 0),
+        future_days: Number(m.future_days || 0), month_complete: !!m.month_complete,
+        attendance_exempt: !!m.attendance_exempt, base: Number(m.base || 0), scheduled_pay: Number(m.scheduled_pay || 0),
+      };
+    }
+  } catch { /* optional */ }
+
   return NextResponse.json({
     accrued,
     currentSlip,
+    attendanceGoal,
     accruedPeriod,
     employee,
     cashBalances: myCash || [],

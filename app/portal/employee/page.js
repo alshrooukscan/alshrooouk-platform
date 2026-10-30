@@ -5,6 +5,7 @@ import { theme } from "../../../lib/theme";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import { formatMoney } from "../../../lib/format";
 import Loading from "../../../lib/Loading";
+import PerfectAttendanceCard from "../../../components/PerfectAttendanceCard";
 import { loadFaceModels, extractDescriptor } from "../../../lib/faceMatch";
 
 // Same wording the dashboard uses, so a figure means the same thing wherever
@@ -387,6 +388,11 @@ export default function EmployeePortalPage() {
             )}
 
             {payGate}
+
+            <PerfectAttendanceCard
+              pa={data.attendanceGoal}
+              approved={!!data.currentSlip?.bonuses?.some((b) => String(b.name).toLowerCase().startsWith("perfect attendance"))}
+            />
 
             {/* Earned so far leads, because it is the question a person opens
                 this page to answer: what have I made this month. The salary
