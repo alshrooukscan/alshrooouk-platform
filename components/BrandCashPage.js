@@ -6,6 +6,7 @@ import { theme } from "../lib/theme";
 import { usePermissions } from "../lib/usePermissions";
 import { formatMoney } from "../lib/format";
 import { logActivity } from "../lib/activityLog";
+import { useT, tx, Ltr } from "../lib/i18n";
 
 const PAYMENT_METHODS = [
   { key: "cash", label: "Cash" },
@@ -27,6 +28,8 @@ const CASH_OUT_CATEGORIES = [
   { key: "courier", label: "Courier / Rep Cash" },
   { key: "other", label: "Other" },
 ];
+// Arabic shows each business by its glossary name; brand keys stay English.
+const BRAND_NAME_AR_KEY = { scan: "Scan Center", dental_stock: "Dental Supply", el3awama_stock: "El3awama" };
 
 // Shared page for all three brands (Scan, Dental Stock, El3awama Stock) -
 // each one's own page is a thin wrapper passing in brand/brandLabel/
@@ -34,7 +37,9 @@ const CASH_OUT_CATEGORIES = [
 // staff with access log a Cash Transfer (to another employee, always cash,
 // confirmed by the receiving employee from their own portal) or a Cash
 // Collection (to the owner, cash or electronic, always confirmed by admin).
-export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
+export default function BrandCashPage({ brand, brandLabel: brandLabelEn, permissionKey }) {
+  const { t, tCode, isAr } = useT();
+  const brandLabel = isAr && BRAND_NAME_AR_KEY[brand] ? t(BRAND_NAME_AR_KEY[brand]) : brandLabelEn;
   const { can, isAdmin, loading: permsLoading, profile, linkedEmployeeId } = usePermissions();
   const [balances, setBalances] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -104,7 +109,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
       (bal || [])
         .filter((b) => Number(b.balance) !== 0)
         .filter(mine)
-        .map((b) => ({ ...b, employeeName: nameById.get(b.employee_id) || "Unknown employee" }))
+        .map((b) => ({ ...b, employeeName: nameById.get(b.employee_id) || t("Unknown employee") }))
     );
     setEmployees(emps || []);
     setRecent((tx || []).filter(mine));
@@ -112,76 +117,76 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
     setLoading(false);
   }
 
-  if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!hasAccess) return <p style={{ color: theme.gray }}>You don't have access to this page.</p>;
+  if (permsLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!hasAccess) return <p style={{ color: theme.gray }}>{t("You don't have access to this page.")}</p>;
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>Expenses Management</p>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{brandLabel} Cash</h1>
-      <p style={{ color: theme.gray, margin: "0 0 20px" }}>Who's holding cash for {brandLabel} right now, and logging transfers or settlements.</p>
+      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>{t("Expenses Management")}</p>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("{brand} Cash", { brand: brandLabel })}</h1>
+      <p style={{ color: theme.gray, margin: "0 0 20px" }}>{t("Who's holding cash for {brand} right now, and logging transfers or settlements.", { brand: brandLabel })}</p>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <button onClick={() => setModal("cash_out")} style={primaryBtn}>+ Log Cash Out</button>
-        <button onClick={() => setModal("transfer")} style={secondaryBtn}>+ Log Cash Transfer</button>
-        <button onClick={() => setModal("conversion")} style={secondaryBtn}>+ Convert Cash to Digital</button>
-        <button onClick={() => setModal("collection")} style={secondaryBtn}>+ Log Cash Collection</button>
+        <button onClick={() => setModal("cash_out")} style={primaryBtn}>{t("+ Log Cash Out")}</button>
+        <button onClick={() => setModal("transfer")} style={secondaryBtn}>{t("+ Log Cash Transfer")}</button>
+        <button onClick={() => setModal("conversion")} style={secondaryBtn}>{t("+ Convert Cash to Digital")}</button>
+        <button onClick={() => setModal("collection")} style={secondaryBtn}>{t("+ Log Cash Collection")}</button>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>{isAdmin ? "Cash In Hand" : "Your Cash In Hand"}</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{isAdmin ? t("Cash In Hand") : t("Your Cash In Hand")}</h3>
         {!isAdmin && (
           <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 10px" }}>
-            Only your own cash and your own movements are shown here.
+            {t("Only your own cash and your own movements are shown here.")}
           </p>
         )}
         {!loading && balances.length === 0 && (
           <p style={{ color: theme.gray, fontSize: 13 }}>
             {isAdmin
-              ? `No one is currently holding ${brandLabel} cash.`
+              ? t("No one is currently holding {brand} cash.", { brand: brandLabel })
               : myEmployeeId
-              ? `You are not holding any ${brandLabel} cash.`
-              : "Your login isn't linked to an employee record, so no cash can be shown against you. An admin can link it in Employee Management."}
+              ? t("You are not holding any {brand} cash.", { brand: brandLabel })
+              : t("Your login isn't linked to an employee record, so no cash can be shown against you. An admin can link it in Employee Management.")}
           </p>
         )}
         <div style={{ display: "grid", gap: 8 }}>
           {balances.map((b) => (
             <div key={b.employee_id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
               <span style={{ color: theme.navy, fontWeight: 600 }}>{b.employeeName}</span>
-              <span style={{ fontWeight: 700, color: theme.gold }}>{formatMoney(b.balance)} EGP</span>
+              <span style={{ fontWeight: 700, color: theme.gold }}>{t("{amount} EGP", { amount: formatMoney(b.balance) })}</span>
             </div>
           ))}
         </div>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>{isAdmin ? "Recent Transfers & Collections" : "Your Recent Transfers & Collections"}</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{isAdmin ? t("Recent Transfers & Collections") : t("Your Recent Transfers & Collections")}</h3>
         {!loading && recent.length === 0 && (
           <p style={{ color: theme.gray, fontSize: 13 }}>
-            {isAdmin ? "Nothing logged yet." : "Nothing logged against you yet."}
+            {isAdmin ? t("Nothing logged yet.") : t("Nothing logged against you yet.")}
           </p>
         )}
         <div style={{ display: "grid", gap: 8 }}>
           {recent.map((tx) => (
             <div key={tx.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: tx.status === "confirmed" ? "#e8f5e9" : tx.status === "rejected" ? "#fdecea" : "#fff8e1", color: tx.status === "confirmed" ? "#2e7d32" : tx.status === "rejected" ? "#ba1a1a" : "#a97c00", minWidth: 76, textAlign: "center", textTransform: "capitalize" }}>
-                {tx.status}
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: tx.status === "confirmed" ? "#e8f5e9" : tx.status === "rejected" ? "#fdecea" : "#fff8e1", color: tx.status === "confirmed" ? "#2e7d32" : tx.status === "rejected" ? "#ba1a1a" : "#a97c00", minWidth: 76, textAlign: "center" }}>
+                {tCode(tx.status)}
               </span>
               <div style={{ flex: 1, fontSize: 13 }}>
                 <strong style={{ color: theme.navy }}>
                   {tx.type === "cash_transfer"
-                    ? "Transfer"
+                    ? t("Transfer")
                     : tx.type === "cash_collection"
-                    ? "Collection"
+                    ? t("Collection")
                     : tx.type === "cash_conversion"
-                    ? `Converted to ${tx.payment_method}`
-                    : "Cash Out"}
+                    ? (isAr ? t("Converted to {method}", { method: tCode(tx.payment_method) }) : `Converted to ${tx.payment_method}`)
+                    : t("Cash Out")}
                 </strong>{" "}
-                {formatMoney(tx.amount)} EGP
-                {tx.category && ` \u00b7 ${tx.category}`}
-                {tx.from_employee?.name && ` from ${tx.from_employee.name}`}
-                {tx.to_employee?.name && ` to ${tx.to_employee.name}`}
-                {tx.type === "cash_collection" && !tx.to_employee?.name && " to Owner"}
+                <Ltr>{t("{amount} EGP", { amount: formatMoney(tx.amount) })}</Ltr>
+                {tx.category && ` \u00b7 ${isAr ? tCode(tx.category) : tx.category}`}
+                {tx.from_employee?.name && (isAr ? ` ${t("from {name}", { name: tx.from_employee.name })}` : ` from ${tx.from_employee.name}`)}
+                {tx.to_employee?.name && (isAr ? ` ${t("to {name}", { name: tx.to_employee.name })}` : ` to ${tx.to_employee.name}`)}
+                {tx.type === "cash_collection" && !tx.to_employee?.name && (isAr ? ` ${t("to Owner")}` : " to Owner")}
                 {tx.type === "cash_conversion" && tx.payment_method !== "cash" && (
                   <VerifyPill method={tx.payment_method} paymobId={tx.paymob_transaction_id}
                     verification={tx.payment_method === "instapay" ? (tx.status === "confirmed" ? "verified_instapay" : tx.status === "rejected" ? "rejected_instapay" : null) : null} />
@@ -210,6 +215,7 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
 }
 
 function CashOutModal({ brand, employees, profile, onClose, onSaved }) {
+  const { t } = useT();
   const [spentById, setSpentById] = useState("");
   const [category, setCategory] = useState("utilities");
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -273,50 +279,51 @@ function CashOutModal({ brand, employees, profile, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Log Cash Out" onClose={onClose}>
+    <Modal title={t("Log Cash Out")} onClose={onClose}>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>
-        For an employee advance, use Center Expenses instead - only that page's advances get deducted from payroll.
+        {t("For an employee advance, use Center Expenses instead - only that page's advances get deducted from payroll.")}
       </p>
-      <FieldLabel>Category</FieldLabel>
+      <FieldLabel>{t("Category")}</FieldLabel>
       <select value={category} onChange={(e) => setCategory(e.target.value)} style={inp}>
         {CASH_OUT_CATEGORIES.map((c) => (
-          <option key={c.key} value={c.key}>{c.label}</option>
+          <option key={c.key} value={c.key}>{t(c.label)}</option>
         ))}
       </select>
-      <FieldLabel>Paid Via</FieldLabel>
+      <FieldLabel>{t("Paid Via")}</FieldLabel>
       <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
         {PAYMENT_METHODS.map((p) => (
-          <option key={p.key} value={p.key}>{p.label}</option>
+          <option key={p.key} value={p.key}>{t(p.label)}</option>
         ))}
       </select>
       {paymentMethod === "cash" && (
         <>
-          <FieldLabel>Cash Came From</FieldLabel>
+          <FieldLabel>{t("Cash Came From")}</FieldLabel>
           <select value={spentById} onChange={(e) => setSpentById(e.target.value)} style={inp}>
-            <option value="">Select employee...</option>
+            <option value="">{t("Select employee...")}</option>
             {(employees || []).map((emp) => (
               <option key={emp.id} value={emp.id}>{emp.name}</option>
             ))}
           </select>
           <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-            This amount is deducted from that employee&apos;s cash balance.
+            {t("This amount is deducted from that employee's cash balance.")}
           </p>
         </>
       )}
-      <FieldLabel>Amount (EGP)</FieldLabel>
+      <FieldLabel>{t("Amount (EGP)")}</FieldLabel>
       <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
-      <FieldLabel>Note (optional)</FieldLabel>
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
       <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={onClose} style={cancelBtn}>Cancel</button>
-        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Log Cash Out"}</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Cancel")}</button>
+        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : t("Log Cash Out")}</button>
       </div>
     </Modal>
   );
 }
 
 function TransferModal({ brand, employees, profile, isAdmin, onClose, onSaved }) {
+  const { t } = useT();
   // An employee recording a transfer is stating that THEY handed their own
   // cash to someone else, so the sender is fixed to whoever is signed in.
   // Letting an employee pick both sides meant one could record a handover
@@ -386,42 +393,43 @@ function TransferModal({ brand, employees, profile, isAdmin, onClose, onSaved })
   }
 
   return (
-    <Modal title="Log Cash Transfer" onClose={onClose}>
-      <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>Always cash - confirmed by the employee receiving it, from their own portal.</p>
-      <FieldLabel>Handing Over</FieldLabel>
+    <Modal title={t("Log Cash Transfer")} onClose={onClose}>
+      <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>{t("Always cash - confirmed by the employee receiving it, from their own portal.")}</p>
+      <FieldLabel>{t("Handing Over")}</FieldLabel>
       {isAdmin ? (
         <select value={fromId} onChange={(e) => setFromId(e.target.value)} style={inp}>
-          <option value="">Select employee...</option>
+          <option value="">{t("Select employee...")}</option>
           {employees.map((e) => (
             <option key={e.id} value={e.id}>{e.name}</option>
           ))}
         </select>
       ) : (
         <div style={{ ...inp, background: "#f6f6f9", color: theme.navy, display: "flex", alignItems: "center" }}>
-          {me ? `${me.name} (you)` : "Your login is not linked to an employee record"}
+          {me ? t("{name} (you)", { name: me.name }) : t("Your login is not linked to an employee record")}
         </div>
       )}
-      <FieldLabel>Receiving</FieldLabel>
+      <FieldLabel>{t("Receiving")}</FieldLabel>
       <select value={toId} onChange={(e) => setToId(e.target.value)} style={inp} disabled={!isAdmin && !me}>
-        <option value="">Select employee...</option>
+        <option value="">{t("Select employee...")}</option>
         {employees.filter((e) => e.id !== (isAdmin ? fromId : me?.id)).map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </select>
-      <FieldLabel>Amount (EGP)</FieldLabel>
+      <FieldLabel>{t("Amount (EGP)")}</FieldLabel>
       <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
-      <FieldLabel>Note (optional)</FieldLabel>
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
       <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={onClose} style={cancelBtn}>Cancel</button>
-        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Log Transfer"}</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Cancel")}</button>
+        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : t("Log Transfer")}</button>
       </div>
     </Modal>
   );
 }
 
 function CollectionModal({ brand, employees, profile, onClose, onSaved }) {
+  const { t } = useT();
   const [employeeId, setEmployeeId] = useState("");
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -473,29 +481,29 @@ function CollectionModal({ brand, employees, profile, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Log Cash Collection" onClose={onClose}>
-      <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>Settling to the Owner - cash or electronic, always waits for Owner's confirmation.</p>
-      <FieldLabel>Employee Settling</FieldLabel>
+    <Modal title={t("Log Cash Collection")} onClose={onClose}>
+      <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>{t("Settling to the Owner - cash or electronic, always waits for Owner's confirmation.")}</p>
+      <FieldLabel>{t("Employee Settling")}</FieldLabel>
       <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={inp}>
-        <option value="">Select employee...</option>
+        <option value="">{t("Select employee...")}</option>
         {employees.map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </select>
-      <FieldLabel>Amount (EGP)</FieldLabel>
+      <FieldLabel>{t("Amount (EGP)")}</FieldLabel>
       <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
-      <FieldLabel>Paid Via</FieldLabel>
+      <FieldLabel>{t("Paid Via")}</FieldLabel>
       <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
         {PAYMENT_METHODS.map((p) => (
-          <option key={p.key} value={p.key}>{p.label}</option>
+          <option key={p.key} value={p.key}>{t(p.label)}</option>
         ))}
       </select>
-      <FieldLabel>Note (optional)</FieldLabel>
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
       <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={onClose} style={cancelBtn}>Cancel</button>
-        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Log Collection"}</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Cancel")}</button>
+        <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : t("Log Collection")}</button>
       </div>
     </Modal>
   );
@@ -507,6 +515,7 @@ function CollectionModal({ brand, employees, profile, onClose, onSaved }) {
 // cash-out from the person who PAID sent them negative for money they never
 // held, while the person who handed over the notes still showed them.
 function ConversionModal({ brand, employees, profile, onClose, onSaved }) {
+  const { t } = useT();
   const [fromId, setFromId] = useState("");
   const [paidById, setPaidById] = useState("");
   const [amount, setAmount] = useState("");
@@ -547,51 +556,49 @@ function ConversionModal({ brand, employees, profile, onClose, onSaved }) {
       details: { brand, amount: Number(amount), method },
     });
     // Anyone but an admin: it now waits for an admin to confirm (0125).
-    if (profile?.role !== "admin") alert("Sent to an admin to confirm. The cash stays with the person until then.");
+    if (profile?.role !== "admin") alert(tx("Sent to an admin to confirm. The cash stays with the person until then."));
     onSaved();
     onClose();
   }
 
   return (
-    <Modal title="Convert Cash to Digital" onClose={onClose}>
+    <Modal title={t("Convert Cash to Digital")} onClose={onClose}>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: 0 }}>
-        For when someone takes the cash a colleague is holding and pays the same amount to the company by card,
-        InstaPay or wallet. Only the cash holder&apos;s balance goes down &mdash; whoever paid keeps the notes, so
-        their cash is unchanged.
+        {t("For when someone takes the cash a colleague is holding and pays the same amount to the company by card, InstaPay or wallet. Only the cash holder's balance goes down \u2014 whoever paid keeps the notes, so their cash is unchanged.")}
       </p>
-      <FieldLabel>Whose cash is being converted</FieldLabel>
+      <FieldLabel>{t("Whose cash is being converted")}</FieldLabel>
       <select value={fromId} onChange={(e) => setFromId(e.target.value)} style={inp}>
-        <option value="">Select employee...</option>
+        <option value="">{t("Select employee...")}</option>
         {employees.map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </select>
-      <FieldLabel>Who paid it digitally (optional)</FieldLabel>
+      <FieldLabel>{t("Who paid it digitally (optional)")}</FieldLabel>
       <select value={paidById} onChange={(e) => setPaidById(e.target.value)} style={inp}>
-        <option value="">Not recorded</option>
+        <option value="">{t("Not recorded")}</option>
         {employees.filter((e) => e.id !== fromId).map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </select>
-      <FieldLabel>Amount (EGP)</FieldLabel>
+      <FieldLabel>{t("Amount (EGP)")}</FieldLabel>
       <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} placeholder="0.00" />
-      <FieldLabel>Converted to</FieldLabel>
+      <FieldLabel>{t("Converted to")}</FieldLabel>
       <select value={method} onChange={(e) => setMethod(e.target.value)} style={inp}>
-        <option value="visa">Visa</option>
-        <option value="instapay">InstaPay</option>
-        <option value="wallet">Wallet</option>
+        <option value="visa">{t("Visa")}</option>
+        <option value="instapay">{t("InstaPay")}</option>
+        <option value="wallet">{t("Wallet")}</option>
       </select>
-      <FieldLabel>Note (optional)</FieldLabel>
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
       <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
-      {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{t(error)}</p>}
       {/* Same Cancel/confirm row as every other modal here. This one shipped
           with only the confirm button, so the sole way out was the X in the
           corner - a modal about money should always offer a plain way to back
           out. */}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={onClose} style={cancelBtn}>Cancel</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Cancel")}</button>
         <button onClick={handleSave} disabled={saving} style={primaryBtn}>
-          {saving ? "Saving..." : "Record Conversion"}
+          {saving ? t("Saving...") : t("Record Conversion")}
         </button>
       </div>
     </Modal>

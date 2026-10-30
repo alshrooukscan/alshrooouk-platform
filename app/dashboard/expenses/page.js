@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import BrandCashPage from "../../../components/BrandCashPage";
 import { usePermissions } from "../../../lib/usePermissions";
 import { theme } from "../../../lib/theme";
+import { useT } from "../../../lib/i18n";
 
 // The three brand cash pages were three sidebar entries showing the same screen
 // against a different business. One page with a switch, matching Stock Details
@@ -13,8 +14,11 @@ const BRANDS = [
   { key: "dental_stock", slug: "dental-stock", label: "Dental Stock", permissionKey: "expenses_dental_stock" },
   { key: "el3awama_stock", slug: "el3awama-stock", label: "El3awama Stock", permissionKey: "expenses_el3awama_stock" },
 ];
+// Arabic shows each business by its glossary name (the English labels above stay as they are).
+const BRAND_NAME_AR_KEY = { scan: "Scan Center", dental_stock: "Dental Supply", el3awama_stock: "El3awama" };
 
 function BrandsCashInner() {
+  const { t, isAr } = useT();
   const params = useSearchParams();
   const router = useRouter();
   const { can, isAdmin, loading: permsLoading } = usePermissions();
@@ -41,7 +45,7 @@ function BrandsCashInner() {
 
   if (permsLoading) return null;
   if (!current) {
-    return <p style={{ color: theme.gray }}>You do not have access to any business&apos;s cash.</p>;
+    return <p style={{ color: theme.gray }}>{t("You do not have access to any business's cash.")}</p>;
   }
 
   return (
@@ -62,7 +66,7 @@ function BrandsCashInner() {
                 cursor: "pointer",
               }}
             >
-              {b.label} Cash
+              {t("{brand} Cash", { brand: isAr ? t(BRAND_NAME_AR_KEY[b.key]) : b.label })}
             </button>
           ))}
         </div>

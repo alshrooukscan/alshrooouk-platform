@@ -4,6 +4,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney } from "../../../lib/format";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 // Card reconciliation.
 //
@@ -14,6 +15,7 @@ import { formatMoney } from "../../../lib/format";
 // claimed, which usually means the money was taken on the machine and written
 // down as cash.
 export default function PaymobPage() {
+  const { t, tCode, isAr } = useT();
   const { isAdmin, loading: permsLoading } = usePermissions();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,8 +49,8 @@ export default function PaymobPage() {
       const res = await fetch("/api/paymob/sync", { method: "POST", headers: await authHeaders() });
       const r = await res.json();
       setMessage(r.ok
-        ? `Checked ${r.fetched} charges. Verified ${r.verified}. Still waiting: ${r.stillUnverified ?? 0}.`
-        : `Sync failed: ${r.error}`);
+        ? tx("Checked {fetched} charges. Verified {verified}. Still waiting: {waiting}.", { fetched: r.fetched, verified: r.verified, waiting: r.stillUnverified ?? 0 })
+        : tx("Sync failed: {error}", { error: tx(r.error) }));
       await load();
     } catch (e) {
       setMessage(e.message);
@@ -57,7 +59,7 @@ export default function PaymobPage() {
   }
 
   async function dismiss(id) {
-    const note = window.prompt("Why does this charge need no action? (recorded with your name)");
+    const note = window.prompt(tx("Why does this charge need no action? (recorded with your name)"));
     if (note === null) return;
     const res = await fetch("/api/paymob/reconciliation", {
       method: "POST",
@@ -68,22 +70,23 @@ export default function PaymobPage() {
     await load();
   }
 
-  if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!isAdmin) return <p style={{ color: theme.gray }}>You do not have access to this page.</p>;
-  if (loading) return <p style={{ color: theme.gray }}>Loading card reconciliation...</p>;
+  if (permsLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!isAdmin) return <p style={{ color: theme.gray }}>{t("You do not have access to this page.")}</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading card reconciliation...")}</p>;
 
-  const t = data?.totals || {};
+  // Renamed from `t` so it no longer shadows the translate function.
+  const tot = data?.totals || {};
   const card = { background: theme.white, border: "1px solid #e3e6e9", borderRadius: 10, padding: 14 };
-  const th = { textAlign: "left", fontSize: 11, color: theme.gray, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid #e3e6e9" };
+  const th = { textAlign: "start", fontSize: 11, color: theme.gray, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid #e3e6e9" };
   const td = { fontSize: 13, padding: "8px 8px", borderBottom: "1px solid #f0f1f2" };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ color: theme.navy, margin: 0, fontSize: 22 }}>Card reconciliation</h1>
+          <h1 style={{ color: theme.navy, margin: 0, fontSize: 22 }}>{t("Card reconciliation")}</h1>
           <p style={{ color: theme.gray, fontSize: 13, margin: "4px 0 0" }}>
-            Terminal {data?.terminal} · last charge seen {data?.lastCharge ? data.lastCharge.replace("T", " ") : "—"}
+            {t("Terminal")} <Ltr>{data?.terminal}</Ltr> · {t("last charge seen")} <Ltr>{data?.lastCharge ? data.lastCharge.replace("T", " ") : "—"}</Ltr>
           </p>
         </div>
         <button
@@ -91,45 +94,41 @@ export default function PaymobPage() {
           disabled={syncing}
           style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
         >
-          {syncing ? "Checking Paymob..." : "Check Paymob now"}
+          {syncing ? t("Checking Paymob...") : t("Check Paymob now")}
         </button>
       </div>
 
       {message && (
         <p style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "#f6faf7", border: "1px solid #dbe7de", fontSize: 13, color: theme.gray }}>
-          {message}
+          {t(message)}
         </p>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 16 }}>
-        <Stat label="Card payments proven" value={formatMoney(t.verified_visa_amount || 0)} sub={`${t.verified_visa_count || 0} payments`} tone="green" />
-        <Stat label="Paymob fees on those" value={formatMoney(t.verified_fees || 0)} sub="Clinic banks the rest" />
-        <Stat label="Card payments not proven" value={formatMoney(t.unverified_card_amount || 0)} sub={`${t.unverified_card_count || 0} to review`} tone={Number(t.unverified_card_count) > 0 ? "yellow" : "green"} />
-        <Stat label="Charges nobody claimed" value={formatMoney(t.unclaimed_charge_amount || 0)} sub={`${t.unclaimed_charge_count || 0} on the terminal`} tone={Number(t.unclaimed_charge_count) > 0 ? "red" : "green"} />
+        <Stat label={t("Card payments proven")} value={formatMoney(tot.verified_visa_amount || 0)} sub={t("{n} payments", { n: tot.verified_visa_count || 0 })} tone="green" />
+        <Stat label={t("Paymob fees on those")} value={formatMoney(tot.verified_fees || 0)} sub={t("Clinic banks the rest")} />
+        <Stat label={t("Card payments not proven")} value={formatMoney(tot.unverified_card_amount || 0)} sub={t("{n} to review", { n: tot.unverified_card_count || 0 })} tone={Number(tot.unverified_card_count) > 0 ? "yellow" : "green"} />
+        <Stat label={t("Charges nobody claimed")} value={formatMoney(tot.unclaimed_charge_amount || 0)} sub={t("{n} on the terminal", { n: tot.unclaimed_charge_count || 0 })} tone={Number(tot.unclaimed_charge_count) > 0 ? "red" : "green"} />
       </div>
 
       <p style={{ fontSize: 12, color: theme.gray, marginTop: 10 }}>
-        Payments taken before the platform went live were classified in one pass against the full
-        Paymob history: {t.assumed_cash_count || 0} of them ({formatMoney(t.assumed_cash_amount || 0)}) had no
-        matching card charge and are recorded as cash collected.
+        {t("Payments taken before the platform went live were classified in one pass against the full Paymob history: {n} of them ({amount}) had no matching card charge and are recorded as cash collected.", { n: tot.assumed_cash_count || 0, amount: formatMoney(tot.assumed_cash_amount || 0) })}
       </p>
 
       <div style={{ ...card, marginTop: 18 }}>
-        <h2 style={{ color: theme.navy, fontSize: 16, margin: "0 0 4px" }}>Charges no visit has claimed</h2>
+        <h2 style={{ color: theme.navy, fontSize: 16, margin: "0 0 4px" }}>{t("Charges no visit has claimed")}</h2>
         <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 10px" }}>
-          Money that went through the card machine with no card payment recorded against it. Check the
-          visit for that time: if it was logged as cash, correct the method on the visit so the cash
-          total stops carrying money nobody is holding.
+          {t("Money that went through the card machine with no card payment recorded against it. Check the visit for that time: if it was logged as cash, correct the method on the visit so the cash total stops carrying money nobody is holding.")}
         </p>
         {(data?.unclaimedCharges || []).length === 0 ? (
-          <p style={{ fontSize: 13, color: "#1e7a3c", margin: 0 }}>Every card charge is accounted for.</p>
+          <p style={{ fontSize: 13, color: "#1e7a3c", margin: 0 }}>{t("Every card charge is accounted for.")}</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  <th style={th}>When</th><th style={th}>Amount</th><th style={th}>Fee</th>
-                  <th style={th}>Card</th><th style={th}>Settled</th><th style={th}></th>
+                  <th style={th}>{t("When")}</th><th style={th}>{t("Amount")}</th><th style={th}>{t("Fee")}</th>
+                  <th style={th}>{t("Card")}</th><th style={th}>{t("Settled")}</th><th style={th}></th>
                 </tr>
               </thead>
               <tbody>
@@ -138,14 +137,14 @@ export default function PaymobPage() {
                     <td style={td}>{String(c.created_at_paymob).replace("T", " ").slice(0, 16)}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{formatMoney(c.amount)}</td>
                     <td style={td}>{formatMoney(c.fees || 0)}</td>
-                    <td style={td}>{c.card_brand || "—"} {c.card_last4 ? `····${c.card_last4}` : ""}</td>
-                    <td style={td}>{c.is_settled ? "Yes" : "Not yet"}</td>
+                    <td style={td}><Ltr>{c.card_brand || "—"} {c.card_last4 ? `····${c.card_last4}` : ""}</Ltr></td>
+                    <td style={td}>{c.is_settled ? t("Yes") : t("Not yet")}</td>
                     <td style={td}>
                       {c.review_status === "dismissed" ? (
-                        <span style={{ fontSize: 12, color: theme.gray }}>Reviewed</span>
+                        <span style={{ fontSize: 12, color: theme.gray }}>{t("Reviewed")}</span>
                       ) : (
                         <button onClick={() => dismiss(c.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.gold, fontSize: 12, fontWeight: 700, textDecoration: "underline" }}>
-                          No action needed
+                          {t("No action needed")}
                         </button>
                       )}
                     </td>
@@ -158,21 +157,19 @@ export default function PaymobPage() {
       </div>
 
       <div style={{ ...card, marginTop: 14 }}>
-        <h2 style={{ color: theme.navy, fontSize: 16, margin: "0 0 4px" }}>Card payments waiting on proof</h2>
+        <h2 style={{ color: theme.navy, fontSize: 16, margin: "0 0 4px" }}>{t("Card payments waiting on proof")}</h2>
         <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 10px" }}>
-          Recorded as card, no matching charge found yet. A payment taken in the last few minutes
-          belongs here until Paymob publishes it. One that stays here usually means a single card
-          charge covered several visits, or the amount was typed differently at the machine.
+          {t("Recorded as card, no matching charge found yet. A payment taken in the last few minutes belongs here until Paymob publishes it. One that stays here usually means a single card charge covered several visits, or the amount was typed differently at the machine.")}
         </p>
         {(data?.unverifiedPayments || []).length === 0 ? (
-          <p style={{ fontSize: 13, color: "#1e7a3c", margin: 0 }}>Every card payment is proven.</p>
+          <p style={{ fontSize: 13, color: "#1e7a3c", margin: 0 }}>{t("Every card payment is proven.")}</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  <th style={th}>When</th><th style={th}>Amount</th><th style={th}>Method</th>
-                  <th style={th}>Logged by</th><th style={th}></th>
+                  <th style={th}>{t("When")}</th><th style={th}>{t("Amount")}</th><th style={th}>{t("Method")}</th>
+                  <th style={th}>{t("Logged by")}</th><th style={th}></th>
                 </tr>
               </thead>
               <tbody>
@@ -180,11 +177,11 @@ export default function PaymobPage() {
                   <tr key={p.id}>
                     <td style={td}>{String(p.paid_at).replace("T", " ").slice(0, 16)}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{formatMoney(p.amount)}</td>
-                    <td style={td}>{p.payment_method}</td>
+                    <td style={td}>{isAr ? tCode(p.payment_method) : p.payment_method}</td>
                     <td style={td}>{p.created_by_name || "—"}</td>
                     <td style={td}>
                       <a href={`/dashboard/patients?visit=${p.visit_id}`} style={{ color: theme.gold, fontSize: 12, fontWeight: 700 }}>
-                        Open visit
+                        {t("Open visit")}
                       </a>
                     </td>
                   </tr>

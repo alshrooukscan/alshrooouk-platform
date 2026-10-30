@@ -4,6 +4,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney } from "../../../lib/format";
+import { useT, Ltr } from "../../../lib/i18n";
 
 const STATUS = {
   red:    { label: "Over limit",   bg: "#fff5f5", border: "#f0c9c9", text: "#ba1a1a" },
@@ -16,6 +17,7 @@ const STATUS = {
 // cash they hold for each business, and their status against the limit.
 // A27: this is advisory. Nothing here blocks anyone from taking a payment.
 export default function CashMonitorPage() {
+  const { t, tCode, isAr } = useT();
   const { can, isAdmin, loading: permsLoading } = usePermissions();
   // Granting the sidebar key without this left a visible link to a page that
   // still refused entry. Admins keep access regardless of the key.
@@ -39,8 +41,8 @@ export default function CashMonitorPage() {
     setLoading(false);
   }
 
-  if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!allowed) return <p style={{ color: theme.gray }}>You do not have access to this page.</p>;
+  if (permsLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!allowed) return <p style={{ color: theme.gray }}>{t("You do not have access to this page.")}</p>;
 
   const totals = rows.reduce(
     (a, r) => ({
@@ -60,45 +62,45 @@ export default function CashMonitorPage() {
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>Cash Management</p>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Cash Custody Monitor</h1>
+      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>{t("Cash Management")}</p>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("Cash Custody Monitor")}</h1>
       <p style={{ color: theme.gray, margin: "0 0 20px" }}>
-        Who is holding cash across all three businesses right now, against their limit.
+        {t("Who is holding cash across all three businesses right now, against their limit.")}
       </p>
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
-        <Stat label="Total In Staff Hands" value={`${formatMoney(totals.all)} EGP`} tone={theme.navy} />
-        <Stat label="Scan Center" value={`${formatMoney(totals.scan)} EGP`} tone={theme.navy} />
-        <Stat label="Dental Supply" value={`${formatMoney(totals.mat)} EGP`} tone={theme.navy} />
-        <Stat label="El3awama F&B" value={`${formatMoney(totals.fnb)} EGP`} tone={theme.navy} />
-        <Stat label="Over Limit" value={red.length} tone={red.length ? "#ba1a1a" : theme.navy} />
-        <Stat label="Near Limit" value={yellow.length} tone={yellow.length ? "#8a6d00" : theme.navy} />
+        <Stat label={t("Total In Staff Hands")} value={t("{amount} EGP", { amount: formatMoney(totals.all) })} tone={theme.navy} />
+        <Stat label={t("Scan Center")} value={t("{amount} EGP", { amount: formatMoney(totals.scan) })} tone={theme.navy} />
+        <Stat label={t("Dental Supply")} value={t("{amount} EGP", { amount: formatMoney(totals.mat) })} tone={theme.navy} />
+        <Stat label={t("El3awama F&B")} value={t("{amount} EGP", { amount: formatMoney(totals.fnb) })} tone={theme.navy} />
+        <Stat label={t("Over Limit")} value={red.length} tone={red.length ? "#ba1a1a" : theme.navy} />
+        <Stat label={t("Near Limit")} value={yellow.length} tone={yellow.length ? "#8a6d00" : theme.navy} />
       </div>
 
       {red.length > 0 && (
         <div style={{ background: "#fff5f5", border: "1px solid #f0c9c9", borderRadius: 12, padding: 16, marginBottom: 18 }}>
           <div style={{ fontWeight: 800, color: "#ba1a1a", marginBottom: 4 }}>
-            {red.length === 1 ? "1 person is" : `${red.length} people are`} over their cash limit
+            {red.length === 1 ? t("1 person is over their cash limit") : t("{n} people are over their cash limit", { n: red.length })}
           </div>
           <div style={{ fontSize: 13, color: "#7a3b3b" }}>
-            {red.map((r) => `${r.name} — ${formatMoney(r.total_cash)} EGP against a ${formatMoney(r.threshold)} limit`).join(" · ")}
+            {red.map((r) => t("{name} — {amount} EGP against a {limit} limit", { name: r.name, amount: formatMoney(r.total_cash), limit: formatMoney(r.threshold) })).join(" · ")}
           </div>
           <div style={{ fontSize: 12, color: "#8a5a5a", marginTop: 6 }}>
-            Nobody is blocked from taking payments. This is a prompt to move the cash to a safe.
+            {t("Nobody is blocked from taking payments. This is a prompt to move the cash to a safe.")}
           </div>
         </div>
       )}
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 22, marginBottom: 18, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Staff Custody</h3>
-        {loading ? <p style={{ color: theme.gray }}>Loading...</p> : (
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Staff Custody")}</h3>
+        {loading ? <p style={{ color: theme.gray }}>{t("Loading...")}</p> : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 720 }}>
               <thead>
-                <tr style={{ textAlign: "left", color: theme.gray, fontSize: 11, textTransform: "uppercase" }}>
-                  <th style={th}>Employee</th><th style={thR}>Scan</th><th style={thR}>Dental</th>
-                  <th style={thR}>El3awama</th><th style={thR}>Total</th><th style={thR}>Limit</th>
-                  <th style={thR}>Used</th><th style={th}>Status</th>
+                <tr style={{ textAlign: "start", color: theme.gray, fontSize: 11, textTransform: "uppercase" }}>
+                  <th style={th}>{t("Employee")}</th><th style={thR}>{t("Scan")}</th><th style={thR}>{t("Dental")}</th>
+                  <th style={thR}>{t("El3awama")}</th><th style={thR}>{t("Total")}</th><th style={thR}>{t("Limit")}</th>
+                  <th style={thR}>{t("Used")}</th><th style={th}>{t("Status")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -109,7 +111,7 @@ export default function CashMonitorPage() {
                       <td style={td}>
                         <div style={{ fontWeight: 600, color: theme.navy }}>{r.name}</div>
                         <div style={{ fontSize: 11, color: theme.gray }}>
-                          {r.role}{r.is_cash_keeper ? " · cash keeper" : ""}
+                          {isAr ? tCode(r.role) : r.role}{r.is_cash_keeper ? ` · ${t("cash keeper")}` : ""}
                         </div>
                       </td>
                       <td style={tdR}>{formatMoney(r.scan_cash)}</td>
@@ -123,14 +125,14 @@ export default function CashMonitorPage() {
                       <td style={td}>
                         <span style={{ padding: "3px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700,
                           background: s.bg, border: `1px solid ${s.border}`, color: s.text }}>
-                          {s.label}
+                          {t(s.label)}
                         </span>
                       </td>
                     </tr>
                   );
                 })}
                 <tr style={{ borderTop: `2px solid ${theme.navy}`, background: "#f7f9fa" }}>
-                  <td style={{ ...td, fontWeight: 800, color: theme.navy }}>System Total</td>
+                  <td style={{ ...td, fontWeight: 800, color: theme.navy }}>{t("System Total")}</td>
                   <td style={{ ...tdR, fontWeight: 700 }}>{formatMoney(totals.scan)}</td>
                   <td style={{ ...tdR, fontWeight: 700 }}>{formatMoney(totals.mat)}</td>
                   <td style={{ ...tdR, fontWeight: 700 }}>{formatMoney(totals.fnb)}</td>
@@ -145,18 +147,18 @@ export default function CashMonitorPage() {
 
       {prompts.length > 0 && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 22, marginBottom: 18, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Suggested Handovers</h3>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Suggested Handovers")}</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -6 }}>
-            Staff holding cash for a business they are not the cash keeper for.
+            {t("Staff holding cash for a business they are not the cash keeper for.")}
           </p>
           <div style={{ display: "grid", gap: 6 }}>
             {prompts.map((p, i) => (
               <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: "#fafbfc", border: "1px solid #eceff1", fontSize: 13 }}>
-                <strong style={{ color: theme.navy }}>{p.holder_name}</strong> holds{" "}
-                {formatMoney(p.balance)} EGP{" "}
+                <strong style={{ color: theme.navy }}>{p.holder_name}</strong> {t("holds")}{" "}
+                <Ltr>{t("{amount} EGP", { amount: formatMoney(p.balance) })}</Ltr>{" "}
                 {p.suggested_keeper_name
-                  ? <>— hand to <strong style={{ color: theme.navy }}>{p.suggested_keeper_name}</strong>, on shift today.</>
-                  : <span style={{ color: theme.gray }}>— no cash keeper for that business is on shift today, so it stays with them.</span>}
+                  ? <>— {t("hand to")} <strong style={{ color: theme.navy }}>{p.suggested_keeper_name}</strong>{t(", on shift today.")}</>
+                  : <span style={{ color: theme.gray }}>— {t("no cash keeper for that business is on shift today, so it stays with them.")}</span>}
               </div>
             ))}
           </div>
@@ -164,20 +166,20 @@ export default function CashMonitorPage() {
       )}
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Channel · last 30 days</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Revenue by Channel · last 30 days")}</h3>
         {Object.keys(byBrand).length === 0 ? (
-          <p style={{ color: theme.gray, fontSize: 13 }}>Nothing recorded in the last 30 days.</p>
+          <p style={{ color: theme.gray, fontSize: 13 }}>{t("Nothing recorded in the last 30 days.")}</p>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
             {Object.entries(byBrand).map(([b, methods]) => (
               <div key={b} style={{ padding: 12, borderRadius: 8, background: "#fafbfc", border: "1px solid #eceff1" }}>
                 <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 4 }}>
-                  {b === "scan" ? "Scan Center" : b === "dental_stock" ? "Dental Supply" : "El3awama F&B"}
+                  {b === "scan" ? t("Scan Center") : b === "dental_stock" ? t("Dental Supply") : t("El3awama F&B")}
                 </div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
                   {Object.entries(methods).map(([m, amt]) => (
                     <span key={m} style={{ color: theme.gray }}>
-                      {m}: <strong style={{ color: theme.navy }}>{formatMoney(amt)}</strong>
+                      {isAr ? tCode(m) : m}: <strong style={{ color: theme.navy }}>{formatMoney(amt)}</strong>
                     </span>
                   ))}
                 </div>
@@ -200,6 +202,6 @@ function Stat({ label, value, tone }) {
 }
 
 const th = { padding: "8px 10px", fontWeight: 700 };
-const thR = { ...th, textAlign: "right" };
+const thR = { ...th, textAlign: "end" };
 const td = { padding: "10px" };
-const tdR = { ...td, textAlign: "right" };
+const tdR = { ...td, textAlign: "end" };

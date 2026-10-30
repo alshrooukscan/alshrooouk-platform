@@ -7,12 +7,14 @@ import { clientInvoiceWhatsAppLink, clientReportWhatsAppLink, directWhatsAppLink
 import WhatsAppDropdown from "../../../components/WhatsAppDropdown";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx } from "../../../lib/i18n";
 
 // Every report request lives here regardless of source - an internal one
 // auto-created because a scan's flagged as requiring a report, or a real
 // external client's own upload. Both share the exact same pending/completed
 // lifecycle and the same client_id attribution underneath.
 export default function ReportsPage() {
+  const { t } = useT();
   const { profile } = usePermissions();
   useAutoRefresh(["reports"], () => { load(); });
   const [reports, setReports] = useState([]);
@@ -101,12 +103,12 @@ export default function ReportsPage() {
           body: JSON.stringify({ fileId, reportId: report.id, fileName: file.name }),
         });
         const result = await res.json();
-        if (!res.ok) failed.push(`${file.name}: ${result.error || "upload failed"}`);
+        if (!res.ok) failed.push(`${file.name}: ${tx(result.error || "upload failed")}`);
       } catch (e) {
-        failed.push(`${file.name}: ${e.message || "upload failed"}`);
+        failed.push(`${file.name}: ${tx(e.message || "upload failed")}`);
       }
     }
-    if (failed.length) setError(`Not uploaded: ${failed.join(" · ")}`);
+    if (failed.length) setError(tx("Not uploaded: {files}", { files: failed.join(" · ") }));
     setUploadingId(null);
     setUploadProgress(0);
     setUploadCount(null);
@@ -115,9 +117,9 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Reports</h1>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("Reports")}</h1>
       <p style={{ color: theme.gray, margin: "0 0 24px" }}>
-        Every report needed - patients seen directly or referred by a doctor, and requests uploaded by external clients through their own portal.
+        {t("Every report needed - patients seen directly or referred by a doctor, and requests uploaded by external clients through their own portal.")}
       </p>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
@@ -131,14 +133,14 @@ export default function ReportsPage() {
                 background: filter === s ? theme.goldLight : "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize",
               }}
             >
-              {s}
+              {s === "pending" ? t("Pending") : t("Completed")}
             </button>
           ))}
           <span style={{ width: 1, background: "#e6e6ea", margin: "2px 6px" }} />
           {[
-            { key: "all", label: "All sources" },
-            { key: "internal", label: "Internal" },
-            { key: "client", label: "Client" },
+            { key: "all", label: t("All sources") },
+            { key: "internal", label: t("Internal") },
+            { key: "client", label: t("Client") },
           ].map((o) => (
             <button
               key={o.key}
@@ -153,8 +155,8 @@ export default function ReportsPage() {
           ))}
         </div>
 
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
-        {!loading && reports.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing {filter}.</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
+        {!loading && reports.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{filter === "pending" ? t("Nothing pending.") : t("Nothing completed.")}</p>}
         <div style={{ display: "grid", gap: 10 }}>
           {reports.map((r) => (
             <div key={r.id} style={{ padding: "14px 0", borderBottom: "1px solid #f0f0f0" }}>
@@ -162,27 +164,27 @@ export default function ReportsPage() {
                 <div>
                   <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{r.scan_name}</div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
-                    {r.source_type === "client" ? "Client request" : "Internal"}{" \u00b7 "}{r.clients?.name}
+                    {r.source_type === "client" ? t("Client request") : t("Internal")}{" \u00b7 "}{r.clients?.name}
                     {r.patients?.name && (
                       <>
-                        {" \u00b7 Patient: "}
+                        {` \u00b7 ${t("Patient:")} `}
                         <a href={`/dashboard/patients/${r.patients.id}`}
                            style={{ color: theme.navy, fontWeight: 600, textDecoration: "none", borderBottom: `1px solid ${theme.gold}` }}>
                           {r.patients.name}
                         </a>
                       </>
                     )}
-                    {" \u00b7 "}Needed by {r.date_required}
+                    {" \u00b7 "}{t("Needed by {date}", { date: r.date_required })}
                   </div>
                   {r.client_uploaded_file_name && (
                     <a href={r.client_uploaded_file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: theme.gold }}>
-                      View what the client uploaded: {r.client_uploaded_file_name}
+                      {t("View what the client uploaded: {file}", { file: r.client_uploaded_file_name })}
                     </a>
                   )}
                   {(r.report_files?.length ? r.report_files : r.report_file_name ? [{ name: r.report_file_name, url: r.report_file_url }] : []).map((f, i) => (
                     <div key={f.file_id || f.url || i} style={{ fontSize: 12 }}>
                       <a href={f.url} target="_blank" rel="noreferrer" style={{ color: "#2e7d32" }}>
-                        {i === 0 ? "Completed report" : "Report file"}: {f.name}
+                        {i === 0 ? t("Completed report") : t("Report file")}: {f.name}
                       </a>
                     </div>
                   ))}
@@ -193,19 +195,21 @@ export default function ReportsPage() {
                     onChange={(e) => assign(r, e.target.value)}
                     style={{ fontSize: 12, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd" }}
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">{t("Unassigned")}</option>
                     {staffList.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
                   <label style={{ padding: "8px 16px", borderRadius: 8, background: r.status === "pending" ? theme.gold : "#fff", border: r.status === "pending" ? "none" : `1px solid ${theme.gold}`, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12, opacity: uploadingId === r.id ? 0.6 : 1, position: "relative", overflow: "hidden" }}>
                     {uploadingId === r.id && (
-                      <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
+                      <div style={{ position: "absolute", inset: 0, insetInlineStart: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
                     )}
                     <span style={{ position: "relative" }}>
                       {uploadingId === r.id
-                        ? `Uploading${uploadCount?.total > 1 ? ` ${uploadCount.done + 1} of ${uploadCount.total}` : ""}... ${uploadProgress}%`
-                        : r.status === "pending" ? "Upload Report Files" : "Add More Files"}
+                        ? (uploadCount?.total > 1
+                            ? t("Uploading {n} of {total}... {pct}%", { n: uploadCount.done + 1, total: uploadCount.total, pct: uploadProgress })
+                            : t("Uploading... {pct}%", { pct: uploadProgress }))
+                        : r.status === "pending" ? t("Upload Report Files") : t("Add More Files")}
                     </span>
                     <input type="file" multiple onChange={(e) => { handleFilesPicked(r, e.target.files); e.target.value = ""; }} disabled={!!uploadingId} style={{ display: "none" }} />
                   </label>
@@ -214,14 +218,14 @@ export default function ReportsPage() {
                       buttonStyle={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
                       options={[
                         {
-                          label: "Invoice",
+                          label: t("Invoice"),
                           onClick: () => window.open(clientInvoiceWhatsAppLink({ mobile: r.clients.contact_phone, clientName: r.clients.name, scanName: r.scan_name }), "_blank"),
                         },
                         {
-                          label: "Report",
+                          label: t("Report"),
                           onClick: () => window.open(clientReportWhatsAppLink({ mobile: r.clients.contact_phone, clientName: r.clients.name, scanName: r.scan_name }), "_blank"),
                         },
-                        { label: "Direct (empty)", onClick: () => window.open(directWhatsAppLink(r.clients.contact_phone), "_blank") },
+                        { label: t("Direct (empty)"), onClick: () => window.open(directWhatsAppLink(r.clients.contact_phone), "_blank") },
                       ]}
                     />
                   )}

@@ -7,6 +7,23 @@ import { formatMoney } from "../../../lib/format";
 import Loading from "../../../lib/Loading";
 import PerfectAttendanceCard from "../../../components/PerfectAttendanceCard";
 import { loadFaceModels, extractDescriptor } from "../../../lib/faceMatch";
+import { useT, tx, txCode, currentLocale, Ltr } from "../../../lib/i18n";
+import LanguageToggle from "../../../lib/i18n/LanguageToggle";
+
+// Dates written with Arabic month/day names but Western digits when the
+// person reads the portal in Arabic; English keeps the exact format it had.
+function dateLocale(fallback) {
+  return currentLocale() === "ar" ? "ar-EG-u-nu-latn" : fallback;
+}
+
+// One translated sentence with a few parts in bold: the sentence stays one
+// dictionary entry, and {name}-style slots are filled with JSX.
+function richText(str, parts) {
+  return String(str).split(/(\{\w+\})/).map((seg, i) => {
+    const m = seg.match(/^\{(\w+)\}$/);
+    return m && parts[m[1]] !== undefined ? <Fragment key={i}>{parts[m[1]]}</Fragment> : seg;
+  });
+}
 
 // Same wording the dashboard uses, so a figure means the same thing wherever
 // an employee reads it.
@@ -23,11 +40,12 @@ const MOVEMENT_LABEL = {
 };
 
 export default function EmployeePortalPage() {
+  const { t, tCode, isAr } = useT();
   const [data, setData] = useState(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNowTick(Date.now()), 60000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(timer);
   }, []);
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
@@ -74,11 +92,11 @@ export default function EmployeePortalPage() {
           }}
         >
           <span style={{ fontSize: 15, lineHeight: 1 }}>{revealed ? "\u{1F648}" : "\u{1F441}"}</span>
-          {revealed ? "Hide my pay" : "Show my pay"}
+          {revealed ? t("Hide my pay") : t("Show my pay")}
         </button>
         {!revealed && (
           <span style={{ fontSize: 11, color: theme.gray }}>
-            Hidden until you enter your password.
+            {t("Hidden until you enter your password.")}
           </span>
         )}
       </div>
@@ -87,10 +105,10 @@ export default function EmployeePortalPage() {
     {askPassword && (
       <div style={{ background: "#fff", border: "1px solid #e2e0e8", borderRadius: 14, padding: 16, marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 2 }}>
-          Enter your password
+          {t("Enter your password")}
         </div>
         <div style={{ fontSize: 11, color: theme.gray, marginBottom: 10 }}>
-          The same one you use to sign in. This confirms it is you before your pay is shown.
+          {t("The same one you use to sign in. This confirms it is you before your pay is shown.")}
         </div>
         <input
           type="password"
@@ -100,20 +118,20 @@ export default function EmployeePortalPage() {
           onKeyDown={(e) => { if (e.key === "Enter" && pwDraft && !pwBusy) submitPassword(); }}
           style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
         />
-        {pwError && <div style={{ color: "#ba1a1a", fontSize: 12, marginTop: 8 }}>{pwError}</div>}
+        {pwError && <div style={{ color: "#ba1a1a", fontSize: 12, marginTop: 8 }}>{t(pwError)}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button
             onClick={submitPassword}
             disabled={pwBusy || !pwDraft}
             style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: pwBusy ? "default" : "pointer" }}
           >
-            {pwBusy ? "Checking..." : "Show"}
+            {pwBusy ? t("Checking...") : t("Show")}
           </button>
           <button
             onClick={() => { setAskPassword(false); setPwDraft(""); setPwError(""); }}
             style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
           >
-            Cancel
+            {t("Cancel")}
           </button>
         </div>
       </div>
@@ -130,7 +148,7 @@ export default function EmployeePortalPage() {
         body: JSON.stringify({ password: pwDraft }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { setPwError(j.error || "That did not work."); setPwBusy(false); return; }
+      if (!res.ok) { setPwError(j.error || tx("That did not work.")); setPwBusy(false); return; }
       setRevealed(true); setAskPassword(false); setPwDraft("");
     } catch (e) { setPwError(e.message); }
     setPwBusy(false);
@@ -167,7 +185,7 @@ export default function EmployeePortalPage() {
     if (result.link) {
       window.open(result.link, "_blank");
     } else {
-      alert(result.error || "Could not open dashboard");
+      alert(tx(result.error || "Could not open dashboard"));
     }
   }
 
@@ -231,9 +249,12 @@ export default function EmployeePortalPage() {
           <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />
           <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Al Shrooouk Scan &amp; Lab</span>
         </div>
-        <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-          Log Out
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <LanguageToggle compact style={{ color: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />
+          <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+            {t("Log Out")}
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px" }}>
@@ -247,7 +268,7 @@ export default function EmployeePortalPage() {
         {/* Tabs size to their own words and wrap onto a second line on a
             phone. A sideways-scrolling row hid the last tabs (Vacations,
             Excuses) off-screen, so staff could not find where to ask for
-            leave. Labels carry Arabic too so everyone recognises them. */}
+            leave. Labels follow the language toggle in the header. */}
         <div
           style={{
             display: "flex",
@@ -257,32 +278,32 @@ export default function EmployeePortalPage() {
           }}
         >
           {[
-            { key: "overview", label: "Overview · نظرة عامة" },
-            { key: "schedule", label: "Schedule · الجدول" },
-            { key: "swaps", label: "Swaps · تبديل" },
-            { key: "attendance", label: "Fix Attendance · تصحيح الحضور" },
-            { key: "payslips", label: "Payslips · المرتبات" },
-            { key: "vacations", label: "Vacations · إجازات" },
-            { key: "excuses", label: "Excuses · أذونات" },
-            { key: "transfers", label: "Cash Transfers · تحويلات نقدية" },
-          ].map((t) => (
+            { key: "overview", label: "Overview" },
+            { key: "schedule", label: "Schedule" },
+            { key: "swaps", label: "Swaps" },
+            { key: "attendance", label: "Fix Attendance" },
+            { key: "payslips", label: "Payslips" },
+            { key: "vacations", label: "Vacations" },
+            { key: "excuses", label: "Excuses" },
+            { key: "transfers", label: "Cash Transfers" },
+          ].map((tb) => (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
+              key={tb.key}
+              onClick={() => setTab(tb.key)}
               style={{
                 flexShrink: 0,
                 padding: "9px 14px",
                 borderRadius: 999,
-                border: `1px solid ${tab === t.key ? theme.navy : "#e2e0e8"}`,
-                background: tab === t.key ? theme.navy : "#fff",
-                color: tab === t.key ? "#fff" : theme.navy,
+                border: `1px solid ${tab === tb.key ? theme.navy : "#e2e0e8"}`,
+                background: tab === tb.key ? theme.navy : "#fff",
+                color: tab === tb.key ? "#fff" : theme.navy,
                 fontWeight: 600,
                 fontSize: 13,
                 whiteSpace: "nowrap",
                 cursor: "pointer",
               }}
             >
-              {t.label}
+              {t(tb.label)}
             </button>
           ))}
         </div>
@@ -317,7 +338,7 @@ export default function EmployeePortalPage() {
                   }}
                 />
                 <span style={{ color: onShift ? "rgba(255,255,255,0.75)" : theme.gray, fontSize: 13 }}>
-                  {onShift ? "On shift" : "Not on shift"}
+                  {onShift ? t("On shift") : t("Not on shift")}
                 </span>
               </div>
 
@@ -326,10 +347,10 @@ export default function EmployeePortalPage() {
               </div>
               <div style={{ color: onShift ? "rgba(255,255,255,0.6)" : theme.gray, fontSize: 12, marginTop: 4 }}>
                 {onShift
-                  ? `Started at ${shiftStartLabel}`
+                  ? t("Started at {time}", { time: shiftStartLabel })
                   : lastEvent
-                  ? `Last shift ended at ${shiftStartLabel}`
-                  : "You haven't started a shift today."}
+                  ? t("Last shift ended at {time}", { time: shiftStartLabel })
+                  : t("You haven't started a shift today.")}
               </div>
 
               <button
@@ -348,14 +369,14 @@ export default function EmployeePortalPage() {
                   cursor: punching ? "wait" : "pointer",
                 }}
               >
-                {punching ? "Checking your location..." : onShift ? "End shift" : "Start shift"}
+                {punching ? t("Checking your location...") : onShift ? t("End shift") : t("Start shift")}
               </button>
 
               {geoError && (
-                <p style={{ color: onShift ? "#ffb4ab" : "#ba1a1a", fontSize: 12, marginTop: 10, marginBottom: 0 }}>{geoError}</p>
+                <p style={{ color: onShift ? "#ffb4ab" : "#ba1a1a", fontSize: 12, marginTop: 10, marginBottom: 0 }}>{t(geoError)}</p>
               )}
               <p style={{ fontSize: 11, color: onShift ? "rgba(255,255,255,0.5)" : "#8e8c96", marginTop: 12, marginBottom: 0, lineHeight: 1.5 }}>
-                Only works from the clinic. Your location and IP are recorded with each entry.
+                {t("Only works from the clinic. Your location and IP are recorded with each entry.")}
               </p>
             </div>
 
@@ -382,8 +403,8 @@ export default function EmployeePortalPage() {
                   boxShadow: "0 6px 18px rgba(169,139,77,0.28)",
                 }}
               >
-                <span style={{ color: theme.navy, fontWeight: 700, fontSize: 15 }}>Open staff dashboard</span>
-                <span style={{ color: theme.navy, fontSize: 18, lineHeight: 1 }}>&rsaquo;</span>
+                <span style={{ color: theme.navy, fontWeight: 700, fontSize: 15 }}>{t("Open staff dashboard")}</span>
+                <span style={{ color: theme.navy, fontSize: 18, lineHeight: 1 }}>{isAr ? "\u2039" : "\u203a"}</span>
               </button>
             )}
 
@@ -402,51 +423,51 @@ export default function EmployeePortalPage() {
             {data.accrued && (
               <div style={{ background: "#fff", border: "1px solid #eceaf1", borderRadius: 14, padding: 18, marginBottom: 14 }}>
                 <div style={{ color: theme.gray, fontSize: 13, marginBottom: 6 }}>
-                  Earned so far &middot; {data.accruedPeriod}
+                  {t("Earned so far")} &middot; {data.accruedPeriod}
                 </div>
                 <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
                   {money(data.accrued.indicative_net, { decimals: 2 })}{" "}
-                  <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>EGP</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>{t("EGP")}</span>
                 </div>
 
                 <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
                   <div>
-                    <div style={{ color: theme.gray, fontSize: 11 }}>Hours worked</div>
+                    <div style={{ color: theme.gray, fontSize: 11 }}>{t("Hours worked")}</div>
                     <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
                       {formatMoney(data.accrued.paid_hours, { decimals: 2 })}
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: theme.gray, fontSize: 11 }}>Days paid</div>
+                    <div style={{ color: theme.gray, fontSize: 11 }}>{t("Days paid")}</div>
                     <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>{data.accrued.paid_days}</div>
                   </div>
                   <div>
-                    <div style={{ color: theme.gray, fontSize: 11 }}>Gross</div>
+                    <div style={{ color: theme.gray, fontSize: 11 }}>{t("Gross")}</div>
                     <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
                       {money(data.accrued.gross, { decimals: 2 })}
                     </div>
                   </div>
                   {Number(data.accrued.report_bonus) > 0 && (
                     <div>
-                      <div style={{ color: theme.gray, fontSize: 11 }}>Report bonus</div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>{t("Report bonus")}</div>
                       <div style={{ color: "#1e7a3c", fontSize: 14, fontWeight: 600 }}>+{money(data.accrued.report_bonus, { decimals: 2 })}</div>
                     </div>
                   )}
                   {Number(data.accrued.bonuses) > 0 && (
                     <div>
-                      <div style={{ color: theme.gray, fontSize: 11 }}>Bonuses</div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>{t("Bonuses")}</div>
                       <div style={{ color: "#1e7a3c", fontSize: 14, fontWeight: 600 }}>+{money(data.accrued.bonuses, { decimals: 2 })}</div>
                     </div>
                   )}
                   {Number(data.accrued.advance_taken) > 0 && (
                     <div>
-                      <div style={{ color: theme.gray, fontSize: 11 }}>Advance</div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>{t("Advance")}</div>
                       <div style={{ color: "#ba1a1a", fontSize: 14, fontWeight: 600 }}>-{money(data.accrued.advance_taken, { decimals: 2 })}</div>
                     </div>
                   )}
                   {Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions) > 0 && (
                     <div>
-                      <div style={{ color: theme.gray, fontSize: 11 }}>Deductions</div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>{t("Deductions")}</div>
                       <div style={{ color: "#ba1a1a", fontSize: 14, fontWeight: 600 }}>
                         {money(Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions), { decimals: 2 })}
                       </div>
@@ -458,7 +479,7 @@ export default function EmployeePortalPage() {
                     approves or enters it (Mohamed Said, 30 Oct 2026). */}
                 {data.currentSlip && (data.currentSlip.bonuses.length > 0 || data.currentSlip.deductions.length > 0) && (
                   <div style={{ marginTop: 12, borderTop: "1px solid #f0eef4", paddingTop: 8 }}>
-                    <div style={{ color: theme.gray, fontSize: 11, marginBottom: 4 }}>Approved this month · اتوافق عليه</div>
+                    <div style={{ color: theme.gray, fontSize: 11, marginBottom: 4 }}>{t("Approved this month")}</div>
                     {data.currentSlip.bonuses.map((b, i) => (
                       <div key={"b" + i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0" }}>
                         <span style={{ color: theme.navy }}>{b.name}</span>
@@ -479,12 +500,12 @@ export default function EmployeePortalPage() {
                   // person should not read a total that includes hours nobody
                   // has approved yet and plan around it.
                   <div style={{ fontSize: 11, color: "#8a6d00", marginTop: 10 }}>
-                    {formatMoney(data.accrued.overtime_hours, { decimals: 2 })} overtime hour(s) recorded, still to be approved - not included above.
+                    {t("{hours} overtime hour(s) recorded, still to be approved - not included above.", { hours: formatMoney(data.accrued.overtime_hours, { decimals: 2 }) })}
                   </div>
                 )}
 
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 8 }}>
-                  Updates as you sign in and out. Final pay is confirmed on your payslip.
+                  {t("Updates as you sign in and out. Final pay is confirmed on your payslip.")}
                 </div>
 
                 {/* Without a roster the pay rule has no denominator, so the
@@ -492,9 +513,7 @@ export default function EmployeePortalPage() {
                     reconcile a number against days that were never recorded. */}
                 {data.noRoster && (
                   <div style={{ fontSize: 11, color: "#8a6d00", marginTop: 6 }}>
-                    No shifts are on your roster this month, so your full monthly salary is shown.
-                    Once your shifts are added, this becomes your salary divided by your scheduled
-                    days, times the days you signed in and out.
+                    {t("No shifts are on your roster this month, so your full monthly salary is shown. Once your shifts are added, this becomes your salary divided by your scheduled days, times the days you signed in and out.")}
                   </div>
                 )}
 
@@ -507,8 +526,8 @@ export default function EmployeePortalPage() {
                 {data.attendanceDays?.length > 0 && (
                   <div style={{ marginTop: 12, borderTop: "1px solid #eceaf1", paddingTop: 10 }}>
                     <div style={{ fontSize: 11, color: theme.gray, marginBottom: 6 }}>
-                      Your days this month &middot;{" "}
-                      {data.attendanceDays.filter((d) => d.counted).length} of {data.attendanceDays.length} counted
+                      {t("Your days this month")} &middot;{" "}
+                      {t("{n} of {total} counted", { n: data.attendanceDays.filter((d) => d.counted).length, total: data.attendanceDays.length })}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {data.attendanceDays.map((d) => {
@@ -522,12 +541,12 @@ export default function EmployeePortalPage() {
                             key={d.date}
                             title={
                               offRoster
-                                ? `${d.date} - you worked this day but it is not on your roster`
+                                ? t("{date} - you worked this day but it is not on your roster", { date: d.date })
                                 : d.counted
-                                ? `${d.date} - signed in and out, counted`
+                                ? t("{date} - signed in and out, counted", { date: d.date })
                                 : missingOut
-                                ? `${d.date} - signed in but no sign-out, so it is not counted yet`
-                                : `${d.date} - no sign-in recorded`
+                                ? t("{date} - signed in but no sign-out, so it is not counted yet", { date: d.date })
+                                : t("{date} - no sign-in recorded", { date: d.date })
                             }
                             style={{
                               fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
@@ -541,8 +560,7 @@ export default function EmployeePortalPage() {
                       })}
                     </div>
                     <div style={{ fontSize: 10, color: theme.gray, marginTop: 6 }}>
-                      Green counted &middot; blue worked but not on your roster &middot; amber signed in
-                      but no sign-out &middot; red no sign-in. A day counts once both are recorded.
+                      {t("Green counted · blue worked but not on your roster · amber signed in but no sign-out · red no sign-in. A day counts once both are recorded.")}
                     </div>
                   </div>
                 )}
@@ -557,7 +575,7 @@ export default function EmployeePortalPage() {
                   card showed 0 EGP and an annual base of 0 - which reads as an
                   error about their own pay. It now states their rate instead. */}
               <div style={{ color: theme.gray, fontSize: 13, marginBottom: 6 }}>
-                {data.employee?.hourly_rate ? "Your hourly rate" : "Monthly salary"}
+                {data.employee?.hourly_rate ? t("Your hourly rate") : t("Monthly salary")}
               </div>
               <div style={{ color: theme.navy, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>
                 {data.employee?.hourly_rate
@@ -567,35 +585,35 @@ export default function EmployeePortalPage() {
                       { decimals: 2 }
                     )}{" "}
                 <span style={{ fontSize: 15, fontWeight: 600, color: theme.gray }}>
-                  {data.employee?.hourly_rate ? "EGP per hour" : "EGP"}
+                  {data.employee?.hourly_rate ? t("EGP per hour") : t("EGP")}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }} hidden={!!data.employee?.hourly_rate}>
                 <div>
-                  <div style={{ color: theme.gray, fontSize: 11 }}>Fixed</div>
+                  <div style={{ color: theme.gray, fontSize: 11 }}>{t("Fixed")}</div>
                   <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
                     {money(data.employee?.fixed_salary, { decimals: 2 })}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: theme.gray, fontSize: 11 }}>Variable</div>
+                  <div style={{ color: theme.gray, fontSize: 11 }}>{t("Variable")}</div>
                   <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
                     {money(data.employee?.variable_salary, { decimals: 2 })}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: theme.gray, fontSize: 11 }}>Annual base</div>
+                  <div style={{ color: theme.gray, fontSize: 11 }}>{t("Annual base")}</div>
                   <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>{annualBase}</div>
                 </div>
               </div>
             </div>
 
-            <h3 style={{ color: theme.navy, marginTop: 20, marginBottom: 10, fontSize: 15 }}>Recent Activity</h3>
-            {data.events.length === 0 && <div style={cardStyle}>No sign in/out activity yet.</div>}
+            <h3 style={{ color: theme.navy, marginTop: 20, marginBottom: 10, fontSize: 15 }}>{t("Recent Activity")}</h3>
+            {data.events.length === 0 && <div style={cardStyle}>{t("No sign in/out activity yet.")}</div>}
             {data.events.map((e) => (
               <div key={e.id} style={cardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{e.event_type}</span>
+                  <span style={{ fontWeight: 600, color: theme.navy, textTransform: "capitalize" }}>{isAr ? tCode(e.event_type) : e.event_type}</span>
                   <span style={{ fontSize: 12, color: theme.gray }}>{new Date(e.event_time).toLocaleString()}</span>
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
@@ -603,8 +621,8 @@ export default function EmployeePortalPage() {
                     <div>
                       {e.address && <span>{e.address}</span>}
                       {e.lat && (
-                        <a href={`https://maps.google.com/?q=${e.lat},${e.lng}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, marginLeft: e.address ? 6 : 0 }}>
-                          View on map
+                        <a href={`https://maps.google.com/?q=${e.lat},${e.lng}`} target="_blank" rel="noreferrer" style={{ color: theme.gold, marginInlineStart: e.address ? 6 : 0 }}>
+                          {t("View on map")}
                         </a>
                       )}
                     </div>
@@ -620,7 +638,7 @@ export default function EmployeePortalPage() {
           <>
             {payGate}
             {data.currentSlip && <SlipCard slip={data.currentSlip} live money={money} />}
-            {data.payslips.length === 0 && !data.currentSlip && <div style={cardStyle}>No payslips generated yet.</div>}
+            {data.payslips.length === 0 && !data.currentSlip && <div style={cardStyle}>{t("No payslips generated yet.")}</div>}
             {data.payslips.map((p) => (
               <SlipCard key={p.id} money={money} slip={{
                 period: String(p.period).slice(0, 7),
@@ -662,6 +680,7 @@ export default function EmployeePortalPage() {
 }
 
 function FaceLocationCapture({ eventType, onCancel, onReady }) {
+  const { t, isAr } = useT();
   const [status, setStatus] = useState("Getting your location...");
   const [warning, setWarning] = useState(null); // { reasons, locationMessage, faceMessage }
   const [confirming, setConfirming] = useState(false);
@@ -717,7 +736,7 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
       if (!descriptor) {
         const nextAttempt = noFaceAttempt + 1;
         if (nextAttempt < NO_FACE_MAX_ATTEMPTS) {
-          setStatus(`No face detected, trying again... (${nextAttempt}/${NO_FACE_MAX_ATTEMPTS})`);
+          setStatus(tx("No face detected, trying again... ({n}/{max})", { n: nextAttempt, max: NO_FACE_MAX_ATTEMPTS }));
           setTimeout(() => !cancelled && captureAndVerify(nextAttempt, mismatchAttempt), 1200);
           return;
         }
@@ -837,7 +856,7 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 340, maxWidth: "90vw", textAlign: "center" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0, textTransform: "capitalize" }}>{eventType === "login" ? "Sign In" : "Sign Out"}</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0, textTransform: "capitalize" }}>{eventType === "login" ? t("Sign In") : t("Sign Out")}</h3>
 
         {!warning && (
           <>
@@ -845,9 +864,9 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
               <video ref={videoElRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
             </div>
             <canvas ref={canvasElRef} style={{ display: "none" }} />
-            <p style={{ fontSize: 13, color: theme.gray }}>{status}</p>
+            <p style={{ fontSize: 13, color: theme.gray }}>{t(status)}</p>
             <button onClick={handleCancel} style={{ marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-              Cancel
+              {t("Cancel")}
             </button>
           </>
         )}
@@ -856,13 +875,17 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
           <div>
             <div style={{ fontSize: 32, marginBottom: 8 }}>&#9888;&#65039;</div>
             {warning.locationMessage && (
-              <p style={{ fontSize: 13, color: "#202124", textAlign: "left", background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 10, padding: "10px 12px", marginBottom: warning.faceMessage ? 8 : 16 }}>
-                {warning.locationMessage}
+              <p style={{ fontSize: 13, color: "#202124", textAlign: "start", background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 10, padding: "10px 12px", marginBottom: warning.faceMessage ? 8 : 16 }}>
+                {/* Rebuilt from the distance in Arabic; the server's English
+                    sentence is shown as-is otherwise. */}
+                {isAr && warning.distance != null
+                  ? t("You appear to be about {m}m away from the clinic, not at it. If you continue, this will be recorded as an outside-location sign-in and may be reviewed for attendance purposes. Only confirm if you are certain you are at the correct location.", { m: warning.distance })
+                  : warning.locationMessage}
               </p>
             )}
             {warning.faceMessage && (
-              <p style={{ fontSize: 13, color: "#202124", textAlign: "left", background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 10, padding: "10px 12px", marginBottom: 16 }}>
-                {warning.faceMessage}
+              <p style={{ fontSize: 13, color: "#202124", textAlign: "start", background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 10, padding: "10px 12px", marginBottom: 16 }}>
+                {t(warning.faceMessage)}
               </p>
             )}
             <div style={{ display: "flex", gap: 8 }}>
@@ -871,14 +894,14 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
                 disabled={confirming}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 }}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 onClick={handleConfirmAnyway}
                 disabled={confirming}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: "#ba1a1a", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
               >
-                {confirming ? "Confirming..." : "Yes, Confirm"}
+                {confirming ? t("Confirming...") : t("Yes, Confirm")}
               </button>
             </div>
           </div>
@@ -889,10 +912,11 @@ function FaceLocationCapture({ eventType, onCancel, onReady }) {
 }
 
 function ScheduleTab({ schedule }) {
+  const { t } = useT();
   const [hideOffs, setHideOffs] = useState(false);
 
   if (!schedule || schedule.length === 0) {
-    return <div style={cardStyle}>No schedule has been set for you yet, check with HR.</div>;
+    return <div style={cardStyle}>{t("No schedule has been set for you yet, check with HR.")}</div>;
   }
   const visible = hideOffs ? schedule.filter((d) => !d.is_day_off) : schedule;
   const grouped = {};
@@ -905,21 +929,21 @@ function ScheduleTab({ schedule }) {
     <div>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: theme.navy, marginBottom: 14, cursor: "pointer" }}>
         <input type="checkbox" checked={hideOffs} onChange={(e) => setHideOffs(e.target.checked)} />
-        Show scheduled shifts only, hide days off
+        {t("Show scheduled shifts only, hide days off")}
       </label>
-      {visible.length === 0 && <div style={cardStyle}>No scheduled shifts in this view - every upcoming day is a day off.</div>}
+      {visible.length === 0 && <div style={cardStyle}>{t("No scheduled shifts in this view - every upcoming day is a day off.")}</div>}
       {Object.entries(grouped).map(([month, days]) => (
         <div key={month} style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>
-            {new Date(month + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+            {new Date(month + "-01").toLocaleDateString(dateLocale("en-US"), { month: "long", year: "numeric" })}
           </div>
           {days.map((d) => {
-            const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
+            const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString(dateLocale("en-US"), { weekday: "short" });
             return (
               <div key={d.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{dow}, {d.work_date}</span>
                 {d.is_day_off ? (
-                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "#f0f0f0", color: "#888", fontWeight: 700 }}>Day Off</span>
+                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "#f0f0f0", color: "#888", fontWeight: 700 }}>{t("Day Off")}</span>
                 ) : (
                   <span style={{ fontSize: 13, color: theme.gray }}>{d.start_time?.slice(0, 5)} – {d.end_time?.slice(0, 5)}</span>
                 )}
@@ -933,6 +957,7 @@ function ScheduleTab({ schedule }) {
 }
 
 function VacationsTab({ leaveRequests, onSubmitted }) {
+  const { t, tCode, isAr } = useT();
   const [showForm, setShowForm] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -942,7 +967,7 @@ function VacationsTab({ leaveRequests, onSubmitted }) {
 
   async function handleSubmit() {
     if (!startDate || !endDate) {
-      setError("Start and end dates are required.");
+      setError(tx("Start and end dates are required."));
       return;
     }
     setSaving(true);
@@ -954,7 +979,7 @@ function VacationsTab({ leaveRequests, onSubmitted }) {
     });
     setSaving(false);
     if (!res.ok) {
-      setError("Could not submit request.");
+      setError(tx("Could not submit request."));
       return;
     }
     setShowForm(false);
@@ -971,33 +996,33 @@ function VacationsTab({ leaveRequests, onSubmitted }) {
     <div>
       {!showForm && (
         <button onClick={() => setShowForm(true)} style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
-          + Request Vacation
+          {t("+ Request Vacation")}
         </button>
       )}
       {showForm && (
         <div style={cardStyle}>
-          <label style={labelStyle}>Start Date</label>
+          <label style={labelStyle}>{t("Start Date")}</label>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inp} />
-          <label style={labelStyle}>End Date</label>
+          <label style={labelStyle}>{t("End Date")}</label>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inp} />
-          <label style={labelStyle}>Reason (optional)</label>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} style={inp} placeholder="e.g., Family trip" />
-          {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
+          <label style={labelStyle}>{t("Reason (optional)")}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} style={inp} placeholder={t("e.g., Family trip")} />
+          {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{t(error)}</p>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer" }}>Cancel</button>
+            <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer" }}>{t("Cancel")}</button>
             <button onClick={handleSubmit} disabled={saving} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-              {saving ? "Submitting..." : "Submit"}
+              {saving ? t("Submitting...") : t("Submit")}
             </button>
           </div>
         </div>
       )}
 
-      {leaveRequests.length === 0 && !showForm && <div style={cardStyle}>No vacation requests yet.</div>}
+      {leaveRequests.length === 0 && !showForm && <div style={cardStyle}>{t("No vacation requests yet.")}</div>}
       {leaveRequests.map((r) => (
         <div key={r.id} style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{r.start_date} &rarr; {r.end_date}</span>
-            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[r.status], color: statusColor[r.status], fontWeight: 700, textTransform: "capitalize" }}>{r.status}</span>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{r.start_date} {isAr ? "\u2190" : "\u2192"} {r.end_date}</span>
+            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[r.status], color: statusColor[r.status], fontWeight: 700, textTransform: "capitalize" }}>{isAr ? tCode(r.status) : r.status}</span>
           </div>
           {r.reason && <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>{r.reason}</div>}
         </div>
@@ -1007,6 +1032,7 @@ function VacationsTab({ leaveRequests, onSubmitted }) {
 }
 
 function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
+  const { t, tCode, isAr } = useT();
   const [showForm, setShowForm] = useState(false);
   const [excuseRuleId, setExcuseRuleId] = useState("");
   const [excuseDate, setExcuseDate] = useState("");
@@ -1016,11 +1042,11 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
 
   async function handleSubmit() {
     if (!excuseRuleId) {
-      setError("Pick an excuse type.");
+      setError(tx("Pick an excuse type."));
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(excuseDate)) {
-      setError("Pick the date of the excuse. / اختر تاريخ الإذن.");
+      setError(tx("Pick the date of the excuse."));
       return;
     }
     setSaving(true);
@@ -1033,7 +1059,7 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
     setSaving(false);
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      setError(j.error || "Could not submit excuse.");
+      setError(j.error || tx("Could not submit excuse."));
       return;
     }
     setShowForm(false);
@@ -1050,46 +1076,46 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
     <div>
       {!showForm && (
         <button onClick={() => setShowForm(true)} style={{ width: "100%", padding: "12px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
-          + Submit Excuse
+          {t("+ Submit Excuse")}
         </button>
       )}
       {showForm && (
         <div style={cardStyle}>
-          <label style={labelStyle}>Excuse Type</label>
+          <label style={labelStyle}>{t("Excuse Type")}</label>
           <select value={excuseRuleId} onChange={(e) => setExcuseRuleId(e.target.value)} style={inp}>
-            <option value="">Select excuse type...</option>
+            <option value="">{t("Select excuse type...")}</option>
             {excuseRules.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
-          <label style={labelStyle}>Date of the excuse / تاريخ الإذن</label>
+          <label style={labelStyle}>{t("Date of the excuse")}</label>
           <input type="date" required value={excuseDate} onChange={(e) => setExcuseDate(e.target.value)} style={inp} />
-          <label style={labelStyle}>Note (optional)</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} placeholder="Add any detail for admin to review" />
-          {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{error}</p>}
+          <label style={labelStyle}>{t("Note (optional)")}</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} placeholder={t("Add any detail for admin to review")} />
+          {error && <p style={{ color: "#ba1a1a", fontSize: 12 }}>{t(error)}</p>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer" }}>Cancel</button>
+            <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer" }}>{t("Cancel")}</button>
             <button onClick={handleSubmit} disabled={saving} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-              {saving ? "Submitting..." : "Submit"}
+              {saving ? t("Submitting...") : t("Submit")}
             </button>
           </div>
         </div>
       )}
 
-      {excuseSubmissions.length === 0 && !showForm && <div style={cardStyle}>No excuses submitted yet.</div>}
+      {excuseSubmissions.length === 0 && !showForm && <div style={cardStyle}>{t("No excuses submitted yet.")}</div>}
       {excuseSubmissions.map((s) => (
         <div key={s.id} style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{s.excuse_rules?.name || "Excuse"}</span>
-            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[s.status], color: statusColor[s.status], fontWeight: 700, textTransform: "capitalize" }}>{s.status}</span>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{s.excuse_rules?.name || t("Excuse")}</span>
+            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[s.status], color: statusColor[s.status], fontWeight: 700, textTransform: "capitalize" }}>{isAr ? tCode(s.status) : s.status}</span>
           </div>
           {s.excuse_date && (
             <div style={{ fontSize: 12, color: theme.navy, marginTop: 4 }}>
-              Date of the excuse / تاريخ الإذن: <strong>{String(s.excuse_date).slice(0, 10)}</strong>
+              {t("Date of the excuse")}: <strong>{String(s.excuse_date).slice(0, 10)}</strong>
             </div>
           )}
           {s.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>{s.note}</div>}
-          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>Submitted {new Date(s.created_at).toLocaleDateString()}</div>
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{t("Submitted {date}", { date: new Date(s.created_at).toLocaleDateString() })}</div>
         </div>
       ))}
     </div>
@@ -1097,6 +1123,7 @@ function ExcusesTab({ excuseRules, excuseSubmissions, onSubmitted }) {
 }
 
 function TransfersTab({ incomingTransfers, cashBalances, cashMovements, onReviewed }) {
+  const { t, tCode, isAr } = useT();
   const [busyId, setBusyId] = useState(null);
   const statusColor = { pending: "#a97c00", confirmed: "#2e7d32", rejected: "#ba1a1a" };
   const statusBg = { pending: "#fff8e1", confirmed: "#e8f5e9", rejected: "#fdecea" };
@@ -1112,8 +1139,8 @@ function TransfersTab({ incomingTransfers, cashBalances, cashMovements, onReview
     onReviewed();
   }
 
-  const pending = incomingTransfers.filter((t) => t.status === "pending");
-  const reviewed = incomingTransfers.filter((t) => t.status !== "pending");
+  const pending = incomingTransfers.filter((tr) => tr.status === "pending");
+  const reviewed = incomingTransfers.filter((tr) => tr.status !== "pending");
 
   return (
     <div>
@@ -1122,16 +1149,16 @@ function TransfersTab({ incomingTransfers, cashBalances, cashMovements, onReview
           to see it without an admin opening a page for them. Read-only: money
           still moves through the dashboard, where it is logged and confirmed. */}
       <div style={cardStyle}>
-        <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 10 }}>My Cash In Hand</div>
+        <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 10 }}>{t("My Cash In Hand")}</div>
         {(cashBalances || []).filter((b) => Number(b.balance) !== 0).length === 0 ? (
-          <div style={{ fontSize: 13, color: theme.gray }}>You are not holding any cash right now.</div>
+          <div style={{ fontSize: 13, color: theme.gray }}>{t("You are not holding any cash right now.")}</div>
         ) : (
           (cashBalances || [])
             .filter((b) => Number(b.balance) !== 0)
             .map((b) => (
               <div key={b.brand} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f4f4f4" }}>
-                <span style={{ color: theme.navy, fontSize: 13 }}>{BRAND_LABEL[b.brand] || b.brand}</span>
-                <span style={{ color: theme.gold, fontWeight: 700 }}>{Number(b.balance).toLocaleString()} EGP</span>
+                <span style={{ color: theme.navy, fontSize: 13 }}>{t(BRAND_LABEL[b.brand] || b.brand)}</span>
+                <span style={{ color: theme.gold, fontWeight: 700 }}>{t("{amount} EGP", { amount: Number(b.balance).toLocaleString() })}</span>
               </div>
             ))
         )}
@@ -1139,55 +1166,58 @@ function TransfersTab({ incomingTransfers, cashBalances, cashMovements, onReview
 
       {(cashMovements || []).length > 0 && (
         <div style={cardStyle}>
-          <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 10 }}>My Recent Cash Movements</div>
+          <div style={{ fontWeight: 700, color: theme.navy, marginBottom: 10 }}>{t("My Recent Cash Movements")}</div>
           {cashMovements.map((m) => (
             <div key={m.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid #f4f4f4" }}>
               <div>
-                <div style={{ color: theme.navy, fontSize: 13 }}>{MOVEMENT_LABEL[m.type] || m.type}</div>
+                <div style={{ color: theme.navy, fontSize: 13 }}>{MOVEMENT_LABEL[m.type] ? t(MOVEMENT_LABEL[m.type]) : (isAr ? tCode(m.type) : m.type)}</div>
                 <div style={{ color: theme.gray, fontSize: 11 }}>
-                  {BRAND_LABEL[m.brand] || m.brand} &middot; {m.entry_date || (m.created_at || "").slice(0, 10)}
+                  {t(BRAND_LABEL[m.brand] || m.brand)} &middot; {m.entry_date || (m.created_at || "").slice(0, 10)}
                   {m.note ? ` · ${m.note}` : ""}
                 </div>
               </div>
-              <div style={{ color: theme.navy, fontWeight: 600, whiteSpace: "nowrap" }}>{Number(m.amount).toLocaleString()} EGP</div>
+              <div style={{ color: theme.navy, fontWeight: 600, whiteSpace: "nowrap" }}>{t("{amount} EGP", { amount: Number(m.amount).toLocaleString() })}</div>
             </div>
           ))}
         </div>
       )}
 
-      {pending.length === 0 && reviewed.length === 0 && <div style={cardStyle}>No cash transfers to you yet.</div>}
-      {pending.map((t) => (
-        <div key={t.id} style={{ ...cardStyle, border: `1px solid ${theme.gold}` }}>
+      {pending.length === 0 && reviewed.length === 0 && <div style={cardStyle}>{t("No cash transfers to you yet.")}</div>}
+      {pending.map((tr) => (
+        <div key={tr.id} style={{ ...cardStyle, border: `1px solid ${theme.gold}` }}>
           <div style={{ fontSize: 13, color: theme.navy, marginBottom: 8 }}>
-            <strong>{t.from_employee?.name}</strong> wants to hand you <strong>{Number(t.amount).toLocaleString()} EGP</strong> in cash
-            {t.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{t.note}</div>}
+            {richText(t("{name} wants to hand you {amount} in cash"), {
+              name: <strong>{tr.from_employee?.name}</strong>,
+              amount: <strong><Ltr>{t("{amount} EGP", { amount: Number(tr.amount).toLocaleString() })}</Ltr></strong>,
+            })}
+            {tr.note && <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{tr.note}</div>}
           </div>
           <p style={{ fontSize: 11, color: theme.gray, marginTop: -4, marginBottom: 10 }}>
-            Only confirm once you've actually received this cash in hand.
+            {t("Only confirm once you've actually received this cash in hand.")}
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <button
-              onClick={() => review(t.id, "reject")}
-              disabled={busyId === t.id}
+              onClick={() => review(tr.id, "reject")}
+              disabled={busyId === tr.id}
               style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, cursor: "pointer", fontSize: 13 }}
             >
-              I did not receive this
+              {t("I did not receive this")}
             </button>
             <button
-              onClick={() => review(t.id, "confirm")}
-              disabled={busyId === t.id}
+              onClick={() => review(tr.id, "confirm")}
+              disabled={busyId === tr.id}
               style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
             >
-              {busyId === t.id ? "Confirming..." : "Yes, I received it"}
+              {busyId === tr.id ? t("Confirming...") : t("Yes, I received it")}
             </button>
           </div>
         </div>
       ))}
-      {reviewed.map((t) => (
-        <div key={t.id} style={cardStyle}>
+      {reviewed.map((tr) => (
+        <div key={tr.id} style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{t.from_employee?.name} → {Number(t.amount).toLocaleString()} EGP</span>
-            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[t.status], color: statusColor[t.status], fontWeight: 700, textTransform: "capitalize" }}>{t.status}</span>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{tr.from_employee?.name} {isAr ? "\u2190" : "\u2192"} <Ltr>{t("{amount} EGP", { amount: Number(tr.amount).toLocaleString() })}</Ltr></span>
+            <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, background: statusBg[tr.status], color: statusColor[tr.status], fontWeight: 700, textTransform: "capitalize" }}>{isAr ? tCode(tr.status) : tr.status}</span>
           </div>
         </div>
       ))}
@@ -1207,6 +1237,8 @@ function Row({ label, value, bold }) {
 // One month of pay, opened by tapping it: the expected pay, then every approved
 // plus and minus by name, then the net. Mohamed Said, 30 Oct 2026.
 function SlipCard({ slip, live, money }) {
+  const { t } = useT();
+  const egp = (v) => t("{amount} EGP", { amount: v });
   const [open, setOpen] = useState(!!live);
   const line = (label, value, color, sub) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "5px 0", borderTop: "1px solid #f2f2f2", fontSize: 13 }}>
@@ -1219,34 +1251,37 @@ function SlipCard({ slip, live, money }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontWeight: 600, color: theme.navy }}>
           {slip.period}
-          {live && <span style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#fff8e1", padding: "2px 8px", borderRadius: 999, marginLeft: 8 }}>This month · not final</span>}
+          {live && <span style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#fff8e1", padding: "2px 8px", borderRadius: 999, marginInlineStart: 8 }}>{t("This month · not final")}</span>}
         </span>
-        <span style={{ fontWeight: 700, color: theme.navy }}>{money(slip.net, { decimals: 2 })} EGP {open ? "▲" : "▼"}</span>
+        <span style={{ fontWeight: 700, color: theme.navy }}>{egp(money(slip.net, { decimals: 2 }))} {open ? "▲" : "▼"}</span>
       </div>
       {open && (
         <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
           {line(
-            "Expected pay · الأساسي",
-            `${money(slip.base, { decimals: 2 })} EGP`,
+            t("Expected pay"),
+            egp(money(slip.base, { decimals: 2 })),
             null,
-            slip.pay_basis === "hourly" && slip.paid_hours ? `${money(slip.paid_hours, { decimals: 2 })} hours` : null
+            slip.pay_basis === "hourly" && slip.paid_hours ? t("{n} hours", { n: money(slip.paid_hours, { decimals: 2 }) }) : null
           )}
-          {slip.report_bonus > 0 && line("Report bonus · بونص التقارير", `+ ${money(slip.report_bonus, { decimals: 2 })} EGP`, "#1e7a3c")}
-          {slip.raw_data_bonus > 0 && line("Raw data bonus · بونص الـ Raw data", `+ ${money(slip.raw_data_bonus, { decimals: 2 })} EGP`, "#1e7a3c")}
-          {slip.bonuses.map((b, i) => <Fragment key={"b" + i}>{line(b.name, `+ ${money(b.amount, { decimals: 2 })} EGP`, "#1e7a3c")}</Fragment>)}
-          {slip.deductions.map((d, i) => <Fragment key={"d" + i}>{line(d.name, `- ${money(d.amount, { decimals: 2 })} EGP`, "#ba1a1a", d.note)}</Fragment>)}
-          {slip.deferred > 0 && line("Moved to next month (deduction cap) · مترحّل للشهر الجاي", `${money(slip.deferred, { decimals: 2 })} EGP`, theme.gray)}
-          {slip.advance > 0 && line("Advance repayment · سداد سلفة", `- ${money(slip.advance, { decimals: 2 })} EGP`, "#ba1a1a")}
+          {slip.report_bonus > 0 && line(t("Report bonus"), `+ ${egp(money(slip.report_bonus, { decimals: 2 }))}`, "#1e7a3c")}
+          {slip.raw_data_bonus > 0 && line(t("Raw data bonus"), `+ ${egp(money(slip.raw_data_bonus, { decimals: 2 }))}`, "#1e7a3c")}
+          {slip.bonuses.map((b, i) => <Fragment key={"b" + i}>{line(b.name, `+ ${egp(money(b.amount, { decimals: 2 }))}`, "#1e7a3c")}</Fragment>)}
+          {slip.deductions.map((d, i) => <Fragment key={"d" + i}>{line(d.name, `- ${egp(money(d.amount, { decimals: 2 }))}`, "#ba1a1a", d.note)}</Fragment>)}
+          {slip.deferred > 0 && line(t("Moved to next month (deduction cap)"), egp(money(slip.deferred, { decimals: 2 })), theme.gray)}
+          {slip.advance > 0 && line(t("Advance repayment"), `- ${egp(money(slip.advance, { decimals: 2 }))}`, "#ba1a1a")}
           <div style={{ display: "flex", justifyContent: "space-between", borderTop: `2px solid ${theme.navy}`, marginTop: 6, paddingTop: 8, fontWeight: 800, color: theme.navy }}>
-            <span>Net pay · الصافي</span>
-            <span>{money(slip.net, { decimals: 2 })} EGP</span>
+            <span>{t("Net pay")}</span>
+            <span>{egp(money(slip.net, { decimals: 2 }))}</span>
           </div>
           <div style={{ fontSize: 11, color: theme.gray, marginTop: 6 }}>
             {live
-              ? "Only items an admin has approved are included. This can still change until the payslip is issued."
+              ? t("Only items an admin has approved are included. This can still change until the payslip is issued.")
               : slip.paid_at
-              ? `Paid on ${new Date(slip.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} via ${({ cash: "Cash", instapay: "InstaPay", wallet: "Wallet", bank_transfer: "Bank transfer", visa: "Visa" })[slip.paid_method] || slip.paid_method} · اتصرف`
-              : "Issued payslip, not paid yet. Only approved items are included."}
+              ? t("Paid on {date} via {method}", {
+                  date: new Date(slip.paid_at).toLocaleDateString(dateLocale("en-GB"), { day: "numeric", month: "short", year: "numeric" }),
+                  method: t(({ cash: "Cash", instapay: "InstaPay", wallet: "Wallet", bank_transfer: "Bank transfer", visa: "Visa" })[slip.paid_method] || slip.paid_method),
+                })
+              : t("Issued payslip, not paid yet. Only approved items are included.")}
           </div>
         </div>
       )}
@@ -1267,8 +1302,8 @@ const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px
 // ---------------------------------------------------------------------------
 function describeDay(d) {
   if (!d) return "-";
-  const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
-  if (d.is_day_off) return `${dow} ${d.work_date} · Day Off`;
+  const dow = new Date(d.work_date + "T00:00:00").toLocaleDateString(dateLocale("en-US"), { weekday: "short" });
+  if (d.is_day_off) return `${dow} ${d.work_date} · ${tx("Day Off")}`;
   return `${dow} ${d.work_date} · ${d.start_time?.slice(0, 5)}-${d.end_time?.slice(0, 5)}`;
 }
 
@@ -1281,15 +1316,17 @@ const swapBadge = {
 };
 
 function StatusPill({ status }) {
+  const { t } = useT();
   const b = swapBadge[status] || swapBadge.cancelled;
   return (
     <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: b.bg, color: b.fg, fontWeight: 700, whiteSpace: "nowrap" }}>
-      {b.label}
+      {t(b.label)}
     </span>
   );
 }
 
 function SwapsTab({ onChanged }) {
+  const { t } = useT();
   const [swapData, setSwapData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1314,7 +1351,7 @@ function SwapsTab({ onChanged }) {
   async function submit() {
     setError("");
     if (!myDayId || !colleagueId || !theirDayId) {
-      setError("Pick your day, a colleague, and the day you want from them.");
+      setError(tx("Pick your day, a colleague, and the day you want from them."));
       return;
     }
     setBusy(true);
@@ -1326,7 +1363,7 @@ function SwapsTab({ onChanged }) {
     const result = await res.json();
     setBusy(false);
     if (!res.ok) {
-      setError(result.error || "Could not send that request.");
+      setError(result.error || tx("Could not send that request."));
       return;
     }
     setShowForm(false);
@@ -1348,7 +1385,7 @@ function SwapsTab({ onChanged }) {
     const result = await res.json();
     setBusy(false);
     if (!res.ok) {
-      setError(result.error || "Could not update that request.");
+      setError(result.error || tx("Could not update that request."));
       loadSwaps();
       return;
     }
@@ -1357,8 +1394,8 @@ function SwapsTab({ onChanged }) {
     // Schedule tab is still accurate - no reload needed.
   }
 
-  if (loading) return <div style={cardStyle}>Loading swaps...</div>;
-  if (!swapData) return <div style={cardStyle}>Could not load swaps.</div>;
+  if (loading) return <div style={cardStyle}>{t("Loading swaps...")}</div>;
+  if (!swapData) return <div style={cardStyle}>{t("Could not load swaps.")}</div>;
 
   const theirDays = swapData.colleagueDays.filter((d) => d.employee_id === colleagueId);
   const OPEN = ["pending", "awaiting_admin"];
@@ -1376,49 +1413,49 @@ function SwapsTab({ onChanged }) {
         onClick={() => setShowForm((v) => !v)}
         style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 14 }}
       >
-        {showForm ? "Cancel" : "+ Request a Swap"}
+        {showForm ? t("Cancel") : t("+ Request a Swap")}
       </button>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
       {showForm && (
         <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>My day to give up</label>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("My day to give up")}</label>
           <select value={myDayId} onChange={(e) => setMyDayId(e.target.value)} style={selectStyle}>
-            <option value="">Select one of your days...</option>
+            <option value="">{t("Select one of your days...")}</option>
             {swapData.myDays.map((d) => (
               <option key={d.id} value={d.id}>{describeDay(d)}</option>
             ))}
           </select>
 
-          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Swap with</label>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Swap with")}</label>
           <select
             value={colleagueId}
             onChange={(e) => { setColleagueId(e.target.value); setTheirDayId(""); }}
             style={selectStyle}
           >
-            <option value="">Select a colleague...</option>
+            <option value="">{t("Select a colleague...")}</option>
             {swapData.colleagues.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
 
-          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Their day I would take</label>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Their day I would take")}</label>
           <select value={theirDayId} onChange={(e) => setTheirDayId(e.target.value)} disabled={!colleagueId} style={{ ...selectStyle, opacity: colleagueId ? 1 : 0.6 }}>
-            <option value="">{colleagueId ? "Select one of their days..." : "Pick a colleague first"}</option>
+            <option value="">{colleagueId ? t("Select one of their days...") : t("Pick a colleague first")}</option>
             {theirDays.map((d) => (
               <option key={d.id} value={d.id}>{describeDay(d)}</option>
             ))}
           </select>
           {colleagueId && theirDays.length === 0 && (
-            <p style={{ fontSize: 12, color: "#a97c00", margin: "0 0 10px" }}>This colleague has no upcoming days scheduled.</p>
+            <p style={{ fontSize: 12, color: "#a97c00", margin: "0 0 10px" }}>{t("This colleague has no upcoming days scheduled.")}</p>
           )}
 
-          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Note (optional)</label>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Note (optional)")}</label>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Why you're asking"
+            placeholder={t("Why you're asking")}
             style={{ ...selectStyle, marginBottom: 12 }}
           />
 
@@ -1427,28 +1464,28 @@ function SwapsTab({ onChanged }) {
             disabled={busy}
             style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer" }}
           >
-            {busy ? "Sending..." : "Send Request"}
+            {busy ? t("Sending...") : t("Send Request")}
           </button>
           <p style={{ fontSize: 11, color: theme.gray, margin: "10px 0 0" }}>
-            Your colleague has to agree, then HR approves. The schedule only changes after both.
+            {t("Your colleague has to agree, then HR approves. The schedule only changes after both.")}
           </p>
         </div>
       )}
 
       <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>
-        Waiting on you
+        {t("Waiting on you")}
       </div>
-      {pendingIncoming.length === 0 && <div style={cardStyle}>Nothing waiting for your answer.</div>}
+      {pendingIncoming.length === 0 && <div style={cardStyle}>{t("Nothing waiting for your answer.")}</div>}
       {pendingIncoming.map((r) => (
         <div key={r.id} style={cardStyle}>
           <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 4 }}>
-            {r.requester?.name} wants to swap
+            {t("{name} wants to swap", { name: r.requester?.name })}
           </div>
           <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
-            They give you: {describeDay(r.requester_day)}
+            {t("They give you: {day}", { day: describeDay(r.requester_day) })}
           </div>
           <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
-            You give them: {describeDay(r.target_day)}
+            {t("You give them: {day}", { day: describeDay(r.target_day) })}
           </div>
           {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", marginBottom: 8 }}>&ldquo;{r.note}&rdquo;</div>}
           <div style={{ display: "flex", gap: 8 }}>
@@ -1457,14 +1494,14 @@ function SwapsTab({ onChanged }) {
               disabled={busy}
               style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
             >
-              Accept
+              {t("Accept")}
             </button>
             <button
               onClick={() => respond(r.id, "reject")}
               disabled={busy}
               style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
             >
-              Decline
+              {t("Decline")}
             </button>
           </div>
         </div>
@@ -1473,13 +1510,13 @@ function SwapsTab({ onChanged }) {
       {awaitingHr.length > 0 && (
         <>
           <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
-            Agreed, waiting on HR
+            {t("Agreed, waiting on HR")}
           </div>
           {awaitingHr.map((r) => (
             <div key={r.id} style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>
-                  {r.requester?.name || "You"} &harr; {r.target?.name || "You"}
+                  {r.requester?.name || t("You")} &harr; {r.target?.name || t("You")}
                 </span>
                 <StatusPill status={r.status} />
               </div>
@@ -1487,7 +1524,7 @@ function SwapsTab({ onChanged }) {
                 {describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}
               </div>
               <div style={{ fontSize: 11, color: "#a97c00", marginTop: 6 }}>
-                Both of you agreed. Your roster stays as-is until HR approves.
+                {t("Both of you agreed. Your roster stays as-is until HR approves.")}
               </div>
             </div>
           ))}
@@ -1495,23 +1532,23 @@ function SwapsTab({ onChanged }) {
       )}
 
       <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
-        Your requests
+        {t("Your requests")}
       </div>
-      {pendingOutgoing.length === 0 && <div style={cardStyle}>No requests waiting on anyone.</div>}
+      {pendingOutgoing.length === 0 && <div style={cardStyle}>{t("No requests waiting on anyone.")}</div>}
       {pendingOutgoing.map((r) => (
         <div key={r.id} style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>Waiting on {r.target?.name}</span>
+            <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>{t("Waiting on {name}", { name: r.target?.name })}</span>
             <StatusPill status={r.status} />
           </div>
-          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>You give up: {describeDay(r.requester_day)}</div>
-          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>You would take: {describeDay(r.target_day)}</div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>{t("You give up: {day}", { day: describeDay(r.requester_day) })}</div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>{t("You would take: {day}", { day: describeDay(r.target_day) })}</div>
           <button
             onClick={() => respond(r.id, "cancel")}
             disabled={busy}
             style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
           >
-            Cancel Request
+            {t("Cancel Request")}
           </button>
         </div>
       ))}
@@ -1519,13 +1556,13 @@ function SwapsTab({ onChanged }) {
       {history.length > 0 && (
         <>
           <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>
-            History
+            {t("History")}
           </div>
           {history.map((r) => (
             <div key={r.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>
-                  {r.requester?.name || "You"} &rarr; {r.target?.name || "You"}
+                  {r.requester?.name || t("You")} {isAr ? "\u2190" : "\u2192"} {r.target?.name || t("You")}
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
                   {describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}
@@ -1563,13 +1600,17 @@ const FIX_STATUS = {
 
 function eventLabel(e) {
   if (!e) return "-";
-  const when = new Date(e.event_time).toLocaleString("en-GB", {
+  const when = new Date(e.event_time).toLocaleString(dateLocale("en-GB"), {
     day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
-  return `${e.event_type === "login" ? "Sign in" : "Sign out"} — ${when}`;
+  // "Sign in" here is a clock-in, not an account login, so Arabic comes from
+  // the login/logout codes rather than the shared "Sign in" entry.
+  const ar = currentLocale() === "ar";
+  return `${ar ? txCode(e.event_type) : e.event_type === "login" ? "Sign in" : "Sign out"} — ${when}`;
 }
 
 function AttendanceFixTab() {
+  const { t, tCode, isAr } = useT();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [show, setShow] = useState(false);
@@ -1596,14 +1637,14 @@ function AttendanceFixTab() {
     });
     const j = await res.json();
     setBusy(false);
-    if (!res.ok) return setError(j.error || "Could not send that request.");
+    if (!res.ok) return setError(j.error || tx("Could not send that request."));
     setShow(false);
     setF({ eventId: "", requestKind: "", proposedEventTime: "", proposedEventType: "login", reason: "" });
     load();
   }
 
-  if (loading) return <div style={cardStyle}>Loading...</div>;
-  if (!data) return <div style={cardStyle}>Could not load your attendance.</div>;
+  if (loading) return <div style={cardStyle}>{t("Loading...")}</div>;
+  if (!data) return <div style={cardStyle}>{t("Could not load your attendance.")}</div>;
 
   const missing = f.requestKind === "missing_punch";
   const sel = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box", marginBottom: 10, background: "#fff" };
@@ -1612,24 +1653,24 @@ function AttendanceFixTab() {
     <div>
       <button onClick={() => setShow((v) => !v)}
         style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 14 }}>
-        {show ? "Cancel" : "+ Request a Correction"}
+        {show ? t("Cancel") : t("+ Request a Correction")}
       </button>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
       {show && (
         <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 18 }}>
-          <label style={fixLbl}>What was wrong?</label>
+          <label style={fixLbl}>{t("What was wrong?")}</label>
           <select style={sel} value={f.requestKind} onChange={(e) => setF({ ...f, requestKind: e.target.value, eventId: "" })}>
-            <option value="">Choose one...</option>
-            {FIX_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+            <option value="">{t("Choose one...")}</option>
+            {FIX_KINDS.map((k) => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
           </select>
 
           {f.requestKind && !missing && (
             <>
-              <label style={fixLbl}>Which record?</label>
+              <label style={fixLbl}>{t("Which record?")}</label>
               <select style={sel} value={f.eventId} onChange={(e) => setF({ ...f, eventId: e.target.value })}>
-                <option value="">Select the sign-in or sign-out...</option>
+                <option value="">{t("Select the sign-in or sign-out...")}</option>
                 {data.events.map((e) => <option key={e.id} value={e.id}>{eventLabel(e)}</option>)}
               </select>
             </>
@@ -1637,64 +1678,64 @@ function AttendanceFixTab() {
 
           {missing && (
             <>
-              <label style={fixLbl}>Was it a sign in or a sign out?</label>
+              <label style={fixLbl}>{t("Was it a sign in or a sign out?")}</label>
               <select style={sel} value={f.proposedEventType} onChange={(e) => setF({ ...f, proposedEventType: e.target.value })}>
-                <option value="login">Sign in</option>
-                <option value="logout">Sign out</option>
+                <option value="login">{isAr ? tCode("login") : "Sign in"}</option>
+                <option value="logout">{isAr ? tCode("logout") : "Sign out"}</option>
               </select>
             </>
           )}
 
           {(missing || f.requestKind === "wrong_time") && (
             <>
-              <label style={fixLbl}>{missing ? "When did it actually happen?" : "What should the time be?"}</label>
+              <label style={fixLbl}>{missing ? t("When did it actually happen?") : t("What should the time be?")}</label>
               <input type="datetime-local" style={sel} value={f.proposedEventTime}
                 onChange={(e) => setF({ ...f, proposedEventTime: e.target.value })} />
             </>
           )}
 
-          <label style={fixLbl}>Explain what happened</label>
-          <input style={sel} value={f.reason} placeholder="So an admin can check it"
+          <label style={fixLbl}>{t("Explain what happened")}</label>
+          <input style={sel} value={f.reason} placeholder={t("So an admin can check it")}
             onChange={(e) => setF({ ...f, reason: e.target.value })} />
 
           <button onClick={submit} disabled={busy}
             style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer" }}>
-            {busy ? "Sending..." : "Send to Admin"}
+            {busy ? t("Sending...") : t("Send to Admin")}
           </button>
           <p style={{ fontSize: 11, color: theme.gray, margin: "10px 0 0" }}>
-            Your attendance record does not change until an admin approves this.
+            {t("Your attendance record does not change until an admin approves this.")}
           </p>
         </div>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>Your requests</div>
-      {data.requests.length === 0 && <div style={cardStyle}>You haven&apos;t asked for any corrections.</div>}
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase" }}>{t("Your requests")}</div>
+      {data.requests.length === 0 && <div style={cardStyle}>{t("You haven't asked for any corrections.")}</div>}
       {data.requests.map((r) => {
         const st = FIX_STATUS[r.status] || FIX_STATUS.pending;
         return (
           <div key={r.id} style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>
-                {FIX_KINDS.find((k) => k.key === r.request_kind)?.label || r.request_kind}
+                {t(FIX_KINDS.find((k) => k.key === r.request_kind)?.label || r.request_kind)}
               </span>
               <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg, whiteSpace: "nowrap" }}>
-                {st.label}
+                {t(st.label)}
               </span>
             </div>
             <div style={{ fontSize: 12, color: theme.gray }}>{r.reason}</div>
-            {r.review_note && <div style={{ fontSize: 12, color: theme.navy, marginTop: 6, fontStyle: "italic" }}>Admin: {r.review_note}</div>}
+            {r.review_note && <div style={{ fontSize: 12, color: theme.navy, marginTop: 6, fontStyle: "italic" }}>{t("Admin: {note}", { note: r.review_note })}</div>}
           </div>
         );
       })}
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>Recent sign in / out</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, margin: "18px 0 8px", textTransform: "uppercase" }}>{t("Recent sign in / out")}</div>
       {data.events.slice(0, 12).map((e) => (
         <div key={e.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
             <div style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{eventLabel(e)}</div>
             <div style={{ fontSize: 11, color: theme.gray }}>
-              {e.distance_from_clinic_meters != null && `${Math.round(e.distance_from_clinic_meters)} m from clinic`}
-              {e.face_match_status && ` · face: ${e.face_match_status.replace(/_/g, " ")}`}
+              {e.distance_from_clinic_meters != null && t("{m} m from clinic", { m: Math.round(e.distance_from_clinic_meters) })}
+              {e.face_match_status && ` · ${t("face: {status}", { status: isAr ? tCode("face_" + e.face_match_status) : e.face_match_status.replace(/_/g, " ") })}`}
             </div>
             {e.correction_note && <div style={{ fontSize: 11, color: "#1e7a3c", marginTop: 3 }}>{e.correction_note}</div>}
           </div>

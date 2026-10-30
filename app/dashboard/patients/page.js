@@ -8,6 +8,7 @@ import { exportToCsv } from "../../../lib/exportCsv";
 import { formatPhone } from "../../../lib/formatPhone";
 import { doctorLabel, formatVisitDate, formatVisitDateTime } from "../../../lib/format";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 const PAGE_SIZE = 50;
 // Each stage filter is tri-state: null = All (no filter), true = On (must
@@ -24,6 +25,7 @@ const STAGE_LABELS = [
 const EMPTY_STAGE_FILTERS = { paid: null, scanned: null, raw_data_uploaded: null, report_done: null, invoice_generated: null };
 
 export default function PatientsPage() {
+  const { t, isAr } = useT();
   const { isAdmin } = usePermissions();
   useAutoRefresh(["patients", "visits"], () => { search(); });
   const [mobileQuery, setMobileQuery] = useState("");
@@ -267,7 +269,7 @@ export default function PatientsPage() {
     const result = await res.json();
     setLoginAsBusy(null);
     if (result.redirect) window.open(result.redirect, "_blank");
-    else alert(result.error || "Could not log in as this patient");
+    else alert(tx(result.error || "Could not log in as this patient"));
   }
 
   async function handleExportCurrent() {
@@ -294,51 +296,51 @@ export default function PatientsPage() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Patient Directory</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Patient Directory")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
         {folderFilter === "none"
-          ? `${totalCount.toLocaleString()} patients with no Drive folder linked. Their scans have nowhere to be filed.`
+          ? t("{n} patients with no Drive folder linked. Their scans have nowhere to be filed.", { n: totalCount.toLocaleString() })
           : folderFilter === "shared"
-          ? `${totalCount.toLocaleString()} patients sharing a folder with someone else — duplicate records, or different people whose scans land together.`
-          : `${totalCount.toLocaleString()} patients on record. Search by name or mobile number, or filter by visit details below.`}
+          ? t("{n} patients sharing a folder with someone else — duplicate records, or different people whose scans land together.", { n: totalCount.toLocaleString() })
+          : t("{n} patients on record. Search by name or mobile number, or filter by visit details below.", { n: totalCount.toLocaleString() })}
       </p>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         {[
-          { key: "none", label: "NO DRIVE FOLDER LINKED", value: withoutFolderCount, sub: `of ${grandTotal.toLocaleString()} patients`, colour: "#a97c00" },
-          { key: "shared", label: "SHARING A FOLDER", value: sharedFolderCount, sub: "linked, but not to their own", colour: "#ba1a1a" },
-        ].map((t) => {
-          const on = folderFilter === t.key;
+          { key: "none", label: t("NO DRIVE FOLDER LINKED"), value: withoutFolderCount, sub: t("of {n} patients", { n: grandTotal.toLocaleString() }), colour: "#a97c00" },
+          { key: "shared", label: t("SHARING A FOLDER"), value: sharedFolderCount, sub: t("linked, but not to their own"), colour: "#ba1a1a" },
+        ].map((tile) => {
+          const on = folderFilter === tile.key;
           return (
             <button
-              key={t.key}
-              onClick={() => { setPage(0); setFolderFilter(on ? "" : t.key); }}
-              title={on ? "Click to clear this filter" : "Click to see these patients"}
+              key={tile.key}
+              onClick={() => { setPage(0); setFolderFilter(on ? "" : tile.key); }}
+              title={on ? t("Click to clear this filter") : t("Click to see these patients")}
               style={{
                 background: on ? theme.navy : "#fff",
                 borderRadius: 12,
                 padding: "12px 20px",
                 boxShadow: "0 2px 10px rgba(39,33,77,0.05)",
                 border: on ? `2px solid ${theme.navy}` : "2px solid transparent",
-                textAlign: "left",
+                textAlign: "start",
                 cursor: "pointer",
                 font: "inherit",
               }}
             >
-              <div style={{ fontSize: 11, color: on ? "rgba(255,255,255,0.75)" : theme.gray, fontWeight: 600 }}>{t.label}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: on ? "#fff" : t.value > 0 ? t.colour : theme.navy }}>
-                {t.value.toLocaleString()}
+              <div style={{ fontSize: 11, color: on ? "rgba(255,255,255,0.75)" : theme.gray, fontWeight: 600 }}>{tile.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: on ? "#fff" : tile.value > 0 ? tile.colour : theme.navy }}>
+                {tile.value.toLocaleString()}
               </div>
               <div style={{ fontSize: 10, color: on ? "rgba(255,255,255,0.7)" : theme.gray }}>
-                {on ? "Showing these — click to clear" : t.sub}
+                {on ? t("Showing these — click to clear") : tile.sub}
               </div>
             </button>
           );
         })}
         <button onClick={handleExportMissingFolders} disabled={exporting} style={{ ...pageBtn, alignSelf: "center" }}>
-          {exporting ? "Preparing..." : "Export List (No Folder)"}
+          {exporting ? t("Preparing...") : t("Export List (No Folder)")}
         </button>
-        <button onClick={handleExportCurrent} style={{ ...pageBtn, alignSelf: "center" }}>Export Current View</button>
+        <button onClick={handleExportCurrent} style={{ ...pageBtn, alignSelf: "center" }}>{t("Export Current View")}</button>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
@@ -346,7 +348,7 @@ export default function PatientsPage() {
           <input
             value={mobileQuery}
             onChange={(e) => resetToFirstPage(setMobileQuery)(e.target.value)}
-            placeholder="Search by name or mobile number..."
+            placeholder={t("Search by name or mobile number...")}
             style={{ flex: 1, padding: "12px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14 }}
           />
           <Link
@@ -364,32 +366,32 @@ export default function PatientsPage() {
               whiteSpace: "nowrap",
             }}
           >
-            + New Patient
+            {t("+ New Patient")}
           </Link>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           <div>
-            <label style={filterLabel}>From Date</label>
+            <label style={filterLabel}>{t("From Date")}</label>
             <input type="date" value={dateFrom} onChange={(e) => resetToFirstPage(setDateFrom)(e.target.value)} style={filterInput} />
           </div>
           <div>
-            <label style={filterLabel}>To Date</label>
+            <label style={filterLabel}>{t("To Date")}</label>
             <input type="date" value={dateTo} onChange={(e) => resetToFirstPage(setDateTo)(e.target.value)} style={filterInput} />
           </div>
           <div>
-            <label style={filterLabel}>Doctor</label>
+            <label style={filterLabel}>{t("Doctor")}</label>
             <select value={doctorId} onChange={(e) => resetToFirstPage(setDoctorId)(e.target.value)} style={filterInput}>
-              <option value="">All doctors</option>
+              <option value="">{t("All doctors")}</option>
               {doctors.map((d) => (
                 <option key={d.id} value={d.id}>{d.name} ({d.clinic_code})</option>
               ))}
             </select>
           </div>
           <div>
-            <label style={filterLabel}>Scan Type</label>
+            <label style={filterLabel}>{t("Scan Type")}</label>
             <select value={scanType} onChange={(e) => resetToFirstPage(setScanType)(e.target.value)} style={filterInput}>
-              <option value="">All scan types</option>
+              <option value="">{t("All scan types")}</option>
               {examTypes.map((e) => (
                 <option key={e.name} value={e.name}>{e.name}</option>
               ))}
@@ -405,7 +407,7 @@ export default function PatientsPage() {
             }}
             style={{ marginTop: 10, background: "none", border: "none", color: theme.gold, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
           >
-            Clear all filters
+            {t("Clear all filters")}
           </button>
         )}
 
@@ -427,23 +429,23 @@ export default function PatientsPage() {
                 <button
                   type="button"
                   onClick={() => setValue(false)}
-                  style={segStyle(value === false, { background: value === false ? "#fdecea" : "#fff", color: value === false ? "#ba1a1a" : theme.navy, borderRight: "1px solid #eee" })}
+                  style={segStyle(value === false, { background: value === false ? "#fdecea" : "#fff", color: value === false ? "#ba1a1a" : theme.navy, borderInlineEnd: "1px solid #eee" })}
                 >
-                  {s.offLabel}
+                  {t(s.offLabel)}
                 </button>
                 <button
                   type="button"
                   onClick={() => setValue(null)}
-                  style={segStyle(value === null, { background: value === null ? "#f0f0f0" : "#fff", color: theme.gray, borderRight: "1px solid #eee" })}
+                  style={segStyle(value === null, { background: value === null ? "#f0f0f0" : "#fff", color: theme.gray, borderInlineEnd: "1px solid #eee" })}
                 >
-                  All
+                  {t("All")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setValue(true)}
                   style={segStyle(value === true, { background: value === true ? theme.goldLight : "#fff", color: theme.navy })}
                 >
-                  {s.onLabel}
+                  {t(s.onLabel)}
                 </button>
               </div>
             );
@@ -452,15 +454,15 @@ export default function PatientsPage() {
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0f0f0" }}>
           <span style={{ fontSize: 13, color: theme.gray }}>
-            Matching current filters: <strong style={{ color: theme.navy, fontSize: 16 }}>{totalCount.toLocaleString()}</strong> patient{totalCount === 1 ? "" : "s"}
+            {t("Matching current filters:")} <strong style={{ color: theme.navy, fontSize: 16 }}>{totalCount.toLocaleString()}</strong> {totalCount === 1 ? t("patient") : t("patients")}
           </span>
         </div>
       </div>
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
       {!loading && results.length === 0 && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, color: theme.gray, textAlign: "center" }}>
-          No patients match these filters.
+          {t("No patients match these filters.")}
         </div>
       )}
 
@@ -483,23 +485,23 @@ export default function PatientsPage() {
               <Link href={`/dashboard/patients/${p.id}`} target="_blank" style={{ textDecoration: "none", color: theme.navy, flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
                 <div style={{ fontSize: 13, color: theme.gray, marginBottom: status?.scan_types?.length ? 2 : (status ? 6 : 0) }}>
-                  {p.mobile ? formatPhone(p.mobile) : "no mobile on file"}
-                  {p.dob && ` · ${new Date(p.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+                  {p.mobile ? <Ltr>{formatPhone(p.mobile)}</Ltr> : t("no mobile on file")}
+                  {p.dob && ` · ${new Date(p.dob).toLocaleDateString(isAr ? "ar-EG-u-nu-latn" : "en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
                 </div>
                 {status?.exam_date && (
-                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>Last visit: {formatVisitDateTime(status.exam_date, status.exam_time)}</div>
+                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>{t("Last visit: {date}", { date: formatVisitDateTime(status.exam_date, status.exam_time) })}</div>
                 )}
                 {status?.scan_types?.length > 0 && (
                   <div style={{ fontSize: 12, color: theme.navy, fontWeight: 600, marginBottom: 2 }}>{status.scan_types.join(", ")}</div>
                 )}
                 {Number(status?.amount_paid) > 0 && (
                   <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
-                    Paid: {Number(status.amount_paid).toFixed(2)} EGP{status.payment_methods ? ` · ${status.payment_methods}` : ""}
+                    {t("Paid: {amount} EGP", { amount: Number(status.amount_paid).toFixed(2) })}{status.payment_methods ? ` · ${status.payment_methods.split(" + ").map((m) => t(m)).join(" + ")}` : ""}
                   </div>
                 )}
                 {status?.doctor_id && (
                   <div style={{ fontSize: 12, color: theme.gray, marginBottom: 6 }}>
-                    {status.clinic_code && `Clinic Code: ${status.clinic_code} · `}{status.doctor_name ? `Referred by: ${doctorLabel(status.doctor_name)}` : "Walk-in"}
+                    {status.clinic_code && `${t("Clinic Code: {code}", { code: status.clinic_code })} · `}{status.doctor_name ? t("Referred by: {doctor}", { doctor: doctorLabel(status.doctor_name) }) : t("Walk-in")}
                   </div>
                 )}
                 {status && (
@@ -516,7 +518,7 @@ export default function PatientsPage() {
                           color: status[s.key] ? "#2e7d32" : "#aaa",
                         }}
                       >
-                        {status[s.key] ? "✓" : "○"} {s.onLabel}
+                        {status[s.key] ? "✓" : "○"} {t(s.onLabel)}
                       </span>
                     ))}
                   </div>
@@ -528,7 +530,7 @@ export default function PatientsPage() {
                   disabled={loginAsBusy === p.id}
                   style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
                 >
-                  {loginAsBusy === p.id ? "..." : "Login As"}
+                  {loginAsBusy === p.id ? "..." : t("Login As")}
                 </button>
               )}
             </div>
@@ -538,9 +540,9 @@ export default function PatientsPage() {
 
       {totalPages > 1 && (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 24 }}>
-          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={pageBtn}>Previous</button>
-          <span style={{ fontSize: 13, color: theme.gray }}>Page {page + 1} of {totalPages}</span>
-          <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={pageBtn}>Next</button>
+          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={pageBtn}>{t("Previous")}</button>
+          <span style={{ fontSize: 13, color: theme.gray }}>{t("Page {page} of {total}", { page: page + 1, total: totalPages })}</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={pageBtn}>{t("Next")}</button>
         </div>
       )}
     </div>

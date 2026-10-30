@@ -2,7 +2,7 @@
 
 import VerifyPill from "../../../../components/VerifyPill";
 import { uploadFileToDrive } from "../../../../lib/uploadToDrive";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { formatPhone } from "../../../../lib/formatPhone";
@@ -29,6 +29,7 @@ import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { resolveUniqueUsername, resolvePatientUsername } from "../../../../lib/uniqueUsername";
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 import { APP_URL } from "../../../../lib/appUrl";
+import { useT, tx, Ltr } from "../../../../lib/i18n";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -49,6 +50,7 @@ function normalizeScanName(name) {
 }
 
 export default function PatientProfilePage() {
+  const { t, tCode, isAr } = useT();
   const { id } = useParams();
   const router = useRouter();
   const [patient, setPatient] = useState(null);
@@ -77,10 +79,10 @@ export default function PatientProfilePage() {
     if (!wanted || !visits.length) return;
     setHighlightVisitId(wanted);
     // After paint, or the row is not on the page yet to scroll to.
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       document.getElementById(`visit-${wanted}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 150);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [visits]);
 
   const [examSteps, setExamSteps] = useState([]);
@@ -301,7 +303,7 @@ export default function PatientProfilePage() {
     const failures = [];
     for (let i = 0; i < batch.length; i++) {
       const file = batch[i];
-      setBatchStatus(batch.length > 1 ? `File ${i + 1} of ${batch.length} - ${file.name}` : file.name);
+      setBatchStatus(batch.length > 1 ? tx("File {i} of {n} - {name}", { i: i + 1, n: batch.length, name: file.name }) : file.name);
       setUploadProgress(0);
       try {
         const fileId = await uploadFileToDrive({
@@ -338,7 +340,7 @@ export default function PatientProfilePage() {
         });
         const data = await res.json();
         if (data.error) {
-          failures.push(`${file.name}: ${data.error}`);
+          failures.push(`${file.name}: ${tx(data.error)}`);
         } else {
           logActivity({
             actorId: profile?.id,
@@ -353,7 +355,7 @@ export default function PatientProfilePage() {
       } catch (e) {
         // One bad file does not abandon the other nine - collect and carry on,
         // then report the whole set at the end.
-        failures.push(`${file.name}: ${e.message || "upload failed"}`);
+        failures.push(`${file.name}: ${tx(e.message || "upload failed")}`);
       }
     }
 
@@ -363,7 +365,7 @@ export default function PatientProfilePage() {
     setUploadProgress(0);
     setBatchStatus("");
     if (failures.length) {
-      alert(`${failures.length} of ${batch.length} file(s) failed:\n\n${failures.join("\n")}`);
+      alert(`${tx("{failed} of {n} file(s) failed:", { failed: failures.length, n: batch.length })}\n\n${failures.join("\n")}`);
     }
   }
 
@@ -522,7 +524,7 @@ export default function PatientProfilePage() {
       },
       { onConflict: "visit_id,step_id" }
     );
-    if (err) return alert(err.message);
+    if (err) return alert(tx(err.message));
     load();
   }
 
@@ -738,8 +740,8 @@ export default function PatientProfilePage() {
   async function handleDeleteVisit(visit) {
     const hasPaid = visit.payment_status === "paid" || visit.payment_status === "partial";
     const warning = hasPaid
-      ? `Delete this visit (${(visit.scan_types || []).join(", ")}, ${visit.exam_date})? It has a logged payment - deleting it also removes that payment, its cash-ledger entry where it can be found, and any invoice. This can't be undone.`
-      : `Delete this visit (${(visit.scan_types || []).join(", ")}, ${visit.exam_date})? This can't be undone.`;
+      ? tx("Delete this visit ({scans}, {date})? It has a logged payment - deleting it also removes that payment, its cash-ledger entry where it can be found, and any invoice. This can't be undone.", { scans: (visit.scan_types || []).join(", "), date: visit.exam_date })
+      : tx("Delete this visit ({scans}, {date})? This can't be undone.", { scans: (visit.scan_types || []).join(", "), date: visit.exam_date });
     if (!confirm(warning)) return;
     const { data: session } = await supabase.auth.getSession();
     const res = await fetch(`/api/visits/${visit.id}`, {
@@ -748,7 +750,7 @@ export default function PatientProfilePage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || "Could not delete this visit.");
+      alert(tx(data.error || "Could not delete this visit."));
       return;
     }
     // No warning to show any more: the cash entries are removed by their own
@@ -783,7 +785,7 @@ export default function PatientProfilePage() {
       })
       .single();
     if (error) {
-      alert(error.message);
+      alert(tx(error.message));
       return;
     }
     logActivity({
@@ -804,7 +806,7 @@ export default function PatientProfilePage() {
   }
 
   async function deleteFile(f) {
-    if (!confirm(`Remove "${f.name}"?\n\nIt is moved to the Drive bin, so it can be restored there for 30 days if this was a mistake.`)) return;
+    if (!confirm(tx("Remove \"{name}\"?\n\nIt is moved to the Drive bin, so it can be restored there for 30 days if this was a mistake.", { name: f.name }))) return;
     setFileBusy(f.id);
     const res = await fetch("/api/drive/file", {
       method: "DELETE",
@@ -813,7 +815,7 @@ export default function PatientProfilePage() {
     });
     const j = await res.json();
     setFileBusy(null);
-    if (!res.ok) return alert(j.error || "Could not remove that file.");
+    if (!res.ok) return alert(tx(j.error || "Could not remove that file."));
     loadFiles();
   }
 
@@ -844,7 +846,7 @@ export default function PatientProfilePage() {
         if (!res.ok) throw new Error(j.error || "Could not finish the replacement");
         loadFiles();
       } catch (e) {
-        alert(e.message);
+        alert(tx(e.message));
       }
       setUploadProgress(0);
       setFileBusy(null);
@@ -868,10 +870,8 @@ export default function PatientProfilePage() {
         // the case the client described as "needs admin permission", and the
         // bug report form is the route for it.
         alert(
-          `This was marked by ${setBy}. Only ${setBy} or an admin can undo it.\n\n` +
-          `If it was marked in error, open "Report a Problem" in the sidebar and ` +
-          `submit it there — include this patient's name and the visit date, and ` +
-          `an admin will correct it.`
+          tx("This was marked by {name}. Only {name} or an admin can undo it.", { name: setBy }) + "\n\n" +
+          tx("If it was marked in error, open \"Report a Problem\" in the sidebar and submit it there — include this patient's name and the visit date, and an admin will correct it.")
         );
         return;
       }
@@ -935,6 +935,7 @@ export default function PatientProfilePage() {
   const [openSeries, setOpenSeries] = useState({});
 
   function FileCard({ f }) {
+    const { t } = useT();
     const isSeries = f.seriesCount > 1;
     const expanded = !!openSeries[f.id];
     return (
@@ -945,13 +946,13 @@ export default function PatientProfilePage() {
               {f.displayName || f.name}
             </div>
             <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
-              {new Date(f.createdTime).toLocaleDateString()} &middot; {f.seriesCount} files in one set
+              {new Date(f.createdTime).toLocaleDateString()} &middot; {t("{n} files in one set", { n: f.seriesCount })}
             </div>
             <button
               onClick={() => setOpenSeries((s) => ({ ...s, [f.id]: !s[f.id] }))}
               style={{ ...fileActionBtn, marginTop: 8 }}
             >
-              {expanded ? "Hide files" : `Show all ${f.seriesCount}`}
+              {expanded ? t("Hide files") : t("Show all {n}", { n: f.seriesCount })}
             </button>
             {expanded && (
               <div style={{ marginTop: 10, maxHeight: 320, overflowY: "auto", border: "1px solid #f0f0f3", borderRadius: 8 }}>
@@ -962,7 +963,7 @@ export default function PatientProfilePage() {
                     </a>
                     {canManageFiles && (
                       <button onClick={() => deleteFile(m)} disabled={fileBusy === m.id} style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9", flexShrink: 0 }}>
-                        Delete
+                        {t("Delete")}
                       </button>
                     )}
                   </div>
@@ -984,10 +985,10 @@ export default function PatientProfilePage() {
             {canManageFiles && (
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                 <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>
-                  {fileBusy === f.id ? "..." : "Replace"}
+                  {fileBusy === f.id ? "..." : t("Replace")}
                 </button>
                 <button onClick={() => deleteFile(f)} disabled={fileBusy === f.id} style={{ ...fileActionBtn, color: "#ba1a1a", borderColor: "#f0c9c9" }}>
-                  Delete
+                  {t("Delete")}
                 </button>
               </div>
             )}
@@ -997,8 +998,8 @@ export default function PatientProfilePage() {
     );
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!patient) return <p style={{ color: theme.gray }}>Patient not found.</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!patient) return <p style={{ color: theme.gray }}>{t("Patient not found.")}</p>;
 
   return (
     <div>
@@ -1029,12 +1030,12 @@ export default function PatientProfilePage() {
               rel="noreferrer"
               style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.gold}`, background: theme.goldLight, color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}
             >
-              Open Drive Folder
+              {t("Open Drive Folder")}
             </a>
           )}
           {isAdmin && (
             <button onClick={startEditInfo} style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-              Edit
+              {t("Edit")}
             </button>
           )}
           {isAdmin && (
@@ -1069,33 +1070,33 @@ export default function PatientProfilePage() {
         </div>
         ) : (
         <div>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Edit Patient Info</h3>
-          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Admin only.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Edit Patient Info")}</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>{t("Admin only.")}</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label style={editLabel}>Name</label>
+              <label style={editLabel}>{t("Name")}</label>
               <input style={editInp} value={infoDraft.name} onChange={(e) => setInfoDraft({ ...infoDraft, name: e.target.value })} />
             </div>
             <div>
-              <label style={editLabel}>Mobile</label>
+              <label style={editLabel}>{t("Mobile")}</label>
               <input style={editInp} value={infoDraft.mobile} onChange={(e) => setInfoDraft({ ...infoDraft, mobile: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </div>
             <div>
-              <label style={editLabel}>Date of Birth <span style={{ color: "#ba1a1a" }}>*</span></label>
+              <label style={editLabel}>{t("Date of Birth")} <span style={{ color: "#ba1a1a" }}>*</span></label>
               <input type="date" style={editInp} min="1900-01-01" value={infoDraft.dob} onChange={(e) => setInfoDraft({ ...infoDraft, dob: e.target.value })} />
             </div>
             <div>
-              <label style={editLabel}>Email</label>
+              <label style={editLabel}>{t("Email")}</label>
               <input style={editInp} value={infoDraft.email} onChange={(e) => setInfoDraft({ ...infoDraft, email: e.target.value })} />
             </div>
           </div>
-          {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{infoError}</p>}
+          {infoError && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{t(infoError)}</p>}
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
             <button onClick={() => setEditingInfo(false)} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-              Cancel
+              {t("Cancel")}
             </button>
             <button onClick={handleSaveInfo} disabled={savingInfo} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-              {savingInfo ? "Saving..." : "Save Changes"}
+              {savingInfo ? t("Saving...") : t("Save Changes")}
             </button>
           </div>
         </div>
@@ -1127,10 +1128,10 @@ export default function PatientProfilePage() {
       {sameMobile.length > 0 && (
         <div style={{ background: "#fff8e1", border: "1px solid #f0e0a8", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#7a5c00", marginBottom: 6 }}>
-            {sameMobile.length} other patient{sameMobile.length === 1 ? "" : "s"} share this mobile number
+            {sameMobile.length === 1 ? t("1 other patient shares this mobile number") : t("{n} other patients share this mobile number", { n: sameMobile.length })}
           </div>
           <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
-            A shared number usually means family. Each is a separate patient with their own visits and their own Drive folder.
+            {t("A shared number usually means family. Each is a separate patient with their own visits and their own Drive folder.")}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {sameMobile.map((o) => (
@@ -1145,7 +1146,7 @@ export default function PatientProfilePage() {
                     rel="noreferrer"
                     style={{ fontSize: 11, fontWeight: 700, color: theme.gold, textDecoration: "none" }}
                   >
-                    Drive &rarr;
+                    {t("Drive")} {isAr ? "←" : "→"}
                   </a>
                 )}
               </span>
@@ -1157,31 +1158,31 @@ export default function PatientProfilePage() {
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <h3 style={{ color: theme.navy, margin: 0 }}>Visit History</h3>
+            <h3 style={{ color: theme.navy, margin: 0 }}>{t("Visit History")}</h3>
             <button onClick={() => setShowAddScan(true)} style={{ ...smallBtn, background: theme.gold, color: theme.navy, fontWeight: 700, border: "none" }}>
-              + Add New Scan
+              {t("+ Add New Scan")}
             </button>
           </div>
           <p style={{ fontSize: 11, color: theme.gray, marginTop: 0, marginBottom: 12 }}>
             {filteredVisits.length === visits.length
-              ? `${visits.length} scan${visits.length === 1 ? "" : "s"} on record for this patient`
-              : `Showing ${filteredVisits.length} of ${visits.length} scans`}
+              ? (visits.length === 1 ? t("1 scan on record for this patient") : t("{n} scans on record for this patient", { n: visits.length }))
+              : t("Showing {shown} of {n} scans", { shown: filteredVisits.length, n: visits.length })}
           </p>
 
           {visits.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", background: "#fbfbfc", border: "1px solid #f0f0f3", borderRadius: 10, padding: 12, marginBottom: 14 }}>
               <div>
-                <div style={filterLabel}>From</div>
+                <div style={filterLabel}>{t("From")}</div>
                 <input type="date" value={visitFilter.from} onChange={(e) => setVisitFilter({ ...visitFilter, from: e.target.value })} style={filterInp} />
               </div>
               <div>
-                <div style={filterLabel}>To</div>
+                <div style={filterLabel}>{t("To")}</div>
                 <input type="date" value={visitFilter.to} onChange={(e) => setVisitFilter({ ...visitFilter, to: e.target.value })} style={filterInp} />
               </div>
               <div>
-                <div style={filterLabel}>Scan type</div>
+                <div style={filterLabel}>{t("Scan type")}</div>
                 <select value={visitFilter.scanType} onChange={(e) => setVisitFilter({ ...visitFilter, scanType: e.target.value })} style={filterInp}>
-                  <option value="">All scan types</option>
+                  <option value="">{t("All scan types")}</option>
                   {patientScanTypes.map((n) => (
                     <option key={n} value={n}>{n}</option>
                   ))}
@@ -1189,15 +1190,15 @@ export default function PatientProfilePage() {
               </div>
               {(visitFilter.from || visitFilter.to || visitFilter.scanType) && (
                 <button onClick={() => setVisitFilter({ from: "", to: "", scanType: "" })} style={{ ...smallBtn, height: 32 }}>
-                  Clear
+                  {t("Clear")}
                 </button>
               )}
             </div>
           )}
 
-          {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No visits yet.</p>}
+          {visits.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No visits yet.")}</p>}
           {visits.length > 0 && filteredVisits.length === 0 && (
-            <p style={{ color: theme.gray, fontSize: 14 }}>No scans match this filter.</p>
+            <p style={{ color: theme.gray, fontSize: 14 }}>{t("No scans match this filter.")}</p>
           )}
           {filteredVisits.map((v) => (
             // Anchored and highlighted so a link that names a visit lands on
@@ -1211,7 +1212,7 @@ export default function PatientProfilePage() {
                 borderBottom: "1px solid #f0f0f0",
                 padding: "12px 0",
                 ...(highlightVisitId === v.id
-                  ? { background: "#fffaf0", boxShadow: "inset 3px 0 0 " + theme.gold, paddingLeft: 12, borderRadius: 6 }
+                  ? { background: "#fffaf0", boxShadow: (isAr ? "inset -3px 0 0 " : "inset 3px 0 0 ") + theme.gold, paddingInlineStart: 12, borderRadius: 6 }
                   : null),
               }}
             >
@@ -1222,16 +1223,16 @@ export default function PatientProfilePage() {
                 <span style={{ fontWeight: 600, color: theme.navy }}>{(v.scan_types || []).join(", ")}</span>
               </div>
               <div style={{ fontSize: 12, color: theme.gray, marginTop: 4 }}>
-                {v.branches?.name || "—"} · {v.payment_status}
+                {v.branches?.name || "—"} · {isAr && v.payment_status === "pending" ? t("Pending payment") : tCode(v.payment_status)}
                 {v.payment_status === "partial" && v.amount_due != null && (
-                  <span style={{ color: "#b45309", fontWeight: 700 }}> · Pending: {(Number(v.amount_due) - Number(v.amount_paid || 0)).toFixed(2)} EGP</span>
+                  <span style={{ color: "#b45309", fontWeight: 700 }}> · {t("Pending: {amount} EGP", { amount: (Number(v.amount_due) - Number(v.amount_paid || 0)).toFixed(2) })}</span>
                 )}
               </div>
               {Number(v.amount_paid) > 0 && (
                 <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>
-                  Paid: {Number(v.amount_paid).toFixed(2)} EGP
+                  {t("Paid: {amount} EGP", { amount: Number(v.amount_paid).toFixed(2) })}
                   {(v.visit_payments || []).length > 0 && (
-                    <> · {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + ")}</>
+                    <> · {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].map((m) => t(m)).join(" + ")}</>
                   )}
                   {/* A card payment is only a claim until the matching charge
                       is found in Paymob, so the proof is shown next to it:
@@ -1249,7 +1250,7 @@ export default function PatientProfilePage() {
                         onClick={() => setFixMethodFor(fixMethodFor === v.id ? null : v.id)}
                         style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.gold, fontSize: 12, fontWeight: 700, textDecoration: "underline" }}
                       >
-                        Correct method
+                        {t("Correct method")}
                       </button>
                     </>
                   )}
@@ -1265,17 +1266,17 @@ export default function PatientProfilePage() {
               )}
               {v.doctor_id && (
                 <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>
-                  {v.doctors?.clinic_code && <>Clinic Code: {v.doctors.clinic_code} · </>}
-                  {v.doctors?.name ? `Referred by: ${doctorLabel(v.doctors.name)}` : "Walk-in, no referring doctor"}
+                  {v.doctors?.clinic_code && <>{t("Clinic Code")}: {v.doctors.clinic_code} · </>}
+                  {v.doctors?.name ? t("Referred by: {name}", { name: doctorLabel(v.doctors.name) }) : t("Walk-in, no referring doctor")}
                 </div>
               )}
               {v.doctors?.id && (
                 <a
                   href={`/dashboard/doctors/${v.doctors.id}`}
-                  style={{ display: "inline-block", marginTop: 6, marginRight: 14, fontSize: 11, fontWeight: 700, color: theme.navy, textDecoration: "none" }}
-                  title={`Open ${doctorLabel(v.doctors.name)}'s page`}
+                  style={{ display: "inline-block", marginTop: 6, marginInlineEnd: 14, fontSize: 11, fontWeight: 700, color: theme.navy, textDecoration: "none" }}
+                  title={t("Open {name}'s page", { name: doctorLabel(v.doctors.name) })}
                 >
-                  {doctorLabel(v.doctors.name)} &rarr;
+                  {doctorLabel(v.doctors.name)} {isAr ? "←" : "→"}
                 </a>
               )}
               {(visitFolders[v.id] || patient.drive_folder_id) && (
@@ -1284,9 +1285,9 @@ export default function PatientProfilePage() {
                   target="_blank"
                   rel="noreferrer"
                   style={{ display: "inline-block", marginTop: 6, fontSize: 11, fontWeight: 700, color: theme.gold, textDecoration: "none" }}
-                  title={visitFolders[v.id] ? "Open this visit's Drive folder" : "This visit has no folder of its own yet - opens the patient folder"}
+                  title={visitFolders[v.id] ? t("Open this visit's Drive folder") : t("This visit has no folder of its own yet - opens the patient folder")}
                 >
-                  {visitFolders[v.id] ? "Open Drive folder for this visit \u2192" : "Open patient Drive folder \u2192"}
+                  {visitFolders[v.id] ? t("Open Drive folder for this visit") : t("Open patient Drive folder")} {isAr ? "\u2190" : "\u2192"}
                 </a>
               )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
@@ -1346,46 +1347,46 @@ export default function PatientProfilePage() {
               {v.dicom_worklist_status && (
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>
-                    CBCT Gateway
+                    {t("CBCT Gateway")}
                   </div>
                   <StageTable rows={gatewayRows(v, gatewayLog[v.id])} />
                 </div>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-                <span style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>Assigned to:</span>
+                <span style={{ fontSize: 11, color: theme.gray, fontWeight: 600 }}>{t("Assigned to:")}</span>
                 {isAdmin ? (
                   <select
                     value={v.assigned_employee_id || ""}
                     onChange={(e) => reassignEmployee(v, e.target.value)}
                     style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #ddd", color: theme.navy }}
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">{t("Unassigned")}</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.id}>{emp.name}</option>
                     ))}
                   </select>
                 ) : (
-                  <span style={{ fontSize: 12, color: theme.navy, fontWeight: 600 }}>{v.employees?.name || "Unassigned"}</span>
+                  <span style={{ fontSize: 12, color: theme.navy, fontWeight: 600 }}>{v.employees?.name || t("Unassigned")}</span>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
-                <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>Send Scan WhatsApp</button>
-                <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>Generate Invoice</button>
-                <button onClick={() => setEditingVisit(v)} style={smallBtn}>Edit Visit</button>
+                <button onClick={() => handleScanWhatsApp(v)} style={smallBtn}>{t("Send Scan WhatsApp")}</button>
+                <button onClick={() => handleGenerateInvoice(v)} style={smallBtn}>{t("Generate Invoice")}</button>
+                <button onClick={() => setEditingVisit(v)} style={smallBtn}>{t("Edit Visit")}</button>
                 {isAdmin && (
                   <button onClick={() => handleDeleteVisit(v)} style={{ ...smallBtn, color: "#ba1a1a", borderColor: "#ba1a1a" }}>
-                    Delete Visit
+                    {t("Delete Visit")}
                   </button>
                 )}
                 <WhatsAppDropdown
-                  label="Send WhatsApp Patient"
+                  label={t("Send WhatsApp Patient")}
                   buttonStyle={smallBtn}
                   options={[
-                    { label: "Greeting", onClick: () => sendPatientWhatsApp(v, "greeting") },
-                    { label: "Report", onClick: () => sendPatientWhatsApp(v, "report") },
-                    { label: "Invoice", onClick: () => sendPatientWhatsApp(v, "invoice") },
-                    { label: "Raw Data", onClick: () => sendPatientWhatsApp(v, "raw_data") },
-                    { label: "Direct (empty)", onClick: () => sendPatientWhatsApp(v, "direct") },
+                    { label: t("Greeting"), onClick: () => sendPatientWhatsApp(v, "greeting") },
+                    { label: t("Report"), onClick: () => sendPatientWhatsApp(v, "report") },
+                    { label: t("Invoice"), onClick: () => sendPatientWhatsApp(v, "invoice") },
+                    { label: t("Raw Data"), onClick: () => sendPatientWhatsApp(v, "raw_data") },
+                    { label: t("Direct (empty)"), onClick: () => sendPatientWhatsApp(v, "direct") },
                   ]}
                 />
                 {/* Messages the referring doctor ON THIS VISIT - not the patient's
@@ -1393,14 +1394,14 @@ export default function PatientProfilePage() {
                     never have one clinic's case sent to the other. */}
                 {v.doctors?.phone && (
                   <WhatsAppDropdown
-                    label="Send WhatsApp Doctor"
+                    label={t("Send WhatsApp Doctor")}
                     buttonStyle={smallBtn}
                     options={[
-                      { label: "Greeting", onClick: () => sendDoctorWhatsApp(v, "greeting") },
-                      { label: "Report", onClick: () => sendDoctorWhatsApp(v, "report") },
-                      { label: "Invoice", onClick: () => sendDoctorWhatsApp(v, "invoice") },
-                      { label: "Raw Data", onClick: () => sendDoctorWhatsApp(v, "raw_data") },
-                      { label: "Direct (empty)", onClick: () => sendDoctorWhatsApp(v, "direct") },
+                      { label: t("Greeting"), onClick: () => sendDoctorWhatsApp(v, "greeting") },
+                      { label: t("Report"), onClick: () => sendDoctorWhatsApp(v, "report") },
+                      { label: t("Invoice"), onClick: () => sendDoctorWhatsApp(v, "invoice") },
+                      { label: t("Raw Data"), onClick: () => sendDoctorWhatsApp(v, "raw_data") },
+                      { label: t("Direct (empty)"), onClick: () => sendDoctorWhatsApp(v, "direct") },
                     ]}
                   />
                 )}
@@ -1412,14 +1413,14 @@ export default function PatientProfilePage() {
                     }}
                     style={{ ...smallBtn, background: theme.gold, color: theme.navy, fontWeight: 700, border: "none" }}
                   >
-                    Log Payment
+                    {t("Log Payment")}
                   </button>
                 )}
               </div>
               {payingVisitId === v.id && (
                 <div style={{ background: "#faf9fb", borderRadius: 10, padding: 12, marginTop: 10, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                   <div>
-                    <div style={{ fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 }}>Amount</div>
+                    <div style={{ fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 }}>{t("Amount")}</div>
                     <input
                       value={paymentForm.amount}
                       onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
@@ -1428,21 +1429,21 @@ export default function PatientProfilePage() {
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 }}>Method</div>
+                    <div style={{ fontSize: 10, color: "#48464E", fontWeight: 600, marginBottom: 3 }}>{t("Method")}</div>
                     <select
                       value={paymentForm.method}
                       onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
                       style={{ padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }}
                     >
                       {PAYMENT_METHODS.map((m) => (
-                        <option key={m} value={m}>{m}</option>
+                        <option key={m} value={m}>{t(m)}</option>
                       ))}
                     </select>
                   </div>
                   <button onClick={() => logPayment(v)} disabled={paymentSaving} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-                    {paymentSaving ? "Saving..." : "Confirm"}
+                    {paymentSaving ? t("Saving...") : t("Confirm")}
                   </button>
-                  {paymentError && <p style={{ color: "#ba1a1a", fontSize: 12, width: "100%", margin: 0 }}>{paymentError}</p>}
+                  {paymentError && <p style={{ color: "#ba1a1a", fontSize: 12, width: "100%", margin: 0 }}>{t(paymentError)}</p>}
                 </div>
               )}
 
@@ -1456,7 +1457,7 @@ export default function PatientProfilePage() {
                 return (
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0f0f3" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      Files for this visit ({visitFiles.length})
+                      {t("Files for this visit ({n})", { n: visitFiles.length })}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
                       {visitFiles.map((f) => <FileCard key={f.id} f={f} />)}
@@ -1469,7 +1470,7 @@ export default function PatientProfilePage() {
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Quick Actions</h3>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Quick Actions")}</h3>
           <div
             onDragOver={(e) => { e.preventDefault(); if (!uploading) setDragActive(true); }}
             onDragLeave={() => setDragActive(false)}
@@ -1485,24 +1486,24 @@ export default function PatientProfilePage() {
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>
-              {dragActive ? "Drop to upload" : "Drag & drop files here"}
+              {dragActive ? t("Drop to upload") : t("Drag & drop files here")}
             </div>
             <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>
-              One file or many - you pick the upload type next
+              {t("One file or many - you pick the upload type next")}
             </div>
           </div>
           <label style={{ ...actionBtn, display: "block", textAlign: "center", opacity: uploading ? 0.6 : 1, background: theme.gold, color: theme.navy, position: "relative", overflow: "hidden" }}>
             {uploading && (
-              <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
+              <div style={{ position: "absolute", inset: 0, insetInlineStart: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.35)", transition: "width 0.15s linear" }} />
             )}
-            <span style={{ position: "relative" }}>{uploading ? `Uploading... ${uploadProgress}%` : "Upload Scan Files"}</span>
+            <span style={{ position: "relative" }}>{uploading ? t("Uploading... {pct}%", { pct: uploadProgress }) : t("Upload Scan Files")}</span>
             <input type="file" multiple onChange={handleFilePicked} disabled={uploading} style={{ display: "none" }} />
           </label>
           {uploading && batchStatus && (
             <p style={{ fontSize: 11, color: theme.gray, margin: "0 0 10px", textAlign: "center" }}>{batchStatus}</p>
           )}
           <p style={{ fontSize: 12, color: theme.gray, marginTop: 12 }}>
-            Files upload directly into this patient's Drive folder, nested under their referring doctor automatically if one is assigned.
+            {t("Files upload directly into this patient's Drive folder, nested under their referring doctor automatically if one is assigned.")}
           </p>
         </div>
       </div>
@@ -1546,7 +1547,7 @@ export default function PatientProfilePage() {
           fileName={
             pendingFiles.length === 1
               ? pendingFiles[0].name
-              : `${pendingFiles.length} files`
+              : t("{n} files", { n: pendingFiles.length })
           }
           visits={visits}
           onClose={() => setPendingFiles([])}
@@ -1555,8 +1556,8 @@ export default function PatientProfilePage() {
       )}
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Patient Files</h3>
-        {files.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No files uploaded yet.</p>}
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Patient Files")}</h3>
+        {files.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No files uploaded yet.")}</p>}
         {(() => {
           // Reorganized patients have files tagged with which visit subfolder they
           // came from (groupLabel like "2026-08-18__e8345e4c") - render those under
@@ -1583,7 +1584,7 @@ export default function PatientProfilePage() {
                 return (
                   <div key={label} style={{ marginTop: ungrouped.length > 0 || label !== Object.keys(groups)[0] ? 20 : 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: theme.gray, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      Visit — {niceDate}
+                      {t("Visit — {date}", { date: niceDate })}
                     </div>
                     <FileGrid items={items} />
                   </div>
@@ -1598,6 +1599,7 @@ export default function PatientProfilePage() {
 }
 
 function FileTypeModal({ fileName, visits, onClose, onPick }) {
+  const { t } = useT();
   // Default to the most recent visit - the common case (upload right after
   // today's scan) needs zero extra clicks. Staff can switch it for a late or
   // retroactive upload against an earlier visit.
@@ -1605,11 +1607,11 @@ function FileTypeModal({ fileName, visits, onClose, onPick }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 26, width: 340 }}>
-        <h3 style={{ margin: "0 0 4px", color: theme.navy, fontSize: 16 }}>What is this file?</h3>
+        <h3 style={{ margin: "0 0 4px", color: theme.navy, fontSize: 16 }}>{t("What is this file?")}</h3>
         <p style={{ fontSize: 12, color: theme.gray, marginTop: 0, marginBottom: 16, wordBreak: "break-all" }}>{fileName}</p>
         {visits && visits.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>Which visit is this for?</label>
+            <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Which visit is this for?")}</label>
             <select
               value={visitId}
               onChange={(e) => setVisitId(e.target.value)}
@@ -1617,7 +1619,7 @@ function FileTypeModal({ fileName, visits, onClose, onPick }) {
             >
               {visits.map((v, i) => (
                 <option key={v.id} value={v.id}>
-                  {formatVisitDate(v.exam_date)} — {(v.scan_types || []).join(", ")}{i === 0 ? " (most recent)" : ""}
+                  {formatVisitDate(v.exam_date)} — {(v.scan_types || []).join(", ")}{i === 0 ? ` ${t("(most recent)")}` : ""}
                 </option>
               ))}
             </select>
@@ -1630,24 +1632,25 @@ function FileTypeModal({ fileName, visits, onClose, onPick }) {
             { key: "report", label: "Report", note: "marks Report Done" },
             { key: "photos", label: "Photos", note: "clinical or intra-oral photos" },
             { key: "other", label: "Other / Export", note: "anything else" },
-          ].map((t) => (
-            <button key={t.key} onClick={() => onPick(t.key, visitId)}
-              style={{ ...actionBtn, background: t.key === "raw_data" ? theme.gold : "#fff", color: theme.navy, textAlign: "left", border: `1px solid ${t.key === "raw_data" ? theme.gold : "#ddd"}` }}>
-              {t.label} <span style={{ fontWeight: 400, fontSize: 11 }}>— {t.note}</span>
+          ].map((ft) => (
+            <button key={ft.key} onClick={() => onPick(ft.key, visitId)}
+              style={{ ...actionBtn, background: ft.key === "raw_data" ? theme.gold : "#fff", color: theme.navy, textAlign: "start", border: `1px solid ${ft.key === "raw_data" ? theme.gold : "#ddd"}` }}>
+              {t(ft.label)} <span style={{ fontWeight: 400, fontSize: 11 }}>— {t(ft.note)}</span>
             </button>
           ))}
         </div>
-        <button onClick={onClose} style={{ marginTop: 12, background: "none", border: "none", color: theme.gray, fontSize: 12, cursor: "pointer" }}>Cancel</button>
+        <button onClick={onClose} style={{ marginTop: 12, background: "none", border: "none", color: theme.gray, fontSize: 12, cursor: "pointer" }}>{t("Cancel")}</button>
       </div>
     </div>
   );
 }
 
 function ScanPickerModal({ visits, onClose, onPick }) {
+  const { t, tCode, isAr } = useT();
   return (
-    <Modal title="Which scan is this message about?" onClose={onClose}>
+    <Modal title={t("Which scan is this message about?")} onClose={onClose}>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 14 }}>
-        This patient has {visits.length} scan{visits.length === 1 ? "" : "s"} on record. Pick the one to reference.
+        {visits.length === 1 ? t("This patient has 1 scan on record. Pick the one to reference.") : t("This patient has {n} scans on record. Pick the one to reference.", { n: visits.length })}
       </p>
       <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto" }}>
         {visits.map((v) => (
@@ -1655,7 +1658,7 @@ function ScanPickerModal({ visits, onClose, onPick }) {
             key={v.id}
             onClick={() => onPick(v)}
             style={{
-              textAlign: "left",
+              textAlign: "start",
               padding: 12,
               borderRadius: 8,
               border: "1px solid #eee",
@@ -1665,7 +1668,7 @@ function ScanPickerModal({ visits, onClose, onPick }) {
           >
             <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>{(v.scan_types || []).join(", ") || "—"}</div>
             <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
-              {formatVisitDateTime(v.exam_date, v.exam_time)} · {v.doctors?.name || "Walk-in"} · {v.payment_status}
+              {formatVisitDateTime(v.exam_date, v.exam_time)} · {v.doctors?.name || t("Walk-in")} · {isAr && v.payment_status === "pending" ? t("Pending payment") : tCode(v.payment_status)}
             </div>
           </button>
         ))}
@@ -1687,6 +1690,7 @@ function nowLocalTime() {
 }
 
 function AddScanModal({ patient, onClose, onSaved }) {
+  const { t } = useT();
   const { profile } = usePermissions();
   const [branches, setBranches] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
@@ -1719,7 +1723,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
       setDoctorResults([]);
       return;
     }
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const { data } = await supabase
         .from("doctors")
         .select("id, name, clinic_name, clinic_code, discount_pct, special_note")
@@ -1727,7 +1731,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
         .limit(8);
       setDoctorResults(data || []);
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [doctorQuery]);
 
   function toggleScan(id) {
@@ -1843,7 +1847,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
       });
       if (!pErr) verifyPaymentSoon(form.payment_method);
       if (pErr) {
-        setError(`Scan was created, but recording the payment failed: ${pErr.message}`);
+        setError(tx("Scan was created, but recording the payment failed: {error}", { error: tx(pErr.message) }));
         return;
       }
     }
@@ -1852,8 +1856,8 @@ function AddScanModal({ patient, onClose, onSaved }) {
     } catch (err) {
       console.error("Saving the scan failed", err);
       setError(
-        (err?.message || "Something went wrong while saving.") +
-          " Refresh the patient before trying again - the scan may already have been saved."
+        tx(err?.message || "Something went wrong while saving.") +
+          " " + tx("Refresh the patient before trying again - the scan may already have been saved.")
       );
     } finally {
       // Runs on every path, including the early returns above.
@@ -1862,9 +1866,9 @@ function AddScanModal({ patient, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`Add New Scan — ${patient.name}`} onClose={onClose} wide>
+    <Modal title={t("Add New Scan — {name}", { name: patient.name })} onClose={onClose} wide>
       <form onSubmit={handleSubmit}>
-        <FieldLabel>Visit Date &amp; Time</FieldLabel>
+        <FieldLabel>{t("Visit Date & Time")}</FieldLabel>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             type="date"
@@ -1880,18 +1884,18 @@ function AddScanModal({ patient, onClose, onSaved }) {
           />
         </div>
 
-        <FieldLabel>Branch</FieldLabel>
+        <FieldLabel>{t("Branch")}</FieldLabel>
         <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
-          <option value="">Select branch</option>
+          <option value="">{t("Select branch")}</option>
           {branches.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
 
-        <FieldLabel>Scan Type (select multiple)</FieldLabel>
+        <FieldLabel>{t("Scan Type (select multiple)")}</FieldLabel>
         {examsByCategory.map((cat) => (
           <div key={cat.key} style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: theme.gold, marginBottom: 5 }}>{cat.label}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: theme.gold, marginBottom: 5 }}>{t(cat.label)}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {cat.items.map((ex) => {
                 const active = form.scan_type_ids.includes(ex.id);
@@ -1910,7 +1914,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
                       cursor: "pointer",
                     }}
                   >
-                    {ex.name} {ex.price ? `— ${formatMoney(ex.price)} EGP` : ""}
+                    {ex.name} {ex.price ? `— ${t("{amount} EGP", { amount: formatMoney(ex.price) })}` : ""}
                   </button>
                 );
               })}
@@ -1918,7 +1922,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
           </div>
         ))}
 
-        <FieldLabel>Referring Doctor</FieldLabel>
+        <FieldLabel>{t("Referring Doctor")}</FieldLabel>
         <input
           style={inp}
           disabled={walkIn}
@@ -1927,7 +1931,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
             setSelectedDoctor(null);
             setDoctorQuery(e.target.value);
           }}
-          placeholder="Search doctor by name or clinic code..."
+          placeholder={t("Search doctor by name or clinic code...")}
         />
         {doctorResults.length > 0 && !selectedDoctor && (
           <div style={{ border: "1px solid #eee", borderRadius: 8, marginTop: 4, marginBottom: 8 }}>
@@ -1940,23 +1944,23 @@ function AddScanModal({ patient, onClose, onSaved }) {
         )}
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, margin: "8px 0 16px" }}>
           <input type="checkbox" checked={walkIn} onChange={(e) => { setWalkIn(e.target.checked); setSelectedDoctor(null); }} />
-          Walk-in (no referring doctor)
+          {t("Walk-in (no referring doctor)")}
         </label>
 
         <div style={{ background: "#faf9fb", borderRadius: 10, padding: 12, marginBottom: 14 }}>
-          <TotalRow label="Sum Before Discount" value={sumBeforeDiscount} />
-          {discountPct > 0 && <TotalRow label={`Discount (${discountPct}%)`} value={-discountAmount} negative />}
-          <TotalRow label="Amount Due" value={sumAfterDiscount} bold />
+          <TotalRow label={t("Sum Before Discount")} value={sumBeforeDiscount} />
+          {discountPct > 0 && <TotalRow label={t("Discount ({pct}%)", { pct: discountPct })} value={-discountAmount} negative />}
+          <TotalRow label={t("Amount Due")} value={sumAfterDiscount} bold />
         </div>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 10 }}>
           <input type="checkbox" checked={form.discount_on} onChange={(e) => setForm({ ...form, discount_on: e.target.checked })} />
-          Apply Discount
+          {t("Apply Discount")}
         </label>
         {form.discount_on && (
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <FieldLabel>Discount %</FieldLabel>
+              <FieldLabel>{t("Discount %")}</FieldLabel>
               <input
                 type="number"
                 style={inp}
@@ -1969,12 +1973,12 @@ function AddScanModal({ patient, onClose, onSaved }) {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <FieldLabel>Reason</FieldLabel>
+              <FieldLabel>{t("Reason")}</FieldLabel>
               <select style={inp} value={form.discount_reason} onChange={(e) => setForm({ ...form, discount_reason: e.target.value })}>
-                <option value="">Select...</option>
+                <option value="">{t("Select...")}</option>
                 {DISCOUNT_REASONS.map((r) => (
                   <option key={r} value={r} disabled={r === "Referred Patient" && Number(form.discount_pct) > 20}>
-                    {r}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? " (max 20%)" : ""}
+                    {t(r)}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? ` ${t("(max 20%)")}` : ""}
                   </option>
                 ))}
               </select>
@@ -1984,25 +1988,25 @@ function AddScanModal({ patient, onClose, onSaved }) {
 
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <FieldLabel>Payment Method</FieldLabel>
+            <FieldLabel>{t("Payment Method")}</FieldLabel>
             <select style={inp} value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
               {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>{t(m)}</option>
               ))}
             </select>
           </div>
           <div style={{ flex: 1 }}>
-            <FieldLabel>Amount Paid</FieldLabel>
+            <FieldLabel>{t("Amount Paid")}</FieldLabel>
             <input style={inp} value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} placeholder="0.00" />
           </div>
         </div>
         <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-          Payment status is set automatically from the amount entered above compared to the total due - no need to pick it manually.
+          {t("Payment status is set automatically from the amount entered above compared to the total due - no need to pick it manually.")}
         </p>
 
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
         <button type="submit" disabled={saving} style={{ ...actionBtn, marginTop: 6 }}>
-          {saving ? "Saving..." : "Add Scan"}
+          {saving ? t("Saving...") : t("Add Scan")}
         </button>
       </form>
     </Modal>
@@ -2010,6 +2014,7 @@ function AddScanModal({ patient, onClose, onSaved }) {
 }
 
 function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
+  const { t } = useT();
   const { profile } = usePermissions();
   const [branches, setBranches] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
@@ -2133,7 +2138,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
       setDoctorResults([]);
       return;
     }
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const { data } = await supabase
         .from("doctors")
         .select("id, name, clinic_name, clinic_code, discount_pct, special_note")
@@ -2141,7 +2146,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         .limit(8);
       setDoctorResults(data || []);
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [doctorQuery]);
 
   function toggleScan(id) {
@@ -2257,8 +2262,11 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
     // is the thing the person needed to see before typing.
     if (newPaymentAmount > 0 && finalAmountDue > 0 && alreadyPaid + newPaymentAmount > finalAmountDue + 0.005) {
       setError(
-        `This visit is charged ${finalAmountDue.toFixed(2)} EGP and ${alreadyPaid.toFixed(2)} EGP has already been received. ` +
-          `Only ${Math.max(finalAmountDue - alreadyPaid, 0).toFixed(2)} EGP is still outstanding - check the payments listed above before adding another.`
+        tx("This visit is charged {due} EGP and {paid} EGP has already been received. Only {left} EGP is still outstanding - check the payments listed above before adding another.", {
+          due: finalAmountDue.toFixed(2),
+          paid: alreadyPaid.toFixed(2),
+          left: Math.max(finalAmountDue - alreadyPaid, 0).toFixed(2),
+        })
       );
       setSaving(false);
       return;
@@ -2327,21 +2335,21 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
 
   if (!loaded) {
     return (
-      <Modal title="Edit Visit" onClose={onClose} wide>
-        <p style={{ color: theme.gray, fontSize: 13 }}>Loading...</p>
+      <Modal title={t("Edit Visit")} onClose={onClose} wide>
+        <p style={{ color: theme.gray, fontSize: 13 }}>{t("Loading...")}</p>
       </Modal>
     );
   }
 
   return (
-    <Modal title="Edit Visit" onClose={onClose} wide>
+    <Modal title={t("Edit Visit")} onClose={onClose} wide>
       {!isAdmin && (
         <p style={{ fontSize: 12, background: "#fff8e1", color: "#8a6d00", padding: "10px 12px", borderRadius: 8, marginTop: 0, marginBottom: 14 }}>
-          This change will be sent to Action Center for admin approval - it won't apply until approved.
+          {t("This change will be sent to Action Center for admin approval - it won't apply until approved.")}
         </p>
       )}
       <form onSubmit={handleSubmit}>
-        <FieldLabel>Visit Date &amp; Time</FieldLabel>
+        <FieldLabel>{t("Visit Date & Time")}</FieldLabel>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             type="date"
@@ -2357,9 +2365,9 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
           />
         </div>
 
-        <FieldLabel>Branch</FieldLabel>
+        <FieldLabel>{t("Branch")}</FieldLabel>
         <select style={inp} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
-          <option value="">Select branch</option>
+          <option value="">{t("Select branch")}</option>
           {branches.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
@@ -2368,7 +2376,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         {legacyScanNames.length > 0 && (
           <div style={{ background: "#fff8e1", border: "1px solid #f0d58c", borderRadius: 8, padding: "10px 12px", margin: "12px 0" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#8a6d00", marginBottom: 6 }}>
-              Scan types kept from the original record
+              {t("Scan types kept from the original record")}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
               {legacyScanNames.map((n) => (
@@ -2378,19 +2386,19 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
               ))}
             </div>
             <p style={{ fontSize: 11, color: "#8a6d00", margin: "0 0 8px" }}>
-              These are no longer in the scan type list, so they have no price to recalculate from. They stay on the visit either way.
+              {t("These are no longer in the scan type list, so they have no price to recalculate from. They stay on the visit either way.")}
             </p>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#8a6d00" }}>
               <input type="checkbox" checked={recalcAmount} onChange={(e) => setRecalcAmount(e.target.checked)} />
-              Recalculate the amount due from the ticked scan types only
+              {t("Recalculate the amount due from the ticked scan types only")}
             </label>
           </div>
         )}
 
-        <FieldLabel>Scan Type (select multiple)</FieldLabel>
+        <FieldLabel>{t("Scan Type (select multiple)")}</FieldLabel>
         {examsByCategory.map((cat) => (
           <div key={cat.key} style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: theme.gray, textTransform: "uppercase", marginBottom: 4 }}>{cat.label}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: theme.gray, textTransform: "uppercase", marginBottom: 4 }}>{t(cat.label)}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {cat.items.map((ex) => (
                 <label
@@ -2402,14 +2410,14 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
                   }}
                 >
                   <input type="checkbox" checked={form.scan_type_ids.includes(ex.id)} onChange={() => toggleScan(ex.id)} />
-                  {ex.name} <span style={{ color: theme.gray }}>({Number(ex.price).toFixed(0)} EGP)</span>
+                  {ex.name} <span style={{ color: theme.gray }}>({t("{amount} EGP", { amount: Number(ex.price).toFixed(0) })})</span>
                 </label>
               ))}
             </div>
           </div>
         ))}
 
-        <FieldLabel>Referring Doctor</FieldLabel>
+        <FieldLabel>{t("Referring Doctor")}</FieldLabel>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 8 }}>
           <input
             type="checkbox"
@@ -2419,18 +2427,18 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
               if (e.target.checked) setSelectedDoctor(null);
             }}
           />
-          Walk-in, no referring doctor
+          {t("Walk-in, no referring doctor")}
         </label>
         {!walkIn && (
           <>
             {selectedDoctor ? (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: "#faf9fb", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: theme.navy, fontWeight: 600 }}>{selectedDoctor.name} - {selectedDoctor.clinic_name}</span>
-                <button type="button" onClick={() => setSelectedDoctor(null)} style={{ fontSize: 12, color: theme.gray, background: "none", border: "none", cursor: "pointer" }}>Change</button>
+                <button type="button" onClick={() => setSelectedDoctor(null)} style={{ fontSize: 12, color: theme.gray, background: "none", border: "none", cursor: "pointer" }}>{t("Change")}</button>
               </div>
             ) : (
               <>
-                <input style={inp} value={doctorQuery} onChange={(e) => setDoctorQuery(e.target.value)} placeholder="Search doctor by name or clinic code" />
+                <input style={inp} value={doctorQuery} onChange={(e) => setDoctorQuery(e.target.value)} placeholder={t("Search doctor by name or clinic code")} />
                 {doctorResults.map((d) => (
                   <div key={d.id} onClick={() => selectDoctor(d)} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
                     {d.name} - {d.clinic_name} ({d.clinic_code})
@@ -2442,19 +2450,19 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         )}
 
         <div style={{ background: "#faf9fb", borderRadius: 8, padding: 12, margin: "10px 0" }}>
-          <TotalRow label="Sum Before Discount" value={sumBeforeDiscount} />
-          {discountPct > 0 && <TotalRow label={`Discount (${discountPct}%)`} value={-discountAmount} negative />}
-          <TotalRow label="Amount Due" value={finalAmountDue} bold />
+          <TotalRow label={t("Sum Before Discount")} value={sumBeforeDiscount} />
+          {discountPct > 0 && <TotalRow label={t("Discount ({pct}%)", { pct: discountPct })} value={-discountAmount} negative />}
+          <TotalRow label={t("Amount Due")} value={finalAmountDue} bold />
         </div>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 10 }}>
           <input type="checkbox" checked={form.discount_on} onChange={(e) => setForm({ ...form, discount_on: e.target.checked })} />
-          Apply Discount
+          {t("Apply Discount")}
         </label>
         {form.discount_on && (
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <FieldLabel>Discount %</FieldLabel>
+              <FieldLabel>{t("Discount %")}</FieldLabel>
               <input
                 type="number"
                 style={inp}
@@ -2467,12 +2475,12 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <FieldLabel>Reason</FieldLabel>
+              <FieldLabel>{t("Reason")}</FieldLabel>
               <select style={inp} value={form.discount_reason} onChange={(e) => setForm({ ...form, discount_reason: e.target.value })}>
-                <option value="">Select...</option>
+                <option value="">{t("Select...")}</option>
                 {DISCOUNT_REASONS.map((r) => (
                   <option key={r} value={r} disabled={r === "Referred Patient" && Number(form.discount_pct) > 20}>
-                    {r}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? " (max 20%)" : ""}
+                    {t(r)}{r === "Referred Patient" && Number(form.discount_pct) > 20 ? ` ${t("(max 20%)")}` : ""}
                   </option>
                 ))}
               </select>
@@ -2481,29 +2489,29 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
         )}
 
         <div style={{ background: "#faf9fb", borderRadius: 10, padding: "12px 14px", margin: "14px 0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: theme.gray, textTransform: "uppercase", marginBottom: 8 }}>Financial Summary</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: theme.gray, textTransform: "uppercase", marginBottom: 8 }}>{t("Financial Summary")}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 13 }}>
-            <span style={{ color: theme.gray }}>Original amount:</span>
-            <span style={{ textAlign: "right", color: theme.navy }}>{sumBeforeDiscount.toFixed(2)} EGP</span>
+            <span style={{ color: theme.gray }}>{t("Original amount:")}</span>
+            <span style={{ textAlign: "end", color: theme.navy }}>{t("{amount} EGP", { amount: sumBeforeDiscount.toFixed(2) })}</span>
             {discountPct > 0 && (
               <>
-                <span style={{ color: theme.gray }}>Discount ({discountPct}%):</span>
-                <span style={{ textAlign: "right", color: "#b45309" }}>-{discountAmount.toFixed(2)} EGP</span>
+                <span style={{ color: theme.gray }}>{t("Discount ({pct}%):", { pct: discountPct })}</span>
+                <span style={{ textAlign: "end", color: "#b45309" }}><Ltr>-{discountAmount.toFixed(2)}</Ltr> {t("EGP")}</span>
               </>
             )}
-            <span style={{ color: theme.gray, fontWeight: 700 }}>Amount due:</span>
-            <span style={{ textAlign: "right", color: theme.navy, fontWeight: 700 }}>{finalAmountDue.toFixed(2)} EGP</span>
-            <span style={{ color: theme.gray }}>Already paid:</span>
-            <span style={{ textAlign: "right", color: theme.navy }}>{alreadyPaid.toFixed(2)} EGP</span>
+            <span style={{ color: theme.gray, fontWeight: 700 }}>{t("Amount due:")}</span>
+            <span style={{ textAlign: "end", color: theme.navy, fontWeight: 700 }}>{t("{amount} EGP", { amount: finalAmountDue.toFixed(2) })}</span>
+            <span style={{ color: theme.gray }}>{t("Already paid:")}</span>
+            <span style={{ textAlign: "end", color: theme.navy }}>{t("{amount} EGP", { amount: alreadyPaid.toFixed(2) })}</span>
             {projectedNewPayment > 0 && (
               <>
-                <span style={{ color: theme.gray }}>This payment:</span>
-                <span style={{ textAlign: "right", color: "#2e7d32" }}>+{projectedNewPayment.toFixed(2)} EGP</span>
+                <span style={{ color: theme.gray }}>{t("This payment:")}</span>
+                <span style={{ textAlign: "end", color: "#2e7d32" }}><Ltr>+{projectedNewPayment.toFixed(2)}</Ltr> {t("EGP")}</span>
               </>
             )}
-            <span style={{ color: theme.gray, fontWeight: 700 }}>Remaining for settlement:</span>
-            <span style={{ textAlign: "right", fontWeight: 700, color: remainingForSettlement > 0.01 ? "#ba1a1a" : "#2e7d32" }}>
-              {remainingForSettlement.toFixed(2)} EGP
+            <span style={{ color: theme.gray, fontWeight: 700 }}>{t("Remaining for settlement:")}</span>
+            <span style={{ textAlign: "end", fontWeight: 700, color: remainingForSettlement > 0.01 ? "#ba1a1a" : "#2e7d32" }}>
+              <Ltr>{remainingForSettlement.toFixed(2)}</Ltr> {t("EGP")}
             </span>
           </div>
 
@@ -2512,12 +2520,12 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
               {existingPayments.length > 0 && (
                 <div style={{ background: "#f6f6f9", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: theme.navy, marginBottom: 6 }}>
-                    Already recorded &mdash; do not enter these again
+                    {t("Already recorded — do not enter these again")}
                   </div>
                   {existingPayments.map((p) => (
                     <div key={p.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, color: theme.navy, padding: "3px 0" }}>
                       <span>
-                        {Number(p.amount).toLocaleString()} EGP &middot; {p.payment_method}
+                        {t("{amount} EGP", { amount: Number(p.amount).toLocaleString() })} &middot; {t(p.payment_method)}
                       </span>
                       <span style={{ color: theme.gray }}>
                         {new Date(p.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -2527,7 +2535,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
                   ))}
                 </div>
               )}
-              <FieldLabel>Record a New Payment (optional)</FieldLabel>
+              <FieldLabel>{t("Record a New Payment (optional)")}</FieldLabel>
               <input
                 type="number"
                 style={inp}
@@ -2540,18 +2548,18 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
               <FieldLabel>&nbsp;</FieldLabel>
               <select style={inp} value={form.new_payment_method} onChange={(e) => setForm({ ...form, new_payment_method: e.target.value })}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
+                  <option key={m} value={m}>{t(m)}</option>
                 ))}
               </select>
             </div>
           </div>
           <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-            E.g. the patient just paid off the rest of a partial balance. Logged with today's date, not the visit's date, so it counts correctly in today's cash-in-hand.
-            {!isAdmin && " Like the rest of this form, it won't take effect until an admin approves it."}
+            {t("E.g. the patient just paid off the rest of a partial balance. Logged with today's date, not the visit's date, so it counts correctly in today's cash-in-hand.")}
+            {!isAdmin && ` ${t("Like the rest of this form, it won't take effect until an admin approves it.")}`}
           </p>
         </div>
 
-        <FieldLabel>Notes</FieldLabel>
+        <FieldLabel>{t("Notes")}</FieldLabel>
         <input style={inp} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
         {/* Shown when today's list price no longer matches what the patient was
@@ -2561,29 +2569,43 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
             changes the price. */}
         {!scanTypesChanged && Math.abs(sumAfterDiscount - storedAmountDue) > 0.01 && (
           <div style={{ fontSize: 12, background: "#fff8e1", border: "1px solid #f0d58c", color: "#8a6d00", padding: "10px 12px", borderRadius: 8, margin: "12px 0 4px" }}>
-            This visit was charged <strong>{storedAmountDue.toFixed(2)} EGP</strong>. At today&apos;s prices the same
-            scans come to <strong>{sumAfterDiscount.toFixed(2)} EGP</strong>. The charged amount is kept unless you say otherwise.
+            {fillNodes(t("This visit was charged {charged}. At today's prices the same scans come to {today}. The charged amount is kept unless you say otherwise."), {
+              charged: <strong>{t("{amount} EGP", { amount: storedAmountDue.toFixed(2) })}</strong>,
+              today: <strong>{t("{amount} EGP", { amount: sumAfterDiscount.toFixed(2) })}</strong>,
+            })}
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
               <input type="checkbox" checked={recalcAmount} onChange={(e) => setRecalcAmount(e.target.checked)} />
-              Re-price this visit at today&apos;s prices
+              {t("Re-price this visit at today's prices")}
             </label>
           </div>
         )}
         {amountDiffers && (
           <p style={{ fontSize: 12, background: "#fdecea", color: "#8c1d18", padding: "10px 12px", borderRadius: 8, margin: "12px 0 4px" }}>
-            Saving now changes the amount due from {storedAmountDue.toFixed(2)} EGP to {finalAmountDue.toFixed(2)} EGP.
+            {t("Saving now changes the amount due from {from} EGP to {to} EGP.", { from: storedAmountDue.toFixed(2), to: finalAmountDue.toFixed(2) })}
           </p>
         )}
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
         <button type="submit" disabled={saving} style={{ ...actionBtn, marginTop: 6 }}>
-          {saving ? "Saving..." : isAdmin ? "Save Changes" : "Submit for Approval"}
+          {saving ? t("Saving...") : isAdmin ? t("Save Changes") : t("Submit for Approval")}
         </button>
       </form>
     </Modal>
   );
 }
 
+// Puts React nodes (bold amounts etc.) into a translated sentence at its
+// {placeholders}, so the word order follows the language rather than the code.
+function fillNodes(text, nodes) {
+  return String(text)
+    .split(/(\{\w+\})/)
+    .map((part, i) => {
+      const m = part.match(/^\{(\w+)\}$/);
+      return m && nodes[m[1]] !== undefined ? <Fragment key={i}>{nodes[m[1]]}</Fragment> : part;
+    });
+}
+
 function Modal({ title, children, onClose, wide }) {
+  const { t } = useT();
   // Header stays fixed at the top of the modal while only the body below it
   // scrolls - a flex column with the header as a non-shrinking child and the
   // body as the one scrollable region, rather than the whole card (header
@@ -2593,7 +2615,7 @@ function Modal({ title, children, onClose, wide }) {
       <div style={{ background: "#fff", borderRadius: 16, width: wide ? 480 : 380, maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "26px 26px 14px", flexShrink: 0, borderBottom: "1px solid #f0f0f0" }}>
           <h3 style={{ margin: 0, color: theme.navy, fontSize: 17 }}>{title}</h3>
-          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: theme.gray }}>×</button>
+          <button onClick={onClose} aria-label={t("Close")} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: theme.gray }}>×</button>
         </div>
         <div style={{ padding: "14px 26px 26px", overflowY: "auto", minHeight: 0 }}>
           {children}
@@ -2606,10 +2628,11 @@ function FieldLabel({ children }) {
   return <label style={{ fontSize: 11, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 4, marginTop: 8 }}>{children}</label>;
 }
 function TotalRow({ label, value, bold, negative }) {
+  const { t } = useT();
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: bold ? 14 : 12 }}>
       <span style={{ color: bold ? theme.navy : theme.gray, fontWeight: bold ? 700 : 500 }}>{label}</span>
-      <span style={{ color: negative ? "#ba1a1a" : theme.navy, fontWeight: bold ? 700 : 600 }}>{formatMoney(value, { decimals: 2 })} EGP</span>
+      <span style={{ color: negative ? "#ba1a1a" : theme.navy, fontWeight: bold ? 700 : 600 }}>{t("{amount} EGP", { amount: formatMoney(value, { decimals: 2 }) })}</span>
     </div>
   );
 }
@@ -2621,10 +2644,10 @@ function TotalRow({ label, value, bold, negative }) {
 // Minutes as something a person reads: "1h 30m", not "90".
 function readableMinutes(mins) {
   const m = Math.max(Math.round(Number(mins) || 0), 0);
-  if (m < 60) return `${m}m`;
+  if (m < 60) return tx("{m}m", { m });
   const h = Math.floor(m / 60);
   const rest = m % 60;
-  return rest ? `${h}h ${rest}m` : `${h}h`;
+  return rest ? tx("{h}h {m}m", { h, m: rest }) : tx("{h}h", { h });
 }
 
 function minutesSince(ts) {
@@ -2642,26 +2665,27 @@ function stepLate(r) {
 
 function stepTargetLabel(r) {
   const target = readableMinutes(r.target);
-  if (r.active) return `target ${target}`;
+  if (r.active) return tx("target {target}", { target });
   const waited = minutesSince(r.startedAt);
-  if (waited === null) return `target ${target}`;
+  if (waited === null) return tx("target {target}", { target });
   return waited > r.target
-    ? `${readableMinutes(waited - r.target)} over ${target}`
-    : `target ${target}`;
+    ? tx("{over} over {target}", { over: readableMinutes(waited - r.target), target })
+    : tx("target {target}", { target });
 }
 
 function StageTable({ rows }) {
-  const cell = { padding: "6px 10px", fontSize: 11, textAlign: "left", verticalAlign: "middle" };
+  const { t } = useT();
+  const cell = { padding: "6px 10px", fontSize: 11, textAlign: "start", verticalAlign: "middle" };
   const head = { ...cell, fontSize: 10, fontWeight: 700, color: "#8A8694", textTransform: "uppercase", letterSpacing: 0.4 };
   return (
     <div style={{ overflowX: "auto", marginTop: 4 }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 380 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid #ececf0" }}>
-            <th style={head}>Status</th>
-            <th style={head}>Date &amp; Time</th>
-            <th style={head}>By</th>
-            <th style={head}>Target</th>
+            <th style={head}>{t("Status")}</th>
+            <th style={head}>{t("Date & Time")}</th>
+            <th style={head}>{t("By")}</th>
+            <th style={head}>{t("Target")}</th>
           </tr>
         </thead>
         <tbody>
@@ -2672,7 +2696,7 @@ function StageTable({ rows }) {
                   type="button"
                   onClick={r.onClick}
                   disabled={!r.onClick}
-                  title={r.onClick ? (r.warn ? "Click to review" : "Click to toggle") : undefined}
+                  title={r.onClick ? (r.warn ? t("Click to review") : t("Click to toggle")) : undefined}
                   style={{
                     fontSize: 11,
                     padding: "4px 10px",
@@ -2689,7 +2713,7 @@ function StageTable({ rows }) {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {r.warn ? "\u26a0" : r.active ? "\u2713" : "\u25cb"} {r.label}
+                  {r.warn ? "\u26a0" : r.active ? "\u2713" : "\u25cb"} {t(r.label)}
                 </button>
               </td>
               <td style={{ ...cell, color: r.active && r.timestamp ? "#27214D" : "#bbb", whiteSpace: "nowrap" }}>
@@ -2755,10 +2779,14 @@ function gatewayRows(v, log) {
 }
 
 function StageChip({ label, active, onClick, timestamp, byName }) {
+  const { t } = useT();
+  const when = timestamp ? new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   const tooltip = active && timestamp
-    ? `${label} on ${new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}${byName ? ` by ${byName}` : ""}`
+    ? byName
+      ? t("{label} on {date} by {name}", { label: t(label), date: when, name: byName })
+      : t("{label} on {date}", { label: t(label), date: when })
     : onClick
-    ? "Click to toggle"
+    ? t("Click to toggle")
     : undefined;
   return (
     <button
@@ -2777,7 +2805,7 @@ function StageChip({ label, active, onClick, timestamp, byName }) {
         cursor: onClick ? "pointer" : "default",
       }}
     >
-      {active ? "✓" : "○"} {label}
+      {active ? "✓" : "○"} {t(label)}
     </button>
   );
 }
@@ -2826,6 +2854,7 @@ const fileActionBtn = {
 // anyone else and insists on a reason, so the form asks for both rather than
 // letting the save fail after the fact.
 function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
+  const { t } = useT();
   const [paymentId, setPaymentId] = useState(payments[0]?.id || "");
   const [method, setMethod] = useState("");
   const [reason, setReason] = useState("");
@@ -2856,14 +2885,14 @@ function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
   return (
     <div style={{ marginTop: 8, padding: 12, borderRadius: 8, background: "#fbf7ec", border: "1px solid #e6d08a" }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "#8a6d00", marginBottom: 8 }}>
-        Correct the payment method. The original stays on the record with your name and reason.
+        {t("Correct the payment method. The original stays on the record with your name and reason.")}
       </div>
 
       {payments.length > 1 && (
         <select value={paymentId} onChange={(e) => setPaymentId(e.target.value)} style={{ ...box, marginBottom: 6 }}>
           {payments.map((p) => (
             <option key={p.id} value={p.id}>
-              {Number(p.amount).toFixed(2)} EGP · {p.payment_method}
+              {t("{amount} EGP", { amount: Number(p.amount).toFixed(2) })} · {t(p.payment_method)}
             </option>
           ))}
         </select>
@@ -2871,38 +2900,38 @@ function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
         <select value={method} onChange={(e) => setMethod(e.target.value)} style={{ ...box, width: 130 }}>
-          <option value="">Change to...</option>
+          <option value="">{t("Change to...")}</option>
           {["Cash", "Visa", "InstaPay", "Wallet"]
             .filter((m) => m !== current?.payment_method)
-            .map((m) => <option key={m} value={m}>{m}</option>)}
+            .map((m) => <option key={m} value={m}>{t(m)}</option>)}
         </select>
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Why is it being corrected?"
+          placeholder={t("Why is it being corrected?")}
           style={{ ...box, flex: 1, minWidth: 200 }}
         />
       </div>
 
       {method === "Cash" && (
         <p style={{ fontSize: 11, color: "#8a6d00", margin: "6px 0 0" }}>
-          This puts the money into the hands of whoever logged the payment, and it will show in their cash.
+          {t("This puts the money into the hands of whoever logged the payment, and it will show in their cash.")}
         </p>
       )}
       {current?.payment_method === "Cash" && method && method !== "Cash" && (
         <p style={{ fontSize: 11, color: "#8a6d00", margin: "6px 0 0" }}>
-          This takes the money out of the hands of whoever logged it, and their cash total drops by {Number(current.amount).toFixed(2)} EGP.
+          {t("This takes the money out of the hands of whoever logged it, and their cash total drops by {amount} EGP.", { amount: Number(current.amount).toFixed(2) })}
         </p>
       )}
 
-      {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: "#b42318", margin: "6px 0 0" }}>{t(error)}</p>}
 
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={save} disabled={saving} style={{ padding: "7px 14px", borderRadius: 6, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-          {saving ? "Saving..." : "Correct it"}
+          {saving ? t("Saving...") : t("Correct it")}
         </button>
         <button onClick={onClose} style={{ padding: "7px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", fontSize: 13, cursor: "pointer" }}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </div>
@@ -2913,6 +2942,7 @@ function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
 // yet. Card payments taken minutes ago legitimately sit unproven for a short
 // while, because Paymob publishes the charge a little after the tap.
 function PaymentProof({ payment, onRecheck, recheckState }) {
+  const { t } = useT();
   const v = payment?.payment_verification;
   // InstaPay has no gateway: an admin confirms it in the Action Center (0126).
   if (payment?.payment_method === "InstaPay") {
@@ -2922,7 +2952,7 @@ function PaymentProof({ payment, onRecheck, recheckState }) {
 
   const pill = {
     display: "inline-block",
-    marginLeft: 6,
+    marginInlineStart: 6,
     padding: "1px 6px",
     borderRadius: 999,
     fontSize: 10,
@@ -2937,10 +2967,10 @@ function PaymentProof({ payment, onRecheck, recheckState }) {
     return (
       <span
         style={{ ...pill, background: "#f6faf7", border: "1px solid #dbe7de", color: "#1e7a3c" }}
-        title={`Paymob transaction ${payment.paymob_transaction_id}${payment.paymob_fees != null ? ` · fee ${Number(payment.paymob_fees).toFixed(2)} EGP` : ""}`}
+        title={`${t("Paymob transaction {id}", { id: payment.paymob_transaction_id })}${payment.paymob_fees != null ? ` · ${t("fee {amount} EGP", { amount: Number(payment.paymob_fees).toFixed(2) })}` : ""}`}
       >
-        ✓ Verified{card ? ` · ${card}` : ""}
-        {v === "verified_paymob_group" ? " · shared swipe" : ""}
+        ✓ {t("Verified")}{card ? <> · <Ltr>{card}</Ltr></> : ""}
+        {v === "verified_paymob_group" ? ` · ${t("shared swipe")}` : ""}
       </span>
     );
   }
@@ -2951,8 +2981,8 @@ function PaymentProof({ payment, onRecheck, recheckState }) {
     // same at a glance.
     return (
       <span style={{ ...pill, background: "#f4f6fb", border: "1px solid #ccd6ea", color: "#31518f" }}
-        title="No Paymob charge was found. An admin confirmed the money arrived.">
-        Approved by admin
+        title={t("No Paymob charge was found. An admin confirmed the money arrived.")}>
+        {t("Approved by admin")}
       </span>
     );
   }
@@ -2960,8 +2990,8 @@ function PaymentProof({ payment, onRecheck, recheckState }) {
   if (v === "assumed_pre_launch") {
     return (
       <span style={{ ...pill, background: "#f6f7f8", border: "1px solid #e3e6e9", color: "#5a6570" }}
-        title="Taken before the platform went live. No card charge matched it, so it is recorded as cash collected.">
-        Cash (before launch)
+        title={t("Taken before the platform went live. No card charge matched it, so it is recorded as cash collected.")}>
+        {t("Cash (before launch)")}
       </span>
     );
   }
@@ -2974,25 +3004,25 @@ function PaymentProof({ payment, onRecheck, recheckState }) {
   return (
     <>
       <span style={{ ...pill, background: "#fffaf0", border: "1px solid #eddcb4", color: "#8a6d00" }}
-        title="No matching card charge found in Paymob yet.">
-        Awaiting card proof
+        title={t("No matching card charge found in Paymob yet.")}>
+        {t("Awaiting card proof")}
       </span>
       {looksLikeCard && onRecheck && (
         <button
           onClick={onRecheck}
           disabled={recheckState?.busy}
           style={{
-            marginLeft: 6, background: "none", border: "none", padding: 0,
+            marginInlineStart: 6, background: "none", border: "none", padding: 0,
             cursor: recheckState?.busy ? "default" : "pointer",
             color: "#8a6d00", fontSize: 10, fontWeight: 700, textDecoration: "underline",
             verticalAlign: "middle",
           }}
         >
-          {recheckState?.busy ? "Checking Paymob..." : "Check now"}
+          {recheckState?.busy ? t("Checking Paymob...") : t("Check now")}
         </button>
       )}
       {recheckState?.message && (
-        <span style={{ marginLeft: 6, fontSize: 10, color: "#b42318" }}>{recheckState.message}</span>
+        <span style={{ marginInlineStart: 6, fontSize: 10, color: "#b42318" }}>{t(recheckState.message)}</span>
       )}
     </>
   );

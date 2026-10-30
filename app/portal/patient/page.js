@@ -5,8 +5,11 @@ import { theme } from "../../../lib/theme";
 import { formatVisitDate } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
+import { useT } from "../../../lib/i18n";
+import LanguageToggle from "../../../lib/i18n/LanguageToggle";
 
 export default function PatientPortalPage() {
+  const { t, tCode, isAr } = useT();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   // Sets of 12+ files of one kind on one visit arrive as one entry carrying
@@ -15,13 +18,13 @@ export default function PatientPortalPage() {
   const [openSeries, setOpenSeries] = useState({});
   const SetEntry = ({ f, box }) => (
     <div style={{ ...box, gridColumn: openSeries[f.id] ? "1 / -1" : undefined }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{f.typeLabel ? `${f.typeLabel} · ` : ""}{f.seriesCount} files in one set</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>{f.typeLabel ? `${t(f.typeLabel)} · ` : ""}{t("{n} files in one set", { n: f.seriesCount })}</div>
       <button
         type="button"
         onClick={() => setOpenSeries((o) => ({ ...o, [f.id]: !o[f.id] }))}
         style={{ marginTop: 6, padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
       >
-        {openSeries[f.id] ? "Hide files" : `Show all ${f.seriesCount}`}
+        {openSeries[f.id] ? t("Hide files") : t("Show all {n}", { n: f.seriesCount })}
       </button>
       {openSeries[f.id] && (
         <div style={{ marginTop: 8, maxHeight: 320, overflowY: "auto", borderTop: "1px solid #eee" }}>
@@ -66,15 +69,15 @@ export default function PatientPortalPage() {
       <ImpersonationBanner impersonatedBy={data.impersonatedBy} name={data.patient?.name} />
       <TopBar onLogout={handleLogout} />
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px" }}>
-        <h2 style={{ color: theme.navy, marginBottom: 4 }}>Hi {data.patient?.name?.split(" ")[0]},</h2>
-        <p style={{ color: theme.gray, marginBottom: 20 }}>Here's the status of your scans and results.</p>
+        <h2 style={{ color: theme.navy, marginBottom: 4 }}>{t("Hi {name},", { name: data.patient?.name?.split(" ")[0] })}</h2>
+        <p style={{ color: theme.gray, marginBottom: 20 }}>{t("Here's the status of your scans and results.")}</p>
 
-        {data.visits.length === 0 && <EmptyCard>No visits on record yet.</EmptyCard>}
+        {data.visits.length === 0 && <EmptyCard>{t("No visits on record yet.")}</EmptyCard>}
         {data.visits.map((v) => (
           <div key={v.id} style={cardStyle}>
             <div style={{ fontWeight: 700, color: theme.navy }}>{(v.scan_types || []).join(", ")}</div>
             <div style={{ fontSize: 12, color: theme.navy, marginTop: 2, fontWeight: 600 }}>{formatVisitDate(v.exam_date)}<span style={{ color: theme.gray, fontWeight: 400 }}> &middot; {v.branches?.name}</span></div>
-            <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>Referred by: {v.doctors?.name || "Walk-in, no referring doctor"}</div>
+            <div style={{ fontSize: 12, color: theme.gray, marginTop: 2 }}>{t("Referred by:")} {v.doctors?.name || t("Walk-in, no referring doctor")}</div>
             <span
               style={{
                 display: "inline-block",
@@ -86,7 +89,7 @@ export default function PatientPortalPage() {
                 color: v.payment_status === "paid" ? "#2e7d32" : "#a97c00",
               }}
             >
-              {v.payment_status}
+              {isAr ? (v.payment_status === "pending" ? t("Unpaid") : tCode(v.payment_status)) : v.payment_status}
             </span>
 
             {v.files && v.files.length > 0 && (
@@ -103,7 +106,7 @@ export default function PatientPortalPage() {
                   >
                     <span style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
                     {!f.exact && (
-                      <span style={{ fontSize: 9, color: theme.gray, fontStyle: "italic", whiteSpace: "nowrap", marginLeft: 8 }}>possibly related</span>
+                      <span style={{ fontSize: 9, color: theme.gray, fontStyle: "italic", whiteSpace: "nowrap", marginInlineStart: 8 }}>{t("possibly related")}</span>
                     )}
                   </a>
                 ))}
@@ -114,8 +117,8 @@ export default function PatientPortalPage() {
 
         {data.files.length > 0 && (
           <>
-            <h3 style={{ color: theme.navy, marginTop: 28, marginBottom: 12 }}>Other Files</h3>
-            <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Couldn't be matched to a specific scan above.</p>
+            <h3 style={{ color: theme.navy, marginTop: 28, marginBottom: 12 }}>{t("Other Files")}</h3>
+            <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>{t("Couldn't be matched to a specific scan above.")}</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {data.files.map((f) => f.seriesCount > 1 ? (
                 <SetEntry key={f.id} f={f} box={cardStyle} />
@@ -134,15 +137,19 @@ export default function PatientPortalPage() {
 }
 
 function TopBar({ onLogout }) {
+  const { t } = useT();
   return (
     <div style={{ background: theme.navy, padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <img src="/logo-mark.png" alt="" style={{ height: 32, width: "auto" }} />
         <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Al Shrooouk Scan &amp; Lab</span>
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <LanguageToggle compact style={{ color: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />
       <button onClick={onLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-        Log Out
+        {t("Log Out")}
       </button>
+      </div>
     </div>
   );
 }

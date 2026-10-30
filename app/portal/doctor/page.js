@@ -6,6 +6,8 @@ import { theme } from "../../../lib/theme";
 import { formatVisitDate, doctorLabel } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
+import { useT, Ltr } from "../../../lib/i18n";
+import LanguageToggle from "../../../lib/i18n/LanguageToggle";
 
 // Mirrors the staff dental orders screen so both sides describe an order the
 // same way.
@@ -19,6 +21,7 @@ const ORDER_STATUS = {
 };
 
 export default function DoctorPortalPage() {
+  const { t, tCode, isAr } = useT();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [openPatientId, setOpenPatientId] = useState(null);
@@ -130,14 +133,15 @@ export default function DoctorPortalPage() {
           <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Al Shrooouk Scan &amp; Lab</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <LanguageToggle compact style={{ color: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />
           <button
             onClick={() => router.push("/portal/doctor/dental-stock")}
             style={{ background: theme.gold, border: "none", color: theme.navy, borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
           >
-            Request Dental Stock Items
+            {t("Request Dental Stock Items")}
           </button>
           <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-            Log Out
+            {t("Log Out")}
           </button>
         </div>
       </div>
@@ -168,15 +172,15 @@ export default function DoctorPortalPage() {
           >
             <div>
               <div style={{ color: "#8a6d00", fontWeight: 700, fontSize: 14 }}>
-                Your clinic owes us
+                {t("Your clinic owes us")}
               </div>
               <div style={{ color: "#8a6d00", fontSize: 12, marginTop: 2 }}>
-                {data.clinicName || data.doctor?.clinic_name || `Clinic ${data.doctor?.clinic_code}`} &middot;
-                {" "}for dental supplies. Settle it with reception on your next visit.
+                {data.clinicName || data.doctor?.clinic_name || t("Clinic {code}", { code: data.doctor?.clinic_code })} &middot;
+                {" "}{t("for dental supplies. Settle it with reception on your next visit.")}
               </div>
             </div>
             <div style={{ color: "#8a6d00", fontSize: 26, fontWeight: 700, whiteSpace: "nowrap" }}>
-              {Number(data.clinicOwes).toLocaleString()} EGP
+              <Ltr>{t("{amount} EGP", { amount: Number(data.clinicOwes).toLocaleString() })}</Ltr>
             </div>
           </div>
         )}
@@ -192,48 +196,48 @@ export default function DoctorPortalPage() {
           {[
             { key: "scans", label: "Scans" },
             { key: "orders", label: "Supply Orders" },
-          ].map((t) => (
+          ].map((tab) => (
             <button
-              key={t.key}
-              onClick={() => setView(t.key)}
+              key={tab.key}
+              onClick={() => setView(tab.key)}
               style={{
                 flex: 1,
                 padding: "12px 0",
                 borderRadius: 10,
-                border: `1px solid ${view === t.key ? theme.navy : "#ddd"}`,
-                background: view === t.key ? theme.navy : "#fff",
-                color: view === t.key ? "#fff" : theme.navy,
+                border: `1px solid ${view === tab.key ? theme.navy : "#ddd"}`,
+                background: view === tab.key ? theme.navy : "#fff",
+                color: view === tab.key ? "#fff" : theme.navy,
                 fontWeight: 600,
                 cursor: "pointer",
               }}
             >
-              {t.label}
+              {t(tab.label)}
             </button>
           ))}
         </div>
 
         {view === "orders" && (orders.length > 0 || itemRequests.length > 0) && (
           <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
-            <h3 style={{ color: theme.navy, marginTop: 0 }}>My Supply Orders</h3>
+            <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("My Supply Orders")}</h3>
             {orders.map((o) => {
               const st = ORDER_STATUS[o.status] || ORDER_STATUS.placed;
               return (
                 <div key={o.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
-                      {Number(o.total_amount).toLocaleString()} EGP
+                      <Ltr>{t("{amount} EGP", { amount: Number(o.total_amount).toLocaleString() })}</Ltr>
                       {o.fulfillment === "backorder" && (
-                        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00" }}>
-                          Awaiting stock
+                        <span style={{ marginInlineStart: 8, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00" }}>
+                          {t("Awaiting stock")}
                         </span>
                       )}
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg }}>{st.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg }}>{t(st.label)}</span>
                   </div>
                   <div style={{ fontSize: 12, color: theme.gray, margin: "4px 0 6px" }}>
                     {new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                    {" \u00b7 "}{o.items.length} item{o.items.length === 1 ? "" : "s"}
-                    {" \u00b7 "}{o.payment_status === "paid" ? "Paid" : "Unpaid"}
+                    {" \u00b7 "}{o.items.length === 1 ? t("1 item") : t("{n} items", { n: o.items.length })}
+                    {" \u00b7 "}{o.payment_status === "paid" ? t("Paid") : t("Unpaid")}
                   </div>
                   <div style={{ fontSize: 12, color: theme.navy }}>
                     {o.items.map((l, i) => (
@@ -244,7 +248,7 @@ export default function DoctorPortalPage() {
                       whoever brings the order - it is what closes the delivery. */}
                   {o.delivery_otp && o.status !== "delivered" && (
                     <div style={{ marginTop: 10, background: theme.goldLight, borderRadius: 10, padding: "10px 12px" }}>
-                      <div style={{ fontSize: 11, color: theme.navy, fontWeight: 600 }}>Give this code to the person delivering your order</div>
+                      <div style={{ fontSize: 11, color: theme.navy, fontWeight: 600 }}>{t("Give this code to the person delivering your order")}</div>
                       <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 6, color: theme.navy }}>{o.delivery_otp}</div>
                     </div>
                   )}
@@ -253,11 +257,11 @@ export default function DoctorPortalPage() {
             })}
             {itemRequests.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: theme.navy, marginBottom: 6 }}>Items you asked us to source</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: theme.navy, marginBottom: 6 }}>{t("Items you asked us to source")}</div>
                 {itemRequests.map((r) => (
                   <div key={r.id} style={{ fontSize: 12, color: theme.gray, padding: "4px 0" }}>
                     {r.item_name}{r.quantity ? ` \u00b7 ${r.quantity}` : ""}{" \u00b7 "}
-                    <span style={{ color: r.status === "pending" ? "#8a6d00" : theme.navy }}>{r.status}</span>
+                    <span style={{ color: r.status === "pending" ? "#8a6d00" : theme.navy }}>{isAr ? tCode(r.status) : r.status}</span>
                   </div>
                 ))}
               </div>
@@ -269,33 +273,36 @@ export default function DoctorPortalPage() {
             what clinics take, and they were missing from this tab entirely. */}
         {view === "orders" && pickups.length > 0 && (
           <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
-            <h3 style={{ color: theme.navy, margin: "0 0 2px" }}>Picked up at reception</h3>
-            <div style={{ fontSize: 13, color: "#8a6d00", fontWeight: 700, marginBottom: 6 }} dir="rtl">مسحوبات من الاستقبال</div>
+            <h3 style={{ color: theme.navy, margin: "0 0 2px" }}>{t("Picked up at reception")}</h3>
+            {/* The Arabic subtitle stays for English readers; in Arabic the heading above already says it. */}
+            {!isAr && <div style={{ fontSize: 13, color: "#8a6d00", fontWeight: 700, marginBottom: 6 }} dir="rtl">مسحوبات من الاستقبال</div>}
             <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 8px" }}>
-              {pickups.length} pickup{pickups.length === 1 ? "" : "s"}, newest first. The unpaid ones make up the balance above.
+              {pickups.length === 1
+                ? t("1 pickup, newest first. The unpaid ones make up the balance above.")
+                : t("{n} pickups, newest first. The unpaid ones make up the balance above.", { n: pickups.length })}
             </p>
             {pickups.map((x) => (
               <div key={x.id} style={{ borderTop: "1px solid #f0f0f0", padding: "10px 0" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>{Number(x.amount).toLocaleString()} EGP</div>
+                  <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}><Ltr>{t("{amount} EGP", { amount: Number(x.amount).toLocaleString() })}</Ltr></div>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
                     background: x.status === "open" || x.status === "partly" ? "#fff8e1" : "#e7f6ec",
                     color: x.status === "open" || x.status === "partly" ? "#8a6d00" : "#1e7a3c" }}>
-                    {x.status === "open" ? "Not paid yet · لسه مادفعش"
-                      : x.status === "partly" ? "Partly paid · مدفوع جزء"
-                      : x.status === "settled" ? "Paid later · اتدفع"
-                      : "Paid at pickup · مدفوع"}
+                    {x.status === "open" ? t("Not paid yet")
+                      : x.status === "partly" ? t("Partly paid")
+                      : x.status === "settled" ? t("Paid later")
+                      : t("Paid at pickup")}
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: theme.gray, margin: "3px 0 6px" }}>
                   {new Date(x.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                  {x.receipt_no ? ` \u00b7 ${x.receipt_no}` : ""}{x.discount_percent > 0 ? ` \u00b7 ${x.discount_percent}% discount` : ""}
+                  {x.receipt_no ? ` \u00b7 ${x.receipt_no}` : ""}{x.discount_percent > 0 ? ` \u00b7 ${t("{pct}% discount", { pct: x.discount_percent })}` : ""}
                 </div>
                 {x.items.map((l, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12, padding: "2px 0", color: theme.navy }}>
                     <div style={{ minWidth: 0 }}>
                       <div dir="auto" style={{ fontWeight: 600 }}>{l.item_name}</div>
-                      <div dir="ltr" style={{ color: theme.gray, fontSize: 11 }}>{l.quantity} × {Number(l.unit_price).toLocaleString()} EGP</div>
+                      <div dir="ltr" style={{ color: theme.gray, fontSize: 11 }}>{l.quantity} × {Number(l.unit_price).toLocaleString()} {t("EGP")}</div>
                     </div>
                     <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{Number(l.line_total).toLocaleString()}</span>
                   </div>
@@ -307,21 +314,21 @@ export default function DoctorPortalPage() {
 
         {view === "orders" && orders.length === 0 && itemRequests.length === 0 && pickups.length === 0 && (
           <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", color: theme.gray, fontSize: 14 }}>
-            No supply orders yet. Use &quot;Request Dental Stock Items&quot; above to place one.
+            {t("No supply orders yet. Use \"Request Dental Stock Items\" above to place one.")}
           </div>
         )}
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", display: view === "scans" ? "block" : "none" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Clinic Patients</h3>
-          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>Every patient referred to {data.doctor?.clinic_code} is shown here, including cases referred by other doctors at this clinic.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Clinic Patients")}</h3>
+          <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>{t("Every patient referred to {code} is shown here, including cases referred by other doctors at this clinic.", { code: data.doctor?.clinic_code })}</p>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by patient name or mobile..."
+            placeholder={t("Search by patient name or mobile...")}
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, marginBottom: 16, boxSizing: "border-box" }}
           />
-          {Object.keys(patientGroups).length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No referrals yet.</p>}
-          {Object.keys(patientGroups).length > 0 && filteredGroups.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No patients match "{query}".</p>}
+          {Object.keys(patientGroups).length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No referrals yet.")}</p>}
+          {Object.keys(patientGroups).length > 0 && filteredGroups.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No patients match \"{query}\".", { query })}</p>}
           {filteredGroups.map(([patientId, group]) => (
             <div key={patientId} style={{ borderBottom: "1px solid #f0f0f0", padding: "10px 0" }}>
               <div
@@ -330,15 +337,15 @@ export default function DoctorPortalPage() {
               >
                 <div>
                   <div style={{ fontWeight: 600, color: theme.navy }}>{group.name}</div>
-                  <div style={{ fontSize: 12, color: theme.gray }}>{group.visits.length} visit{group.visits.length > 1 ? "s" : ""}</div>
+                  <div style={{ fontSize: 12, color: theme.gray }}>{group.visits.length > 1 ? t("{n} visits", { n: group.visits.length }) : t("{n} visit", { n: group.visits.length })}</div>
                 </div>
                 <span style={{ color: theme.gold, fontSize: 12, fontWeight: 600 }}>
-                  {openPatientId === patientId ? "Hide Files" : "View Files"}
+                  {openPatientId === patientId ? t("Hide Files") : t("View Files")}
                 </span>
               </div>
 
               {openPatientId === patientId && (
-                <div style={{ marginTop: 12, paddingLeft: 4 }}>
+                <div style={{ marginTop: 12, paddingInlineStart: 4 }}>
                   {group.visits.map((v) => (
                     <div key={v.id} style={{ marginBottom: 12 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
@@ -349,27 +356,27 @@ export default function DoctorPortalPage() {
                       </div>
                       {v.doctors?.name && (
                         <div style={{ fontSize: 11, color: theme.gray, marginBottom: 4 }}>
-                          Referred by {doctorLabel(v.doctors.name)}
+                          {t("Referred by {name}", { name: doctorLabel(v.doctors.name) })}
                         </div>
                       )}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
-                        <StatusChip label="Scanned" active={v.scanned} />
-                        <StatusChip label="Raw Data Uploaded" active={v.raw_data_uploaded} />
-                        <StatusChip label="Report Done" active={v.report_done} />
+                        <StatusChip label={t("Scanned")} active={v.scanned} />
+                        <StatusChip label={t("Raw Data Uploaded")} active={v.raw_data_uploaded} />
+                        <StatusChip label={t("Report Done")} active={v.report_done} />
                       </div>
                       <div style={{ fontSize: 11, color: v.payment_status === "paid" ? "#1e7a3c" : v.payment_status === "partial" ? "#b45309" : "#999", fontWeight: 600 }}>
-                        {v.payment_status === "paid" && "Paid in full"}
-                        {v.payment_status === "partial" && `Partial - Paid ${Number(v.amount_paid || 0).toFixed(2)} EGP, Due ${(Number(v.amount_due || 0) - Number(v.amount_paid || 0)).toFixed(2)} EGP`}
-                        {v.payment_status === "pending" && `Pending - Due ${Number(v.amount_due || 0).toFixed(2)} EGP`}
+                        {v.payment_status === "paid" && t("Paid in full")}
+                        {v.payment_status === "partial" && t("Partial - Paid {paid} EGP, Due {due} EGP", { paid: Number(v.amount_paid || 0).toFixed(2), due: (Number(v.amount_due || 0) - Number(v.amount_paid || 0)).toFixed(2) })}
+                        {v.payment_status === "pending" && t("Pending - Due {due} EGP", { due: Number(v.amount_due || 0).toFixed(2) })}
                         {(v.visit_payments || []).length > 0 && (
-                          <span style={{ color: theme.gray, fontWeight: 400 }}> &middot; {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].join(" + ")}</span>
+                          <span style={{ color: theme.gray, fontWeight: 400 }}> &middot; {[...new Set((v.visit_payments || []).map((p) => p.payment_method))].map((m) => (isAr ? tCode(m) : m)).join(" + ")}</span>
                         )}
                       </div>
                     </div>
                   ))}
                   <div style={{ marginTop: 8 }}>
-                    {filesLoading && !filesByPatient[patientId] && <p style={{ fontSize: 12, color: theme.gray }}>Loading files...</p>}
-                    {filesByPatient[patientId]?.length === 0 && <p style={{ fontSize: 12, color: theme.gray }}>No files uploaded for this patient yet.</p>}
+                    {filesLoading && !filesByPatient[patientId] && <p style={{ fontSize: 12, color: theme.gray }}>{t("Loading files...")}</p>}
+                    {filesByPatient[patientId]?.length === 0 && <p style={{ fontSize: 12, color: theme.gray }}>{t("No files uploaded for this patient yet.")}</p>}
                     {(() => {
                       const files = filesByPatient[patientId] || [];
                       const FileGrid = ({ items }) => (
@@ -381,7 +388,7 @@ export default function DoctorPortalPage() {
                               // saw the first of 23 photos and nothing else.
                               <div key={f.id} style={{ background: "#faf9fb", borderRadius: 8, padding: 10, gridColumn: openSeries[f.id] ? "1 / -1" : undefined }}>
                                 <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy }}>
-                                  {f.typeLabel ? f.typeLabel.replace(/_/g, " ") : "Files"} &middot; {f.seriesCount} files in one set
+                                  {f.typeLabel ? (isAr ? tCode(f.typeLabel) : f.typeLabel.replace(/_/g, " ")) : t("Files")} &middot; {t("{n} files in one set", { n: f.seriesCount })}
                                 </div>
                                 <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
                                 <button
@@ -389,7 +396,7 @@ export default function DoctorPortalPage() {
                                   onClick={() => setOpenSeries((o) => ({ ...o, [f.id]: !o[f.id] }))}
                                   style={{ marginTop: 6, padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
                                 >
-                                  {openSeries[f.id] ? "Hide files" : `Show all ${f.seriesCount}`}
+                                  {openSeries[f.id] ? t("Hide files") : t("Show all {n}", { n: f.seriesCount })}
                                 </button>
                                 {openSeries[f.id] && (
                                   <div style={{ marginTop: 8, maxHeight: 320, overflowY: "auto", borderTop: "1px solid #eee" }}>
@@ -426,7 +433,7 @@ export default function DoctorPortalPage() {
                           {Object.entries(groups).map(([label, items]) => (
                             <div key={label} style={{ marginTop: 8 }}>
                               <div style={{ fontSize: 10, fontWeight: 700, color: theme.gray, marginBottom: 4, textTransform: "uppercase" }}>
-                                Visit &mdash; {label.split("__")[0]}
+                                {t("Visit")} &mdash; {label.split("__")[0]}
                               </div>
                               <FileGrid items={items} />
                             </div>

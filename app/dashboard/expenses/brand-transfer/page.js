@@ -5,6 +5,7 @@ import { theme } from "../../../../lib/theme";
 import { usePermissions } from "../../../../lib/usePermissions";
 import { formatMoney } from "../../../../lib/format";
 import { logActivity } from "../../../../lib/activityLog";
+import { useT, Ltr } from "../../../../lib/i18n";
 
 const BRANDS = [
   { key: "scan", label: "Scan" },
@@ -12,6 +13,8 @@ const BRANDS = [
   { key: "el3awama_stock", label: "El3awama Stock" },
 ];
 const BRAND_LABEL = Object.fromEntries(BRANDS.map((b) => [b.key, b.label]));
+// Arabic shows each business by its glossary name; brand keys stay English.
+const BRAND_NAME_AR_KEY = { scan: "Scan Center", dental_stock: "Dental Supply", el3awama_stock: "El3awama" };
 const PAYMENT_METHODS = [
   { key: "cash", label: "Cash" },
   { key: "visa", label: "Visa" },
@@ -29,6 +32,8 @@ const BRAND_PAIRS = [
 ];
 
 export default function BrandTransferPage() {
+  const { t, tCode, isAr } = useT();
+  const bl = (key) => (isAr && BRAND_NAME_AR_KEY[key] ? t(BRAND_NAME_AR_KEY[key]) : BRAND_LABEL[key]);
   const { isAdmin, loading: permsLoading, profile } = usePermissions();
   const [totals, setTotals] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -54,34 +59,34 @@ export default function BrandTransferPage() {
     const aToB = totals.find((t) => t.from_brand === brandA && t.to_brand === brandB)?.total_transferred || 0;
     const bToA = totals.find((t) => t.from_brand === brandB && t.to_brand === brandA)?.total_transferred || 0;
     const net = Number(aToB) - Number(bToA);
-    if (net === 0) return { text: "Settled", owes: null };
-    if (net > 0) return { text: `${BRAND_LABEL[brandB]} owes ${BRAND_LABEL[brandA]}`, amount: net, owes: brandB };
-    return { text: `${BRAND_LABEL[brandA]} owes ${BRAND_LABEL[brandB]}`, amount: -net, owes: brandA };
+    if (net === 0) return { text: t("Settled"), owes: null };
+    if (net > 0) return { text: t("{debtor} owes {creditor}", { debtor: bl(brandB), creditor: bl(brandA) }), amount: net, owes: brandB };
+    return { text: t("{debtor} owes {creditor}", { debtor: bl(brandA), creditor: bl(brandB) }), amount: -net, owes: brandA };
   }
 
-  if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!isAdmin) return <p style={{ color: theme.gray }}>Admin access required.</p>;
+  if (permsLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!isAdmin) return <p style={{ color: theme.gray }}>{t("Admin access required.")}</p>;
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>Expenses Management</p>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Brand Transfer</h1>
-      <p style={{ color: theme.gray, margin: "0 0 20px" }}>Money moved between Scan, Dental Stock, and El3awama Stock - always confirmed by you.</p>
+      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>{t("Expenses Management")}</p>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("Brand Transfer")}</h1>
+      <p style={{ color: theme.gray, margin: "0 0 20px" }}>{t("Money moved between Scan, Dental Stock, and El3awama Stock - always confirmed by you.")}</p>
 
       <button onClick={() => setShowForm(true)} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 20 }}>
-        + Log Brand Transfer
+        {t("+ Log Brand Transfer")}
       </button>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Who Owes Whom</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Who Owes Whom")}</h3>
         <div style={{ display: "grid", gap: 8 }}>
           {BRAND_PAIRS.map(([a, b]) => {
             const debt = netDebt(a, b);
             return (
               <div key={`${a}-${b}`} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-                <span style={{ color: theme.navy, fontSize: 13 }}>{BRAND_LABEL[a]} ↔ {BRAND_LABEL[b]}</span>
+                <span style={{ color: theme.navy, fontSize: 13 }}>{bl(a)} ↔ {bl(b)}</span>
                 <span style={{ fontWeight: 700, color: debt.owes ? "#ba1a1a" : "#2e7d32", fontSize: 13 }}>
-                  {debt.owes ? `${debt.text}: ${formatMoney(debt.amount)} EGP` : debt.text}
+                  {debt.owes ? <>{debt.text}: <Ltr>{t("{amount} EGP", { amount: formatMoney(debt.amount) })}</Ltr></> : debt.text}
                 </span>
               </div>
             );
@@ -90,17 +95,17 @@ export default function BrandTransferPage() {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Recent Brand Transfers</h3>
-        {!loading && recent.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No brand transfers logged yet.</p>}
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Recent Brand Transfers")}</h3>
+        {!loading && recent.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("No brand transfers logged yet.")}</p>}
         <div style={{ display: "grid", gap: 8 }}>
           {recent.map((tx) => (
             <div key={tx.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: tx.status === "confirmed" ? "#e8f5e9" : tx.status === "rejected" ? "#fdecea" : "#fff8e1", color: tx.status === "confirmed" ? "#2e7d32" : tx.status === "rejected" ? "#ba1a1a" : "#a97c00", minWidth: 76, textAlign: "center", textTransform: "capitalize" }}>
-                {tx.status}
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: tx.status === "confirmed" ? "#e8f5e9" : tx.status === "rejected" ? "#fdecea" : "#fff8e1", color: tx.status === "confirmed" ? "#2e7d32" : tx.status === "rejected" ? "#ba1a1a" : "#a97c00", minWidth: 76, textAlign: "center" }}>
+                {tCode(tx.status)}
               </span>
               <div style={{ flex: 1, fontSize: 13 }}>
-                <strong style={{ color: theme.navy }}>{BRAND_LABEL[tx.brand]} → {BRAND_LABEL[tx.to_brand]}</strong>{" "}
-                {formatMoney(tx.amount)} EGP via {tx.payment_method}
+                <strong style={{ color: theme.navy }}>{bl(tx.brand)} {isAr ? "←" : "→"} {bl(tx.to_brand)}</strong>{" "}
+                {isAr ? <><Ltr>{t("{amount} EGP", { amount: formatMoney(tx.amount) })}</Ltr> {t("via {method}", { method: tCode(tx.payment_method) })}</> : <>{formatMoney(tx.amount)} EGP via {tx.payment_method}</>}
                 {tx.note && <span style={{ color: theme.gray, fontStyle: "italic" }}> — {tx.note}</span>}
                 <span style={{ color: theme.gray }}> · {tx.entry_date}</span>
               </div>
@@ -115,6 +120,8 @@ export default function BrandTransferPage() {
 }
 
 function BrandTransferForm({ profile, onClose, onSaved }) {
+  const { t, isAr } = useT();
+  const bl = (b) => (isAr && BRAND_NAME_AR_KEY[b.key] ? t(BRAND_NAME_AR_KEY[b.key]) : b.label);
   const [fromBrand, setFromBrand] = useState("scan");
   const [toBrand, setToBrand] = useState("dental_stock");
   const [amount, setAmount] = useState("");
@@ -177,41 +184,41 @@ function BrandTransferForm({ profile, onClose, onSaved }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 400, maxWidth: "90vw" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Log Brand Transfer</h3>
-        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>Always waits for your own confirmation before it counts toward debt.</p>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Log Brand Transfer")}</h3>
+        <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>{t("Always waits for your own confirmation before it counts toward debt.")}</p>
 
-        <label style={fieldLabel}>From</label>
+        <label style={fieldLabel}>{t("From")}</label>
         <select value={fromBrand} onChange={(e) => setFromBrand(e.target.value)} style={inp}>
           {BRANDS.map((b) => (
-            <option key={b.key} value={b.key}>{b.label}</option>
+            <option key={b.key} value={b.key}>{bl(b)}</option>
           ))}
         </select>
 
-        <label style={fieldLabel}>To</label>
+        <label style={fieldLabel}>{t("To")}</label>
         <select value={toBrand} onChange={(e) => setToBrand(e.target.value)} style={inp}>
           {BRANDS.map((b) => (
-            <option key={b.key} value={b.key}>{b.label}</option>
+            <option key={b.key} value={b.key}>{bl(b)}</option>
           ))}
         </select>
 
-        <label style={fieldLabel}>Amount (EGP)</label>
+        <label style={fieldLabel}>{t("Amount (EGP)")}</label>
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
 
-        <label style={fieldLabel}>Paid Via</label>
+        <label style={fieldLabel}>{t("Paid Via")}</label>
         <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
           {PAYMENT_METHODS.map((p) => (
-            <option key={p.key} value={p.key}>{p.label}</option>
+            <option key={p.key} value={p.key}>{t(p.label)}</option>
           ))}
         </select>
 
-        <label style={fieldLabel}>Note (optional)</label>
+        <label style={fieldLabel}>{t("Note (optional)")}</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
 
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+          <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>{t("Cancel")}</button>
           <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-            {saving ? "Saving..." : "Log Transfer"}
+            {saving ? t("Saving...") : t("Log Transfer")}
           </button>
         </div>
       </div>

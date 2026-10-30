@@ -2,12 +2,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
+import { useT, tx } from "../../../lib/i18n";
+import LanguageToggle from "../../../lib/i18n/LanguageToggle";
 
 // Shown once, right after login, whenever the account's must_change_password
 // flag is still set - which is every account today (Phase 7 #1), since it
 // applies retroactively to everyone who already had staff-generated
 // credentials, not just new ones going forward.
 export default function ChangePasswordPage() {
+  const { t } = useT();
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -22,11 +25,11 @@ export default function ChangePasswordPage() {
     e.preventDefault();
     setError("");
     if (!isStrongEnough(password)) {
-      setError("Password must be at least 8 characters and include a number.");
+      setError(tx("Password must be at least 8 characters and include a number."));
       return;
     }
     if (password !== confirm) {
-      setError("Passwords don't match.");
+      setError(tx("Passwords don't match."));
       return;
     }
     setSaving(true);
@@ -38,7 +41,7 @@ export default function ChangePasswordPage() {
     const data = await res.json();
     setSaving(false);
     if (!res.ok) {
-      setError(data.error || "Something went wrong. Please try again.");
+      setError(data.error || tx("Something went wrong. Please try again."));
       return;
     }
     router.replace(`/portal/${data.role}`);
@@ -47,30 +50,31 @@ export default function ChangePasswordPage() {
   return (
     <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 28, maxWidth: 400, width: "100%", boxShadow: "0 4px 20px rgba(39,33,77,0.08)" }}>
-        <h2 style={{ color: theme.navy, marginTop: 0 }}>Set Your Own Password</h2>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}><LanguageToggle compact /></div>
+        <h2 style={{ color: theme.navy, marginTop: 0 }}>{t("Set Your Own Password")}</h2>
         <p style={{ color: theme.gray, fontSize: 13, marginBottom: 12 }}>
-          For your security, please choose a new password before continuing. At least 8 characters, including a number.
+          {t("For your security, please choose a new password before continuing. At least 8 characters, including a number.")}
         </p>
         {/* Stated before they type, not after. The clinic stores only a one-way
             hash, so once this password is set nobody here can look it up - if
             it is lost the only remedy is issuing a new temporary one. People
             should know that while they are choosing it. */}
         <p style={{ background: "#fff8e1", border: "1px solid #f0d58c", color: "#8a6d00", fontSize: 12.5, lineHeight: 1.5, borderRadius: 8, padding: "10px 12px", marginBottom: 20 }}>
-          <strong>Please write this password down and keep it somewhere safe.</strong> We do not keep a copy of it,
-          so nobody at the clinic can look it up for you. If it is lost, we can only issue you a new temporary one.
+          <strong>{t("Please write this password down and keep it somewhere safe.")}</strong>{" "}
+          {t("We do not keep a copy of it, so nobody at the clinic can look it up for you. If it is lost, we can only issue you a new temporary one.")}
         </p>
         <form onSubmit={handleSubmit}>
-          <label style={lbl}>New Password</label>
+          <label style={lbl}>{t("New Password")}</label>
           <input type="password" style={inp} value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
-          <label style={lbl}>Confirm New Password</label>
+          <label style={lbl}>{t("Confirm New Password")}</label>
           <input type="password" style={inp} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-          {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{error}</p>}
+          {error && <p style={{ color: "#ba1a1a", fontSize: 13, marginTop: 8 }}>{t(error)}</p>}
           <button
             type="submit"
             disabled={saving}
             style={{ width: "100%", marginTop: 16, padding: "12px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}
           >
-            {saving ? "Saving..." : "Set Password & Continue"}
+            {saving ? t("Saving...") : t("Set Password & Continue")}
           </button>
         </form>
       </div>

@@ -5,6 +5,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney, formatVisitDateTime } from "../../../lib/format";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 // Balances keep their piasters. They were shown as whole pounds, so a clinic
 // left owing 0.73 (clinic 407, 14 Oct 2026) showed "1 EGP", and typing 1 was
@@ -29,6 +30,7 @@ const PAYMENT_METHODS = [
 // the ledger row, the receipt number and the cash custody credit are written
 // in one database transaction rather than three separate client calls.
 export default function DebtCollectionPage() {
+  const { t, tCode, isAr } = useT();
   const { can, isAdmin, loading: permsLoading } = usePermissions();
   const [customers, setCustomers] = useState([]);
   const [patientDebts, setPatientDebts] = useState([]);
@@ -75,8 +77,8 @@ export default function DebtCollectionPage() {
     setLoading(false);
   }
 
-  if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!hasAccess) return <p style={{ color: theme.gray }}>You don&apos;t have access to this page.</p>;
+  if (permsLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!hasAccess) return <p style={{ color: theme.gray }}>{t("You don't have access to this page.")}</p>;
 
   const shown = brandFilter === "all" ? customers : customers.filter((c) => c.brand === brandFilter);
 
@@ -96,37 +98,37 @@ export default function DebtCollectionPage() {
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>Cash Management</p>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Debt Collection</h1>
+      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>{t("Cash Management")}</p>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("Debt Collection")}</h1>
       <p style={{ color: theme.gray, margin: "0 0 20px" }}>
-        Customers carrying an unpaid balance, and recording what they pay.
+        {t("Customers carrying an unpaid balance, and recording what they pay.")}
       </p>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-        <StatCard label="Total Outstanding" value={`${formatMoney(total)} EGP`} tone={theme.navy} />
-        <StatCard label="Customers Owing" value={customersOwing} tone={theme.navy} />
-        <StatCard label="Over Credit Limit" value={overLimit.length} tone={overLimit.length ? "#ba1a1a" : theme.navy} />
+        <StatCard label={t("Total Outstanding")} value={t("{amount} EGP", { amount: formatMoney(total) })} tone={theme.navy} />
+        <StatCard label={t("Customers Owing")} value={customersOwing} tone={theme.navy} />
+        <StatCard label={t("Over Credit Limit")} value={overLimit.length} tone={overLimit.length ? "#ba1a1a" : theme.navy} />
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <FilterBtn active={brandFilter === "all"} onClick={() => setBrandFilter("all")}>All Businesses</FilterBtn>
+        <FilterBtn active={brandFilter === "all"} onClick={() => setBrandFilter("all")}>{t("All Businesses")}</FilterBtn>
         {BRANDS.map((b) => (
           <FilterBtn key={b.key} active={brandFilter === b.key} onClick={() => setBrandFilter(b.key)}>
-            {b.label}
+            {t(b.label)}
           </FilterBtn>
         ))}
       </div>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         {loading ? (
-          <p style={{ color: theme.gray, margin: 0 }}>Loading...</p>
+          <p style={{ color: theme.gray, margin: 0 }}>{t("Loading...")}</p>
         ) : shown.length === 0 ? (
           <p style={{ color: theme.gray, margin: 0 }}>
             {/* "Nobody is carrying a balance" sat directly above nine patients
                 who were. Scoped to what this card is actually about. */}
-            No clinic or account balance for this business. Postponed orders will appear here once they are recorded.
+            {t("No clinic or account balance for this business. Postponed orders will appear here once they are recorded.")}
           </p>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
@@ -158,7 +160,7 @@ export default function DebtCollectionPage() {
                         {c.name && c.name !== "0" && c.name !== `Clinic ${c.clinic_code}`
                           ? c.name
                           : c.clinic_code
-                          ? `Clinic ${c.clinic_code}`
+                          ? t("Clinic {code}", { code: c.clinic_code })
                           : c.name}
                       </span>
                       {c.clinic_name && c.clinic_name !== c.name ? (
@@ -166,10 +168,10 @@ export default function DebtCollectionPage() {
                       ) : null}
                     </div>
                     <div style={{ fontSize: 12, color: theme.gray }}>
-                      {BRAND_LABEL[c.brand] || c.brand}
+                      {BRAND_LABEL[c.brand] ? t(BRAND_LABEL[c.brand]) : c.brand}
                       {c.doctors?.length > 0 && ` · ${c.doctors.slice(0, 3).join(", ")}`}
-                      {c.credit_limit_enabled && ` · limit ${formatMoney(c.credit_limit)} EGP`}
-                      {over && <strong style={{ color: "#ba1a1a" }}> · over limit</strong>}
+                      {c.credit_limit_enabled && <> · <Ltr>{t("limit {amount} EGP", { amount: formatMoney(c.credit_limit) })}</Ltr></>}
+                      {over && <strong style={{ color: "#ba1a1a" }}> · {t("over limit")}</strong>}
                     </div>
                     {/* What the balance is made of. A clinic owing 9,920 EGP is
                         not something reception can discuss on the phone without
@@ -179,16 +181,16 @@ export default function DebtCollectionPage() {
                         {c.charges.slice(0, 4).map((ch, i) => (
                           <span key={i}>
                             {i > 0 && " · "}
-                            {ch.reference || ch.note || ch.reference_type || "charge"} {formatMoney(ch.amount)}
+                            {ch.reference || ch.note || (ch.reference_type ? tCode(ch.reference_type) : t("charge"))} {formatMoney(ch.amount)}
                           </span>
                         ))}
-                        {c.charges.length > 4 && ` · +${c.charges.length - 4} more`}
+                        {c.charges.length > 4 && ` · ${t("+{n} more", { n: c.charges.length - 4 })}`}
                       </div>
                     )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ fontWeight: 800, color: over ? "#ba1a1a" : theme.navy, whiteSpace: "nowrap" }}>
-                      {money(c.balance)} EGP
+                      {t("{amount} EGP", { amount: money(c.balance) })}
                     </div>
                     {/* Printable statement of what this account took, at what
                         price, what it paid and what it owes, to send to the
@@ -199,9 +201,9 @@ export default function DebtCollectionPage() {
                       rel="noreferrer"
                       style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}
                     >
-                      Statement
+                      {t("Statement")}
                     </a>
-                    <button onClick={() => setTarget(c)} style={primaryBtn}>Record Payment</button>
+                    <button onClick={() => setTarget(c)} style={primaryBtn}>{t("Record Payment")}</button>
                   </div>
                 </div>
               );
@@ -218,10 +220,9 @@ export default function DebtCollectionPage() {
           Shown with the scan and the date, and the name opens the patient. */}
       {(brandFilter === "all" || brandFilter === "scan") && patientDebts.length > 0 && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginTop: 20 }}>
-          <h3 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 16 }}>Patients owing for a scan</h3>
+          <h3 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 16 }}>{t("Patients owing for a scan")}</h3>
           <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 14px" }}>
-            {patientDebts.length} visit{patientDebts.length === 1 ? "" : "s"} not fully paid, {" "}
-            {formatMoney(patientDebts.reduce((t, v) => t + v.balance, 0))} EGP outstanding. Payment is recorded on the visit itself.
+            {t(patientDebts.length === 1 ? "{n} visit not fully paid, {amount} EGP outstanding. Payment is recorded on the visit itself." : "{n} visits not fully paid, {amount} EGP outstanding. Payment is recorded on the visit itself.", { n: patientDebts.length, amount: formatMoney(patientDebts.reduce((s, v) => s + v.balance, 0)) })}
           </p>
           <div style={{ display: "grid", gap: 8 }}>
             {patientDebts.map((v) => (
@@ -240,14 +241,14 @@ export default function DebtCollectionPage() {
                     {v.name}
                   </a>
                   <div style={{ fontSize: 12, color: theme.gray }}>
-                    {(v.scan_types || []).join(", ") || "scan"}
+                    {(v.scan_types || []).join(", ") || t("scan")}
                     {v.exam_date ? ` · ${formatVisitDateTime(v.exam_date, v.exam_time)}` : ""}
                   </div>
                   <div style={{ fontSize: 11, color: theme.gray }}>
-                    charged {formatMoney(v.amount_due)} · paid {formatMoney(v.amount_paid)}
+                    {t("charged {amount}", { amount: formatMoney(v.amount_due) })} · {t("paid {amount}", { amount: formatMoney(v.amount_paid) })}
                     {v.discount_pct > 0 && (
                       <span style={{ color: "#8a6d00", fontWeight: 700 }}>
-                        {" · "}after {v.discount_pct}% discount
+                        {" · "}{t("after {pct}% discount", { pct: v.discount_pct })}
                         {v.discount_reason ? ` (${v.discount_reason})` : ""}
                       </span>
                     )}
@@ -255,13 +256,13 @@ export default function DebtCollectionPage() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ fontWeight: 800, color: theme.navy, whiteSpace: "nowrap" }}>
-                    {formatMoney(v.balance)} EGP
+                    {t("{amount} EGP", { amount: formatMoney(v.balance) })}
                   </div>
                   <a
                     href={`/dashboard/patients/${v.patient_id}?visit=${v.visit_id}`}
                     style={{ ...primaryBtn, textDecoration: "none", display: "inline-block" }}
                   >
-                    Open visit
+                    {t("Open visit")}
                   </a>
                 </div>
               </div>
@@ -275,9 +276,9 @@ export default function DebtCollectionPage() {
           again afterwards. */}
       {recentPayments.filter((r) => brandFilter === "all" || r.brand === brandFilter).length > 0 && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginTop: 20 }}>
-          <h3 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 16 }}>Recent payments · آخر المدفوعات</h3>
+          <h3 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 16 }}>{t("Recent payments")}</h3>
           <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 14px" }}>
-            The last 30 days. Print the invoice for what each payment covered, including accounts that are now closed.
+            {t("The last 30 days. Print the invoice for what each payment covered, including accounts that are now closed.")}
           </p>
           <div style={{ display: "grid", gap: 6 }}>
             {recentPayments
@@ -291,19 +292,19 @@ export default function DebtCollectionPage() {
                       )}
                       <span>{r.name}</span>
                       {Math.abs(r.balance_now) < 0.005 && (
-                        <span style={{ fontSize: 10, fontWeight: 800, color: "#1e7a3c", background: "#e6f4ea", padding: "2px 8px", borderRadius: 999 }}>Account closed</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "#1e7a3c", background: "#e6f4ea", padding: "2px 8px", borderRadius: 999 }}>{t("Account closed")}</span>
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: theme.gray }}>
-                      {r.date} · {BRAND_LABEL[r.brand] || r.brand} · {r.receipt_no || "no receipt no."} · {r.method}
+                      {r.date} · {BRAND_LABEL[r.brand] ? t(BRAND_LABEL[r.brand]) : r.brand} · {r.receipt_no || t("no receipt no.")} · {isAr ? tCode(r.method) : r.method}
                       <VerifyPill method={r.method} verification={r.verification} paymobId={r.paymob_id} cardLast4={r.card_last4} verifiedBy={r.verified_by} />
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ fontWeight: 800, color: "#1e7a3c", whiteSpace: "nowrap" }}>{money(r.amount)} EGP</div>
+                    <div style={{ fontWeight: 800, color: "#1e7a3c", whiteSpace: "nowrap" }}>{t("{amount} EGP", { amount: money(r.amount) })}</div>
                     <a href={invoiceHref(r.customer_id, r.brand, r.ledger_id)} target="_blank" rel="noreferrer"
                       style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}>
-                      Invoice
+                      {t("Invoice")}
                     </a>
                   </div>
                 </div>
@@ -328,6 +329,7 @@ export default function DebtCollectionPage() {
 }
 
 function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClose, onSaved }) {
+  const { t } = useT();
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [acknowledged, setAcknowledged] = useState(false);
@@ -347,7 +349,7 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
   async function save() {
     setError("");
     if (!amt || amt <= 0) return setError("Enter the amount collected.");
-    if (Math.round(amt * 100) > Math.round(customer.balance * 100)) return setError(`That is more than the ${money(customer.balance)} EGP outstanding.`);
+    if (Math.round(amt * 100) > Math.round(customer.balance * 100)) return setError(tx("That is more than the {amount} EGP outstanding.", { amount: money(customer.balance) }));
     if (paymentMethod === "cash" && !acknowledged) return setError("Please confirm the cash has been received.");
     if (paymentMethod === "cash" && !collectedBy)
       return setError("Your login isn't linked to an employee record, so cash can't be recorded against you. Ask an admin to link it, or record this as a card or transfer payment.");
@@ -381,15 +383,15 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
   // the phone quoting their number, not their name.
   return (
     <Modal
-      title={`Record Payment · ${customer.clinic_code ? customer.clinic_code + " " : ""}${customer.name}`}
+      title={`${t("Record Payment")} · ${customer.clinic_code ? customer.clinic_code + " " : ""}${customer.name}`}
       onClose={onClose}
     >
       <p style={{ fontSize: 13, color: theme.gray, marginTop: -6 }}>
-        {customer.clinic_code ? <>Clinic <strong style={{ color: theme.navy }}>{customer.clinic_code}</strong>{" "}</> : null}
-        owes <strong style={{ color: theme.navy }}>{money(customer.balance)} EGP</strong> for{" "}
-        {BRAND_LABEL[customer.brand] || customer.brand}.
+        {customer.clinic_code ? <>{t("Clinic")} <strong style={{ color: theme.navy }}>{customer.clinic_code}</strong>{" "}</> : null}
+        {t("owes")} <strong style={{ color: theme.navy }}><Ltr>{t("{amount} EGP", { amount: money(customer.balance) })}</Ltr></strong> {t("for")}{" "}
+        {BRAND_LABEL[customer.brand] ? t(BRAND_LABEL[customer.brand]) : customer.brand}.
         {customer.doctors?.length > 0 && (
-          <span style={{ color: theme.gray }}> Doctors: {customer.doctors.join(", ")}.</span>
+          <span style={{ color: theme.gray }}> {t("Doctors:")} {customer.doctors.join(", ")}.</span>
         )}
       </p>
 
@@ -400,7 +402,7 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
       {customer.charges?.length > 0 && (
         <div style={{ background: "#faf9fb", borderRadius: 10, padding: 12, marginBottom: 14, maxHeight: 210, overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: theme.navy, marginBottom: 6 }}>
-            What they took, and what they have paid
+            {t("What they took, and what they have paid")}
           </div>
           {customer.charges.map((ch, i) => {
             // A return (an adjustment) lowers the balance like a payment does,
@@ -415,14 +417,14 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
                         to the reference type and read as blank or "charge" -
                         the opposite of what it is. */}
                     {isReturn
-                      ? ch.note || "Items returned"
+                      ? ch.note || t("Items returned")
                       : paid
-                      ? "Payment received"
+                      ? t("Payment received")
                       : ch.reference
                       ? ch.reference
                       : ch.reference_type === "dental_order"
-                      ? "Order placed from the portal"
-                      : ch.note || "Charge"}
+                      ? t("Order placed from the portal")
+                      : ch.note || t("Charge")}
                   </span>
                   <span style={{ fontWeight: 700, whiteSpace: "nowrap", color: paid ? "#1e7a3c" : "#ba1a1a" }}>
                     {paid ? "- " : "+ "}{formatMoney(ch.amount)}
@@ -430,7 +432,7 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
                 </div>
                 <div style={{ color: theme.gray, fontSize: 11 }}>
                   {ch.entry_date}
-                  {isReturn ? " · returned" : paid ? " · paid" : ""}
+                  {isReturn ? ` · ${t("returned")}` : paid ? ` · ${t("paid")}` : ""}
                   {ch.items?.length > 0 && <> · {ch.items.join(", ")}</>}
                 </div>
               </div>
@@ -440,13 +442,13 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
               stock workbook, so saying "order" there would be a guess. */}
           {customer.charges.some((c) => !c.reference && c.reference_type === null && c.direction === "charge") && (
             <div style={{ fontSize: 10, color: theme.gray, marginTop: 8 }}>
-              Lines with no receipt came from the old stock workbook, before the platform, so there is no order to open.
+              {t("Lines with no receipt came from the old stock workbook, before the platform, so there is no order to open.")}
             </div>
           )}
         </div>
       )}
 
-      <FieldLabel>Amount Collected (EGP)</FieldLabel>
+      <FieldLabel>{t("Amount Collected (EGP)")}</FieldLabel>
       <div style={{ display: "flex", gap: 8 }}>
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...inp, flex: 1 }} />
         <button
@@ -454,19 +456,19 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
           onClick={() => setAmount(String(Math.round(customer.balance * 100) / 100))}
           style={{ ...inp, width: "auto", cursor: "pointer", fontWeight: 600, color: theme.navy, whiteSpace: "nowrap" }}
         >
-          Full balance
+          {t("Full balance")}
         </button>
       </div>
       {amt > 0 && Math.round(amt * 100) <= Math.round(customer.balance * 100) && (
         <p style={{ fontSize: 12, color: theme.gray, margin: "4px 0 0" }}>
-          Remaining after this payment: <strong>{money(remaining)} EGP</strong>
+          {t("Remaining after this payment:")} <strong><Ltr>{t("{amount} EGP", { amount: money(remaining) })}</Ltr></strong>
         </p>
       )}
 
-      <FieldLabel>Paid Via</FieldLabel>
+      <FieldLabel>{t("Paid Via")}</FieldLabel>
       <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
         {PAYMENT_METHODS.map((p) => (
-          <option key={p.key} value={p.key}>{p.label}</option>
+          <option key={p.key} value={p.key}>{t(p.label)}</option>
         ))}
       </select>
 
@@ -478,20 +480,19 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
       {paymentMethod === "cash" && (
         <div style={{ marginTop: 12 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 6 }}>
-            Who is taking the cash
+            {t("Who is taking the cash")}
           </label>
           {selfEmployeeId ? (
             <div style={{ padding: "10px 12px", borderRadius: 8, background: "#faf9fb", border: "1px solid #eee", fontSize: 14, color: theme.navy, fontWeight: 600 }}>
-              {staffList.find((e) => e.id === selfEmployeeId)?.name || "You"}
-              <span style={{ color: theme.gray, fontWeight: 400, fontSize: 12 }}> · it goes into your cash in hand</span>
+              {staffList.find((e) => e.id === selfEmployeeId)?.name || t("You")}
+              <span style={{ color: theme.gray, fontWeight: 400, fontSize: 12 }}> · {t("it goes into your cash in hand")}</span>
             </div>
           ) : (
             // Not a dropdown by choice: a login with no employee record cannot
             // take cash at all, and picking somebody else would only move the
             // problem onto them.
             <p style={{ fontSize: 12, color: "#ba1a1a", margin: 0 }}>
-              Your login isn&apos;t linked to an employee record, so cash can&apos;t be attributed to you.
-              Ask an admin to link it, or record this as a card or transfer payment.
+              {t("Your login isn't linked to an employee record, so cash can't be attributed to you. Ask an admin to link it, or record this as a card or transfer payment.")}
             </p>
           )}
         </div>
@@ -501,19 +502,19 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 12, fontSize: 13, color: theme.navy }}>
           <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} style={{ marginTop: 3 }} />
           <span>
-            I confirm this cash has been received. It will be added to that person&apos;s cash in hand until they hand it over.
+            {t("I confirm this cash has been received. It will be added to that person's cash in hand until they hand it over.")}
           </span>
         </label>
       )}
 
-      <FieldLabel>Note (optional)</FieldLabel>
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
       <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} />
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <button onClick={onClose} style={cancelBtn}>Cancel</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Cancel")}</button>
         <button onClick={save} disabled={saving} style={primaryBtn}>
-          {saving ? "Recording..." : "Record Payment"}
+          {saving ? t("Recording...") : t("Record Payment")}
         </button>
       </div>
     </Modal>
@@ -521,15 +522,16 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
 }
 
 function ReceiptModal({ receipt, onClose }) {
+  const { t, tCode, isAr } = useT();
   return (
-    <Modal title="Payment Recorded" onClose={onClose}>
+    <Modal title={t("Payment Recorded")} onClose={onClose}>
       <div style={{ background: "#f4f7f8", borderRadius: 10, padding: 16, marginBottom: 12 }}>
-        <Row k="Receipt No." v={receipt.receipt_no} strong />
-        <Row k="Customer" v={receipt.customerName} />
-        <Row k="Business" v={BRAND_LABEL[receipt.brand] || receipt.brand} />
-        <Row k="Amount Paid" v={`${money(receipt.amount)} EGP`} strong />
-        <Row k="Method" v={receipt.method} />
-        <Row k="Remaining Balance" v={`${money(receipt.outstanding)} EGP`} strong />
+        <Row k={t("Receipt No.")} v={receipt.receipt_no} strong />
+        <Row k={t("Customer")} v={receipt.customerName} />
+        <Row k={t("Business")} v={BRAND_LABEL[receipt.brand] ? t(BRAND_LABEL[receipt.brand]) : receipt.brand} />
+        <Row k={t("Amount Paid")} v={t("{amount} EGP", { amount: money(receipt.amount) })} strong />
+        <Row k={t("Method")} v={isAr ? tCode(receipt.method) : receipt.method} />
+        <Row k={t("Remaining Balance")} v={t("{amount} EGP", { amount: money(receipt.outstanding) })} strong />
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         {receipt.ledger_id && receipt.customerId && (
@@ -539,10 +541,10 @@ function ReceiptModal({ receipt, onClose }) {
             rel="noreferrer"
             style={{ ...primaryBtn, textDecoration: "none", display: "inline-block" }}
           >
-            Print invoice · طباعة فاتورة
+            {t("Print invoice")}
           </a>
         )}
-        <button onClick={onClose} style={cancelBtn}>Done</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Done")}</button>
       </div>
     </Modal>
   );

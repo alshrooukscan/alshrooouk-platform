@@ -6,13 +6,16 @@ import { formatMoney } from "../../../lib/format";
 import { usePermissions } from "../../../lib/usePermissions";
 import { logActivity } from "../../../lib/activityLog";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, Ltr } from "../../../lib/i18n";
 
 const CATEGORIES = [
-  { key: "utilities", label: "Utilities (\u0643\u0647\u0631\u0628\u0627\u0621)" },
-  { key: "maintenance", label: "Maintenance (\u0635\u064a\u0627\u0646\u0629)" },
-  { key: "supplies", label: "Supplies / Misc Purchase (\u0633\u0648\u0628\u0631 \u0645\u0627\u0631\u0643\u062a)" },
-  { key: "employee_advance", label: "Employee Advance (\u0633\u0644\u0641\u0629)" },
-  { key: "courier", label: "Courier / Rep Cash (\u0627\u0644\u0645\u0646\u062f\u0648\u0628)" },
+  // Labels were bilingual inline ("Utilities (كهرباء)"); now English here and
+  // Arabic in lib/i18n/ar/finance.js, so each language shows once.
+  { key: "utilities", label: "Utilities" },
+  { key: "maintenance", label: "Maintenance" },
+  { key: "supplies", label: "Supplies / Misc Purchase" },
+  { key: "employee_advance", label: "Employee Advance" },
+  { key: "courier", label: "Courier / Rep Cash" },
   { key: "other", label: "Other" },
 ];
 const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
@@ -25,6 +28,7 @@ const PAYMENT_METHODS = [
 const PAYMENT_METHOD_LABEL = Object.fromEntries(PAYMENT_METHODS.map((p) => [p.key, p.label]));
 
 export default function CashExpensesPage() {
+  const { t, tCode } = useT();
   const { profile, isAdmin } = usePermissions();
   useAutoRefresh(["cash_expenses", "expense_transactions"], () => { load(); });
   const [expenses, setExpenses] = useState([]);
@@ -62,27 +66,27 @@ export default function CashExpensesPage() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>FINANCIAL</p>
-          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Employee Advances</h1>
+          <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>{t("FINANCIAL")}</p>
+          <h1 style={{ color: theme.navy, margin: "4px 0" }}>{t("Employee Advances")}</h1>
           <p style={{ color: theme.gray, margin: 0 }}>
-            General spending now lives in Expenses Management. This page is for employee advances specifically, and for browsing older expense history recorded here before that.
+            {t("General spending now lives in Expenses Management. This page is for employee advances specifically, and for browsing older expense history recorded here before that.")}
           </p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           style={{ padding: "10px 20px", borderRadius: 8, background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`, color: theme.navy, fontWeight: 700, border: "none", cursor: "pointer", fontSize: 14 }}
         >
-          + Log Advance
+          {t("+ Log Advance")}
         </button>
       </div>
 
       {openAdvances.length > 0 && (
         <div style={{ background: "#fff8e1", border: "1px solid #f0d98c", borderRadius: 12, padding: 16, marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13, marginBottom: 8 }}>{openAdvances.length} open advance{openAdvances.length > 1 ? "s" : ""} being repaid through payroll</div>
+          <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13, marginBottom: 8 }}>{openAdvances.length > 1 ? t("{n} open advances being repaid through payroll", { n: openAdvances.length }) : t("{n} open advance being repaid through payroll", { n: openAdvances.length })}</div>
           {openAdvances.map((a) => (
             <div key={a.id} style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
-              {a.employees?.name || "Unknown"}: {formatMoney(a.advance_amount_deducted)} / {formatMoney(a.amount)} EGP repaid
-              {a.advance_deduction_type === "partial" && ` (${formatMoney(a.advance_installment_amount)} EGP/month)`}
+              {a.employees?.name || t("Unknown")}: <Ltr>{formatMoney(a.advance_amount_deducted)} / {formatMoney(a.amount)}</Ltr> {t("EGP repaid")}
+              {a.advance_deduction_type === "partial" && <> (<Ltr>{t("{amount} EGP/month", { amount: formatMoney(a.advance_installment_amount) })}</Ltr>)</>}
             </div>
           ))}
         </div>
@@ -93,7 +97,7 @@ export default function CashExpensesPage() {
           onClick={() => setCategoryFilter("")}
           style={{ padding: "6px 14px", borderRadius: 999, border: `1px solid ${categoryFilter === "" ? theme.gold : "#ddd"}`, background: categoryFilter === "" ? theme.goldLight : "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
         >
-          All
+          {t("All")}
         </button>
         {CATEGORIES.map((c) => (
           <button
@@ -101,25 +105,25 @@ export default function CashExpensesPage() {
             onClick={() => setCategoryFilter(c.key)}
             style={{ padding: "6px 14px", borderRadius: 999, border: `1px solid ${categoryFilter === c.key ? theme.gold : "#ddd"}`, background: categoryFilter === c.key ? theme.goldLight : "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
           >
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
-        <span style={{ fontSize: 12, color: theme.gray, marginLeft: "auto", fontWeight: 700 }}>Total: {formatMoney(totalShown)} EGP</span>
+        <span style={{ fontSize: 12, color: theme.gray, marginInlineStart: "auto", fontWeight: 700 }}>{t("Total")}: <Ltr>{t("{amount} EGP", { amount: formatMoney(totalShown) })}</Ltr></span>
       </div>
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
       {!loading && filtered.length === 0 && (
-        <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: theme.gray }}>No expenses logged yet.</div>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: theme.gray }}>{t("No expenses logged yet.")}</div>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
         {filtered.map((e) => (
           <div key={e.id} style={{ background: "#fff", borderRadius: 12, padding: 16, display: "flex", alignItems: "center", gap: 16, boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
             <div style={{ minWidth: 140 }}>
-              <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>{CATEGORY_LABEL[e.category] || e.category}</div>
+              <div style={{ fontWeight: 700, color: theme.navy, fontSize: 13 }}>{CATEGORY_LABEL[e.category] ? t(CATEGORY_LABEL[e.category]) : tCode(e.category)}</div>
               <div style={{ fontSize: 11, color: theme.gray }}>{e.entry_date}</div>
               <span style={{ display: "inline-block", marginTop: 3, fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 999, background: e.payment_method === "cash" ? "#e8f5e9" : "#eef2ff", color: e.payment_method === "cash" ? "#2e7d32" : "#3949ab" }}>
-                {PAYMENT_METHOD_LABEL[e.payment_method] || "Cash"}
+                {t(PAYMENT_METHOD_LABEL[e.payment_method] || "Cash")}
               </span>
             </div>
             <div style={{ flex: 1 }}>
@@ -128,12 +132,12 @@ export default function CashExpensesPage() {
               {e.category === "employee_advance" && (
                 <div style={{ fontSize: 11, marginTop: 2 }}>
                   <span style={{ padding: "2px 8px", borderRadius: 999, fontWeight: 700, background: e.advance_status === "paid_off" ? "#e8f5e9" : "#fff8e1", color: e.advance_status === "paid_off" ? "#2e7d32" : "#a97c00" }}>
-                    {e.advance_status === "paid_off" ? "Paid off" : `${e.advance_deduction_type === "full" ? "Full deduction" : "Partial " + formatMoney(e.advance_installment_amount) + "/mo"} \u00b7 ${formatMoney(e.advance_amount_deducted)}/${formatMoney(e.amount)} repaid`}
+                    {e.advance_status === "paid_off" ? t("Paid off") : <>{e.advance_deduction_type === "full" ? t("Full deduction") : t("Partial {amount}/mo", { amount: formatMoney(e.advance_installment_amount) })} {"\u00b7"} {t("{done}/{total} repaid", { done: formatMoney(e.advance_amount_deducted), total: formatMoney(e.amount) })}</>}
                   </span>
                 </div>
               )}
             </div>
-            <div style={{ fontWeight: 700, color: theme.navy, fontSize: 15 }}>{formatMoney(e.amount)} EGP</div>
+            <div style={{ fontWeight: 700, color: theme.navy, fontSize: 15 }}>{t("{amount} EGP", { amount: formatMoney(e.amount) })}</div>
           </div>
         ))}
       </div>
@@ -155,6 +159,7 @@ export default function CashExpensesPage() {
 }
 
 function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
+  const { t } = useT();
   // Locked to employee_advance now - general spending moved to the new
   // Expenses Management module (Cash Out on each brand's page). This page's
   // remaining job is narrow: advances, because generate_payslip() only
@@ -229,38 +234,38 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
       <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 16, padding: 28, width: 420, maxWidth: "90vw", maxHeight: "88vh", overflowY: "auto" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Log Employee Advance</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Log Employee Advance")}</h3>
         <p style={{ fontSize: 12, color: theme.gray, marginTop: -8 }}>
-          For general spending, use Cash Out on the relevant brand's page in Expenses Management instead.
+          {t("For general spending, use Cash Out on the relevant brand's page in Expenses Management instead.")}
         </p>
 
-        <FieldLabel>Paid Via</FieldLabel>
+        <FieldLabel>{t("Paid Via")}</FieldLabel>
         <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} style={inp}>
           {PAYMENT_METHODS.map((p) => (
-            <option key={p.key} value={p.key}>{p.label}</option>
+            <option key={p.key} value={p.key}>{t(p.label)}</option>
           ))}
         </select>
 
-        <FieldLabel>Amount (EGP)</FieldLabel>
+        <FieldLabel>{t("Amount (EGP)")}</FieldLabel>
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
 
-        <FieldLabel>Date</FieldLabel>
+        <FieldLabel>{t("Date")}</FieldLabel>
         <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} style={inp} />
 
-        <FieldLabel>Note</FieldLabel>
-        <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} placeholder="Optional detail" />
+        <FieldLabel>{t("Note")}</FieldLabel>
+        <input value={note} onChange={(e) => setNote(e.target.value)} style={inp} placeholder={t("Optional detail")} />
 
-        <FieldLabel>Branch (optional)</FieldLabel>
+        <FieldLabel>{t("Branch (optional)")}</FieldLabel>
         <select value={branchId} onChange={(e) => setBranchId(e.target.value)} style={inp}>
-          <option value="">Select branch...</option>
+          <option value="">{t("Select branch...")}</option>
           {branches.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
 
-        <FieldLabel>{isAdvance ? "Employee (required)" : "Employee (optional)"}</FieldLabel>
+        <FieldLabel>{isAdvance ? t("Employee (required)") : t("Employee (optional)")}</FieldLabel>
         <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={inp}>
-          <option value="">Select employee...</option>
+          <option value="">{t("Select employee...")}</option>
           {employees.map((emp) => (
             <option key={emp.id} value={emp.id}>{emp.name}</option>
           ))}
@@ -268,32 +273,32 @@ function ExpenseForm({ employees, branches, profile, onClose, onSaved }) {
 
         {isAdvance && (
           <div style={{ background: "#faf9fb", borderRadius: 8, padding: 12, marginTop: 8 }}>
-            <FieldLabel>Deduct from payroll</FieldLabel>
+            <FieldLabel>{t("Deduct from payroll")}</FieldLabel>
             <div style={{ display: "flex", gap: 16, marginBottom: 8 }}>
               <label style={{ fontSize: 13, color: theme.navy, display: "flex", alignItems: "center", gap: 6 }}>
-                <input type="radio" checked={deductionType === "full"} onChange={() => setDeductionType("full")} /> Full amount, next payroll
+                <input type="radio" checked={deductionType === "full"} onChange={() => setDeductionType("full")} /> {t("Full amount, next payroll")}
               </label>
               <label style={{ fontSize: 13, color: theme.navy, display: "flex", alignItems: "center", gap: 6 }}>
-                <input type="radio" checked={deductionType === "partial"} onChange={() => setDeductionType("partial")} /> Partial, monthly installment
+                <input type="radio" checked={deductionType === "partial"} onChange={() => setDeductionType("partial")} /> {t("Partial, monthly installment")}
               </label>
             </div>
             {deductionType === "partial" && (
               <>
-                <FieldLabel>Monthly installment (EGP)</FieldLabel>
-                <input type="number" step="0.01" value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} style={inp} placeholder="e.g. 300" />
+                <FieldLabel>{t("Monthly installment (EGP)")}</FieldLabel>
+                <input type="number" step="0.01" value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} style={inp} placeholder={t("e.g. 300")} />
               </>
             )}
           </div>
         )}
 
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
           <button type="button" onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" disabled={saving} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer" }}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("Saving...") : t("Save")}
           </button>
         </div>
       </form>

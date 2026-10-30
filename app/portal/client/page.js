@@ -6,8 +6,11 @@ import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 import DoctorAccount from "../../../components/DoctorAccount";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
+import { useT, tx, Ltr } from "../../../lib/i18n";
+import LanguageToggle from "../../../lib/i18n/LanguageToggle";
 
 export default function ClientPortalPage() {
+  const { t } = useT();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -59,7 +62,7 @@ export default function ClientPortalPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!scanName.trim() || !file) {
-      setError("Choose the scan type and attach a file.");
+      setError(tx("Choose the scan type and attach a file."));
       return;
     }
     setSubmitting(true);
@@ -76,7 +79,7 @@ export default function ClientPortalPage() {
           }),
         });
         const j = await initRes.json();
-        if (!initRes.ok) throw new Error(j.error || "Could not start upload");
+        if (!initRes.ok) throw new Error(j.error || tx("Could not start upload"));
         return j;
       })();
 
@@ -89,9 +92,9 @@ export default function ClientPortalPage() {
         };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).id);
-          else reject(new Error(`Upload failed (${xhr.status})`));
+          else reject(new Error(tx("Upload failed ({status})", { status: xhr.status })));
         };
-        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.onerror = () => reject(new Error(tx("Network error during upload")));
         xhr.send(file);
       });
 
@@ -102,7 +105,7 @@ export default function ClientPortalPage() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setError(result.error || "Something went wrong submitting this request.");
+        setError(result.error || tx("Something went wrong submitting this request."));
       } else {
         setScanName("");
         setDateRequired("");
@@ -111,7 +114,7 @@ export default function ClientPortalPage() {
         load();
       }
     } catch (err) {
-      setError(err.message || "Something went wrong submitting this request.");
+      setError(err.message || tx("Something went wrong submitting this request."));
     }
     setSubmitting(false);
     setUploadProgress(0);
@@ -132,9 +135,12 @@ export default function ClientPortalPage() {
             {data?.client?.name || "Al Shrooouk Scan & Lab"}
           </span>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <LanguageToggle compact style={{ color: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />
         <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-          Log Out
+          {t("Log Out")}
         </button>
+        </div>
       </div>
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
@@ -145,10 +151,10 @@ export default function ClientPortalPage() {
         {Number(data.owes || 0) > 0 && (
           <div style={{ background: "#fff8e1", border: "1px solid #eedfae", borderRadius: 14, padding: "16px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <div style={{ color: "#8a6d00", fontWeight: 700, fontSize: 14 }}>Amount due · المستحق</div>
-              <div style={{ color: "#8a6d00", fontSize: 12, marginTop: 2 }}>For finished reports. Settle it with Al Shrooouk.</div>
+              <div style={{ color: "#8a6d00", fontWeight: 700, fontSize: 14 }}>{t("Amount due")}</div>
+              <div style={{ color: "#8a6d00", fontSize: 12, marginTop: 2 }}>{t("For finished reports. Settle it with Al Shrooouk.")}</div>
             </div>
-            <div style={{ color: "#8a6d00", fontSize: 26, fontWeight: 700, whiteSpace: "nowrap" }}>{Number(data.owes).toLocaleString()} EGP</div>
+            <div style={{ color: "#8a6d00", fontSize: 26, fontWeight: 700, whiteSpace: "nowrap" }}><Ltr>{t("{amount} EGP", { amount: Number(data.owes).toLocaleString() })}</Ltr></div>
           </div>
         )}
         {Number(data.owes || 0) > 0 && (
@@ -157,12 +163,12 @@ export default function ClientPortalPage() {
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showForm ? 16 : 0 }}>
-            <h3 style={{ color: theme.navy, margin: 0 }}>Submit a Request</h3>
+            <h3 style={{ color: theme.navy, margin: 0 }}>{t("Submit a Request")}</h3>
             <button
               onClick={() => setShowForm((v) => !v)}
               style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 12 }}
             >
-              {showForm ? "Cancel" : "+ New Request"}
+              {showForm ? t("Cancel") : t("+ New Request")}
             </button>
           </div>
           {showForm && (
@@ -170,47 +176,47 @@ export default function ClientPortalPage() {
               {/* Chosen from the list rather than typed, so every request carries
                   the same name as the price list ("cbctq" and "cbct q" were the
                   same scan written two ways). */}
-              <label style={lbl}>What is this for?</label>
-              <input style={inp} value={requestNote} onChange={(e) => setRequestNote(e.target.value)} placeholder="e.g. CBCT report for patient X" />
-              <label style={lbl}>Scan type</label>
+              <label style={lbl}>{t("What is this for?")}</label>
+              <input style={inp} value={requestNote} onChange={(e) => setRequestNote(e.target.value)} placeholder={t("e.g. CBCT report for patient X")} />
+              <label style={lbl}>{t("Scan type")}</label>
               <select style={inp} value={scanName} onChange={(e) => setScanName(e.target.value)}>
-                <option value="">Choose the scan type...</option>
-                {scanTypes.map((t) => <option key={t.name} value={t.name}>{t.name}{t.price != null ? ` · ${Number(t.price).toLocaleString()} EGP` : ""}</option>)}
+                <option value="">{t("Choose the scan type...")}</option>
+                {scanTypes.map((st) => <option key={st.name} value={st.name}>{st.name}{st.price != null ? ` · ${t("{amount} EGP", { amount: Number(st.price).toLocaleString() })}` : ""}</option>)}
               </select>
               {(() => {
-                const sel = scanTypes.find((t) => t.name === scanName);
+                const sel = scanTypes.find((st) => st.name === scanName);
                 if (!sel) return null;
                 return (
                   <div style={{ marginTop: -4, marginBottom: 10, padding: "8px 12px", borderRadius: 8, background: sel.price != null ? "#eef6f0" : "#fff8e1", fontSize: 13, color: sel.price != null ? "#1e5c33" : "#8a6d00", fontWeight: 600 }}>
-                    {sel.price != null ? `Report price: ${Number(sel.price).toLocaleString()} EGP` : "Price to be confirmed by Al Shrooouk"}
+                    {sel.price != null ? t("Report price: {amount} EGP", { amount: Number(sel.price).toLocaleString() }) : t("Price to be confirmed by Al Shrooouk")}
                   </div>
                 );
               })()}
-              <label style={lbl}>Date Needed (optional)</label>
+              <label style={lbl}>{t("Date Needed (optional)")}</label>
               <input type="date" style={inp} value={dateRequired} onChange={(e) => setDateRequired(e.target.value)} />
-              <label style={lbl}>Attach File</label>
+              <label style={lbl}>{t("Attach File")}</label>
               <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ marginBottom: 10 }} />
-              {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+              {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
               <button type="submit" disabled={submitting} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13, position: "relative", overflow: "hidden" }}>
                 {submitting && (
-                  <div style={{ position: "absolute", inset: 0, left: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.25)", transition: "width 0.15s linear" }} />
+                  <div style={{ position: "absolute", inset: 0, insetInlineStart: 0, width: `${uploadProgress}%`, background: "rgba(255,255,255,0.25)", transition: "width 0.15s linear" }} />
                 )}
-                <span style={{ position: "relative" }}>{submitting ? `Submitting... ${uploadProgress}%` : "Submit Request"}</span>
+                <span style={{ position: "relative" }}>{submitting ? t("Submitting... {pct}%", { pct: uploadProgress }) : t("Submit Request")}</span>
               </button>
             </form>
           )}
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Your Requests</h3>
-          {data.reports.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No requests yet.</p>}
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Your Requests")}</h3>
+          {data.reports.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No requests yet.")}</p>}
           {data.reports.map((r) => (
             <div key={r.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <div style={{ fontWeight: 600, color: theme.navy, fontSize: 14 }}>{r.scan_type_name || r.scan_name}</div>
                   {r.request_note && <div style={{ fontSize: 12, color: theme.navy }} dir="auto">{r.request_note}</div>}
-                  <div style={{ fontSize: 12, color: theme.gray }}>Needed by {r.date_required}</div>
+                  <div style={{ fontSize: 12, color: theme.gray }}>{t("Needed by {date}", { date: r.date_required })}</div>
                 </div>
                 <span
                   style={{
@@ -219,13 +225,13 @@ export default function ClientPortalPage() {
                     color: r.status === "completed" ? "#1e7a3c" : "#8a6d00",
                   }}
                 >
-                  {r.status === "completed" ? "Done" : "Pending"}
+                  {r.status === "completed" ? t("Done") : t("Pending")}
                 </span>
               </div>
               {(r.report_files?.length ? r.report_files : r.report_file_url ? [{ name: r.report_file_name, url: r.report_file_url }] : []).map((f, i) => (
                 <div key={f.file_id || f.url || i}>
                   <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: theme.gold, fontWeight: 600 }}>
-                    Download: {f.name}
+                    {t("Download:")} {f.name}
                   </a>
                 </div>
               ))}
