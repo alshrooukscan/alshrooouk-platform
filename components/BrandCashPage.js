@@ -541,6 +541,8 @@ function ConversionModal({ brand, employees, profile, onClose, onSaved }) {
       entityType: "expense_transaction",
       details: { brand, amount: Number(amount), method },
     });
+    // Anyone but an admin: it now waits for an admin to confirm (0125).
+    if (profile?.role !== "admin") alert("Sent to an admin to confirm. The cash stays with the person until then.");
     onSaved();
     onClose();
   }

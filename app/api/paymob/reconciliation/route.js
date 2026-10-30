@@ -45,6 +45,7 @@ export async function GET(req) {
       .eq("success", true)
       .eq("is_voided", false)
       .is("matched_payment_id", null)
+      .is("matched_expense_id", null) // tied to a cash conversion (0125)
       .gte("created_at_paymob", `${LAUNCH_DATE}T00:00:00`)
       .order("created_at_paymob", { ascending: false })
       .limit(100),

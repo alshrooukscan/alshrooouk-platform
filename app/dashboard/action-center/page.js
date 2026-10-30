@@ -18,6 +18,7 @@ const TYPE_LABEL = {
   brand_transfer: "Brand Transfer",
   stock_sale: "Stock Sale",
   visit_collection: "Visit Collection",
+  cash_conversion: "Cash to Digital",
 };
 // vodafone_cash is the retired key for the same thing; both render as Wallet
 const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", wallet: "Wallet", vodafone_cash: "Wallet" };
@@ -178,7 +179,7 @@ export default function ActionCenterPage() {
         promises.push(
           supabase
             .from("expense_transactions")
-            .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
+            .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name), paymob:paymob_transactions!expense_transactions_paymob_transaction_id_fkey(id, amount, card_last4, created_at_paymob)")
             .eq("status", approvalFilter)
             .is("source_payment_id", null)
             .not("type", "in", "(visit_collection,stock_sale)")
@@ -297,10 +298,23 @@ export default function ActionCenterPage() {
     load();
   }
 
+  // A Visa conversion recorded before Paymob synced the charge: look again.
+  async function recheckPaymob(item) {
+    setBusyId(item.id);
+    const { data, error } = await supabase.rpc("match_conversion_paymob", { p_expense_id: item.id });
+    setBusyId(null);
+    if (error) { alert(error.message); return; }
+    if (!data) alert("Still no Paymob charge of this amount around that time. Paymob syncs every few minutes, or the card may not have gone through.");
+    load();
+  }
+
   async function reviewApproval(item, newStatus) {
     // Guarded here as well as in the markup: the buttons are hidden for
     // transfers, but nothing else stops this function being reached.
     if (item.type === "cash_transfer") return;
+    if (newStatus === "confirmed" && item.type === "cash_conversion" && item.payment_method === "visa" && !item.paymob) {
+      if (!confirm("There is no Paymob card charge matching this conversion. Confirm it anyway?")) return;
+    }
     setBusyId(item.id);
     const { data: session } = await supabase.auth.getSession();
     await supabase
@@ -573,6 +587,28 @@ export default function ActionCenterPage() {
                     {tx.category && ` \u00b7 ${tx.category}`}
                   </div>
                   {tx.note && <div style={{ fontSize: 12, color: theme.gray, fontStyle: "italic" }}>{tx.note}</div>}
+                  {/* Cash converted to card: the Paymob charge it matches, so
+                      an admin confirms against the money actually arriving. */}
+                  {tx.type === "cash_conversion" && tx.payment_method === "visa" && (
+                    tx.paymob ? (
+                      <div style={{ fontSize: 12, color: "#1e7a3c", fontWeight: 600, marginTop: 2 }}>
+                        ✓ Paymob: {formatMoney(tx.paymob.amount)} EGP, card ••{tx.paymob.card_last4 || "?"}, {String(tx.paymob.created_at_paymob || "").slice(0, 16).replace("T", " ")}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "#ba1a1a", fontWeight: 600, marginTop: 2, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        ⚠ No matching Paymob card charge found
+                        {tx.status === "pending" && (
+                          <button onClick={() => recheckPaymob(tx)} disabled={busyId === tx.id}
+                            style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #ba1a1a", background: "#fff", color: "#ba1a1a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            Check Paymob again
+                          </button>
+                        )}
+                      </div>
+                    )
+                  )}
+                  {tx.type === "cash_conversion" && tx.payment_method !== "visa" && tx.status === "pending" && (
+                    <div style={{ fontSize: 12, color: "#8a6d00", marginTop: 2 }}>Check the {PAYMENT_LABEL[tx.payment_method] || tx.payment_method} account received it before confirming.</div>
+                  )}
                   <div style={{ fontSize: 11, color: theme.gray }}>
                     {tx.entry_date}{" \u00b7 "}logged by {tx.created_by_name || "unknown"}
                     {/* A row confirmed by the same person who logged it was not
