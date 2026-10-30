@@ -9,6 +9,7 @@ import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import { employeePortalWhatsAppLink } from "../../../../lib/whatsapp";
 import AccountCreatedModal from "../../../../components/AccountCreatedModal";
 import { APP_URL } from "../../../../lib/appUrl";
+import { useT, tx } from "../../../../lib/i18n";
 
 // The limits from the specification: 10,000 for the Receptionist, 5,000 for
 // everyone else. Used only as the default when the field is left blank - the
@@ -19,6 +20,7 @@ function defaultCashLimit(role) {
 }
 
 export default function NewEmployeePage() {
+  const { t } = useT();
   const router = useRouter();
   const [deductionRules, setDeductionRules] = useState([]);
   const [excuseRules, setExcuseRules] = useState([]);
@@ -57,7 +59,7 @@ export default function NewEmployeePage() {
     const file = e.target.files[0];
     if (!file) return;
     setDescriptor(null);
-    setFaceStatus("Loading face detection...");
+    setFaceStatus(tx("Loading face detection..."));
     setPhotoFilename(file.name);
 
     const reader = new FileReader();
@@ -70,16 +72,16 @@ export default function NewEmployeePage() {
       img.onload = async () => {
         try {
           await loadFaceModels();
-          setFaceStatus("Detecting face...");
+          setFaceStatus(tx("Detecting face..."));
           const result = await extractDescriptor(img);
           if (!result) {
-            setFaceStatus("No face detected in this photo - try a clearer, front-facing photo.");
+            setFaceStatus(tx("No face detected in this photo - try a clearer, front-facing photo."));
             return;
           }
           setDescriptor(result);
-          setFaceStatus("Face detected. This photo will be used to verify this employee at clock in/out.");
+          setFaceStatus(tx("Face detected. This photo will be used to verify this employee at clock in/out."));
         } catch (err) {
-          setFaceStatus("Could not process this photo: " + err.message);
+          setFaceStatus(tx("Could not process this photo: {msg}", { msg: err.message }));
         }
       };
       img.src = dataUrl;
@@ -174,11 +176,11 @@ export default function NewEmployeePage() {
               : null
           }
           onContinue={() => router.push(`/dashboard/hr/${newEmployeeId}`)}
-          continueLabel="Continue to Profile"
+          continueLabel={t("Continue to Profile")}
         />
       )}
-      <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>HUMAN RESOURCES</p>
-      <h1 style={{ color: theme.navy, marginBottom: 24 }}>Add Employee</h1>
+      <p style={{ color: theme.gray, fontSize: 13, marginBottom: 8 }}>{t("HUMAN RESOURCES")}</p>
+      <h1 style={{ color: theme.navy, marginBottom: 24 }}>{t("Add Employee")}</h1>
 
       <form onSubmit={handleSubmit}>
         <Section title="Employee Details">
@@ -195,7 +197,7 @@ export default function NewEmployeePage() {
               <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+20 1X XXX XXXX" />
             </Field>
             <Field label="Role">
-              <input style={inp} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g., Lab Technician" />
+              <input style={inp} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder={t("e.g., Lab Technician")} />
             </Field>
           </Row>
           <Row>
@@ -207,7 +209,7 @@ export default function NewEmployeePage() {
             </Field>
           </Row>
           <Field label="Hourly Rate (EGP, optional, leave blank for salaried employees)">
-            <input style={inp} value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} placeholder="e.g., 50" />
+            <input style={inp} value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} placeholder={t("e.g., 50")} />
           </Field>
           <Field label="Cash Limit (EGP)">
             <input
@@ -218,29 +220,26 @@ export default function NewEmployeePage() {
               placeholder={String(defaultCashLimit(form.role))}
             />
             <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
-              How much cash this person may hold before the custody monitor flags them. A warning, never a block &mdash;
-              they are never stopped from taking a payment. Left blank, {defaultCashLimit(form.role).toLocaleString()} EGP is
-              used for this role.
+              {t("How much cash this person may hold before the custody monitor flags them. A warning, never a block, they are never stopped from taking a payment. Left blank, {amount} EGP is used for this role.", { amount: defaultCashLimit(form.role).toLocaleString() })}
             </p>
           </Field>
         </Section>
 
         <Section title="Face Enrollment (for clock in/out verification)">
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
-            Optional but recommended. A clear, front-facing photo lets the system verify this employee's identity
-            when they sign in or out. Processed entirely in your browser, nothing is sent to any outside face-recognition service.
+            {t("Optional but recommended. A clear, front-facing photo lets the system verify this employee's identity when they sign in or out. Processed entirely in your browser, nothing is sent to any outside face-recognition service.")}
           </p>
           <input type="file" accept="image/*" onChange={handlePhotoPicked} style={{ marginBottom: 10 }} />
           {photoPreview && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-              <img src={photoPreview} alt="Preview" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #ddd" }} />
+              <img src={photoPreview} alt={t("Preview")} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #ddd" }} />
               <p style={{ fontSize: 12, color: descriptor ? "#2e7d32" : theme.gray, fontWeight: descriptor ? 700 : 400, maxWidth: 320 }}>{faceStatus}</p>
             </div>
           )}
         </Section>
 
         <Section title="Deduction Rules">
-          {deductionRules.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No deduction rules yet. Add some in Settings first.</p>}
+          {deductionRules.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>{t("No deduction rules yet. Add some in Settings first.")}</p>}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {deductionRules.map((r) => (
               <RuleChip key={r.id} active={selectedDeductions.includes(r.id)} onClick={() => toggle(selectedDeductions, setSelectedDeductions, r.id)}>
@@ -251,7 +250,7 @@ export default function NewEmployeePage() {
         </Section>
 
         <Section title="Excuse / Absence Rules">
-          {excuseRules.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No excuse rules yet. Add some in Settings first.</p>}
+          {excuseRules.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>{t("No excuse rules yet. Add some in Settings first.")}</p>}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {excuseRules.map((r) => (
               <RuleChip key={r.id} active={selectedExcuses.includes(r.id)} onClick={() => toggle(selectedExcuses, setSelectedExcuses, r.id)}>
@@ -261,10 +260,10 @@ export default function NewEmployeePage() {
           </div>
         </Section>
 
-        {error && <p style={{ color: "#ba1a1a", marginBottom: 12 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", marginBottom: 12 }}>{t(error)}</p>}
 
         <button type="submit" disabled={saving} style={{ padding: "14px 32px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-          {saving ? "Saving..." : "Add Employee"}
+          {saving ? t("Saving...") : t("Add Employee")}
         </button>
       </form>
     </div>
@@ -291,9 +290,10 @@ function RuleChip({ active, onClick, children }) {
   );
 }
 function Section({ title, children }) {
+  const { t } = useT();
   return (
     <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-      <h3 style={{ color: theme.navy, marginTop: 0 }}>{title}</h3>
+      <h3 style={{ color: theme.navy, marginTop: 0 }}>{t(title)}</h3>
       {children}
     </div>
   );
@@ -302,9 +302,10 @@ function Row({ children }) {
   return <div style={{ display: "flex", gap: 16 }}>{children}</div>;
 }
 function Field({ label, children }) {
+  const { t } = useT();
   return (
     <div style={{ flex: 1 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 6 }}>{label}</label>
+      <label style={{ fontSize: 12, fontWeight: 600, color: theme.navy, display: "block", marginBottom: 6 }}>{t(label)}</label>
       {children}
     </div>
   );

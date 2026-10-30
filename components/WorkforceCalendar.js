@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
 import { useAutoRefresh } from "../lib/useAutoRefresh";
+import { useT, tx } from "../lib/i18n";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = [
@@ -19,6 +20,9 @@ const MONTH_LABELS = [
   "November",
   "December",
 ];
+// Display only, same order as WEEKDAY_LABELS / MONTH_LABELS (getDay / getMonth).
+const WEEKDAY_LABELS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const MONTH_LABELS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 
 function toISODate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -40,6 +44,7 @@ function todayISO() {
 // so shifts entered here actually count toward hours worked, not just look
 // like they do.
 export default function WorkforceCalendar({ branchId }) {
+  const { t, isAr } = useT();
   const [monthCursor, setMonthCursor] = useState(() =>
     startOfMonth(new Date()),
   );
@@ -127,7 +132,7 @@ export default function WorkforceCalendar({ branchId }) {
   }
 
   function employeeName(id) {
-    return employees.find((e) => e.id === id)?.name || "Unknown";
+    return employees.find((e) => e.id === id)?.name || tx("Unknown");
   }
 
   function toggleAddEmployee(id) {
@@ -152,11 +157,11 @@ export default function WorkforceCalendar({ branchId }) {
   // per employee per date.
   async function applyToDate(dateISO) {
     if (!addEmployeeIds.length) {
-      setErr("Pick at least one employee.");
+      setErr(tx("Pick at least one employee."));
       return;
     }
     if (!dayOff && startTime >= endTime) {
-      setErr("End time must be after start time.");
+      setErr(tx("End time must be after start time."));
       return;
     }
     setSaving(true);
@@ -184,7 +189,7 @@ export default function WorkforceCalendar({ branchId }) {
     setSaving(false);
     setAddEmployeeIds([]);
     if (failed)
-      setErr(`${failed} of ${addEmployeeIds.length} could not be saved.`);
+      setErr(tx("{failed} of {total} could not be saved.", { failed, total: addEmployeeIds.length }));
     load();
   }
 
@@ -196,7 +201,7 @@ export default function WorkforceCalendar({ branchId }) {
   if (!branchId) {
     return (
       <p style={{ color: theme.gray, fontSize: 13 }}>
-        Select a branch above to manage its schedule.
+        {t("Select a branch above to manage its schedule.")}
       </p>
     );
   }
@@ -223,10 +228,10 @@ export default function WorkforceCalendar({ branchId }) {
           }
           style={navBtn}
         >
-          {"\u2039"}
+          {isAr ? "\u203A" : "\u2039"}
         </button>
         <div style={{ fontWeight: 700, color: theme.navy, fontSize: 15 }}>
-          {MONTH_LABELS[monthCursor.getMonth()]} {monthCursor.getFullYear()}
+          {(isAr ? MONTH_LABELS_AR : MONTH_LABELS)[monthCursor.getMonth()]} {monthCursor.getFullYear()}
         </div>
         <button
           onClick={() =>
@@ -240,15 +245,15 @@ export default function WorkforceCalendar({ branchId }) {
           }
           style={navBtn}
         >
-          {"\u203A"}
+          {isAr ? "\u2039" : "\u203A"}
         </button>
       </div>
 
       {loading ? (
-        <p style={{ color: theme.gray, fontSize: 13 }}>Loading schedule...</p>
+        <p style={{ color: theme.gray, fontSize: 13 }}>{t("Loading schedule...")}</p>
       ) : employees.length === 0 ? (
         <p style={{ color: theme.gray, fontSize: 13 }}>
-          No active employees assigned to this branch.
+          {t("No active employees assigned to this branch.")}
         </p>
       ) : (
         <div
@@ -258,9 +263,9 @@ export default function WorkforceCalendar({ branchId }) {
             gap: 6,
           }}
         >
-          {WEEKDAY_LABELS.map((w) => (
+          {WEEKDAY_LABELS.map((w, wi) => (
             <div key={w} style={weekdayHead}>
-              {w}
+              {isAr ? WEEKDAY_LABELS_AR[wi] : w}
             </div>
           ))}
           {cells.map((date, i) => {
@@ -332,7 +337,7 @@ export default function WorkforceCalendar({ branchId }) {
                     ))}
                     {shifts.length > 3 && (
                       <div style={{ fontSize: 10, color: "#bbb" }}>
-                        +{shifts.length - 3} more
+                        {t("+{n} more", { n: shifts.length - 3 })}
                       </div>
                     )}
                   </div>
@@ -351,7 +356,7 @@ export default function WorkforceCalendar({ branchId }) {
                         marginBottom: 6,
                       }}
                     >
-                      {date.toLocaleDateString("en-GB", {
+                      {date.toLocaleDateString(isAr ? "ar-EG-u-nu-latn" : "en-GB", {
                         weekday: "long",
                         day: "numeric",
                         month: "long",
@@ -378,7 +383,7 @@ export default function WorkforceCalendar({ branchId }) {
                             <button
                               onClick={() => removeEntry(e.id)}
                               style={removeChipBtn}
-                              title="Remove"
+                              title={t("Remove")}
                             >
                               {"\u00d7"}
                             </button>
@@ -396,7 +401,7 @@ export default function WorkforceCalendar({ branchId }) {
                       }}
                     >
                       <div style={miniLabel}>
-                        Add / update employee(s) for this day
+                        {t("Add / update employee(s) for this day")}
                       </div>
                       <div
                         style={{
@@ -443,12 +448,12 @@ export default function WorkforceCalendar({ branchId }) {
                             checked={dayOff}
                             onChange={(e) => setDayOff(e.target.checked)}
                           />
-                          Day off
+                          {t("Day off")}
                         </label>
                         {!dayOff && (
                           <>
                             <div>
-                              <div style={miniLabel}>Start</div>
+                              <div style={miniLabel}>{t("Start")}</div>
                               <input
                                 type="time"
                                 value={startTime}
@@ -457,7 +462,7 @@ export default function WorkforceCalendar({ branchId }) {
                               />
                             </div>
                             <div>
-                              <div style={miniLabel}>End</div>
+                              <div style={miniLabel}>{t("End")}</div>
                               <input
                                 type="time"
                                 value={endTime}
@@ -472,13 +477,13 @@ export default function WorkforceCalendar({ branchId }) {
                           disabled={saving}
                           style={applyBtn}
                         >
-                          {saving ? "Saving..." : "Apply"}
+                          {saving ? t("Saving...") : t("Apply")}
                         </button>
                         <button
                           onClick={() => setOpenDate(null)}
                           style={closeBtn}
                         >
-                          Close
+                          {t("Close")}
                         </button>
                       </div>
                       {err && (
@@ -489,7 +494,7 @@ export default function WorkforceCalendar({ branchId }) {
                             marginTop: 8,
                           }}
                         >
-                          {err}
+                          {t(err)}
                         </p>
                       )}
                     </div>

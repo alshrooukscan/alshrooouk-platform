@@ -7,8 +7,10 @@ import { usePermissions } from "../../../lib/usePermissions";
 import { exportToCsv } from "../../../lib/exportCsv";
 import { logActivity } from "../../../lib/activityLog";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx } from "../../../lib/i18n";
 
 export default function HRPage() {
+  const { t } = useT();
   const { isAdmin, profile } = usePermissions();
   useAutoRefresh(["employees_change_ping", "employee_shifts", "employee_schedule_days"], () => { loadAll(); });
   const [employees, setEmployees] = useState([]);
@@ -47,30 +49,30 @@ export default function HRPage() {
     const result = await res.json();
     setLoginAsBusy(null);
     if (result.redirect) window.open(result.redirect, "_blank");
-    else alert(result.error || "Could not log in as this employee");
+    else alert(tx(result.error || "Could not log in as this employee"));
   }
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>HR Management</p>
-          <h1 style={{ color: theme.navy, margin: 0 }}>Employee Management</h1>
-          <p style={{ color: theme.gray, margin: "4px 0 0" }}>Add and manage employees. See Payslips and Deductions and Excuses in the sidebar.</p>
+          <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>{t("HR Management")}</p>
+          <h1 style={{ color: theme.navy, margin: 0 }}>{t("Employee Management")}</h1>
+          <p style={{ color: theme.gray, margin: "4px 0 0" }}>{t("Add and manage employees. See Payslips and Deductions and Excuses in the sidebar.")}</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={() => exportToCsv("employees.csv", filtered.map((e) => ({ Name: e.name, "HR ID": e.hr_id, Role: e.role || "", Status: e.is_active ? "Active" : "Inactive" })))}
             style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 14 }}
           >
-            Export CSV
+            {t("Export CSV")}
           </button>
           {isAdmin && (
             <button
               onClick={() => setShowAddDeduction(true)}
               style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, cursor: "pointer", fontSize: 14, whiteSpace: "nowrap" }}
             >
-              + Add Deduction
+              {t("+ Add Deduction")}
             </button>
           )}
           <Link
@@ -78,7 +80,7 @@ export default function HRPage() {
             style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`, color: theme.navy,
                      fontWeight: 700, textDecoration: "none", fontSize: 14, whiteSpace: "nowrap" }}
           >
-            Bonus & Attendance Rules
+            {t("Bonus & Attendance Rules")}
           </Link>
           <Link
             href="/dashboard/hr/new"
@@ -93,7 +95,7 @@ export default function HRPage() {
               whiteSpace: "nowrap",
             }}
           >
-            + Add Employee
+            {t("+ Add Employee")}
           </Link>
         </div>
       </div>
@@ -101,18 +103,18 @@ export default function HRPage() {
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search by name, ID, or role..."
+        placeholder={t("Search by name, ID, or role...")}
         style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, marginBottom: 20, boxSizing: "border-box" }}
       />
 
       <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ background: "#faf9fb", textAlign: "left" }}>
-              <th style={th}>Employee</th>
-              <th style={th}>HR ID</th>
-              <th style={th}>Role</th>
-              <th style={th}>Status</th>
+            <tr style={{ background: "#faf9fb", textAlign: "start" }}>
+              <th style={th}>{t("Employee")}</th>
+              <th style={th}>{t("HR ID")}</th>
+              <th style={th}>{t("Role")}</th>
+              <th style={th}>{t("Status")}</th>
               <th style={th}></th>
             </tr>
           </thead>
@@ -136,7 +138,7 @@ export default function HRPage() {
                       color: e.is_active ? "#2e7d32" : "#888",
                     }}
                   >
-                    {e.is_active ? "Active" : "Inactive"}
+                    {e.is_active ? t("Active") : t("Inactive")}
                   </span>
                 </td>
                 <td style={td}>
@@ -146,7 +148,7 @@ export default function HRPage() {
                       disabled={loginAsBusy === e.id}
                       style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
                     >
-                      {loginAsBusy === e.id ? "..." : "Login As"}
+                      {loginAsBusy === e.id ? "..." : t("Login As")}
                     </button>
                   )}
                 </td>
@@ -155,7 +157,7 @@ export default function HRPage() {
           </tbody>
         </table>
         {!loading && filtered.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No employees yet.</div>
+          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>{t("No employees yet.")}</div>
         )}
       </div>
 
@@ -172,6 +174,7 @@ export default function HRPage() {
 }
 
 function AddDeductionModal({ employees, deductionRules, profile, onClose }) {
+  const { t } = useT();
   const [ruleId, setRuleId] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [amount, setAmount] = useState("");
@@ -238,56 +241,56 @@ function AddDeductionModal({ employees, deductionRules, profile, onClose }) {
       <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 400, maxWidth: "90vw" }}>
         {done ? (
           <>
-            <h3 style={{ color: theme.navy, marginTop: 0 }}>Deduction Added</h3>
+            <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Deduction Added")}</h3>
             <p style={{ fontSize: 13, color: theme.gray }}>
-              This will be applied the next time payroll is generated for this employee.
+              {t("This will be applied the next time payroll is generated for this employee.")}
             </p>
             <button onClick={onClose} style={{ width: "100%", padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-              Close
+              {t("Close")}
             </button>
           </>
         ) : (
           <>
-            <h3 style={{ color: theme.navy, marginTop: 0 }}>Add Deduction</h3>
+            <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Add Deduction")}</h3>
             <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
-              Applies once, at this employee's next payroll run.
+              {t("Applies once, at this employee's next payroll run.")}
             </p>
 
-            <label style={fieldLabel}>Deduction Type</label>
+            <label style={fieldLabel}>{t("Deduction Type")}</label>
             <select value={ruleId} onChange={(e) => handleRuleChange(e.target.value)} style={modalInp}>
-              <option value="">Select deduction type...</option>
+              <option value="">{t("Select deduction type...")}</option>
               {deductionRules.map((r) => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
             {deductionRules.length === 0 && (
               <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
-                No deduction types yet - add one first in Settings &gt; Deduction Rules.
+                {t("No deduction types yet - add one first in Settings > Deduction Rules.")}
               </p>
             )}
 
-            <label style={fieldLabel}>Employee</label>
+            <label style={fieldLabel}>{t("Employee")}</label>
             <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={modalInp}>
-              <option value="">Select employee...</option>
+              <option value="">{t("Select employee...")}</option>
               {employees.filter((e) => e.is_active).map((e) => (
                 <option key={e.id} value={e.id}>{e.name}</option>
               ))}
             </select>
 
-            <label style={fieldLabel}>Amount (EGP)</label>
+            <label style={fieldLabel}>{t("Amount (EGP)")}</label>
             <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={modalInp} placeholder="0.00" />
 
-            <label style={fieldLabel}>Note (optional)</label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} style={modalInp} placeholder="e.g. reason for this deduction" />
+            <label style={fieldLabel}>{t("Note (optional)")}</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} style={modalInp} placeholder={t("e.g. reason for this deduction")} />
 
-            {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+            {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button type="button" onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-                Cancel
+                {t("Cancel")}
               </button>
               <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-                {saving ? "Saving..." : "Add Deduction"}
+                {saving ? t("Saving...") : t("Add Deduction")}
               </button>
             </div>
           </>

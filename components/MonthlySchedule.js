@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
+import { useT } from "../lib/i18n";
 
 function ymKey(year, month) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -13,8 +14,12 @@ function dateStr(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Display only, same Sunday-first order as getDay().
+const DAY_ABBR_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 
 export default function MonthlySchedule({ employeeId }) {
+  const { t, isAr } = useT();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth()); // 0-indexed
@@ -144,23 +149,23 @@ export default function MonthlySchedule({ employeeId }) {
     setMonth(d.getMonth());
   }
 
-  const monthLabel = new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthLabel = isAr ? `${MONTHS_AR[month]} ${year}` : new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   return (
     <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <h3 style={{ color: theme.navy, margin: 0 }}>Monthly Schedule</h3>
+        <h3 style={{ color: theme.navy, margin: 0 }}>{t("Monthly Schedule")}</h3>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={goPrevMonth} style={navBtn}>&lsaquo;</button>
+          <button onClick={goPrevMonth} style={navBtn}>{isAr ? "\u203a" : "\u2039"}</button>
           <span style={{ fontWeight: 700, color: theme.navy, fontSize: 14, minWidth: 130, textAlign: "center" }}>{monthLabel}</span>
-          <button onClick={goNextMonth} style={navBtn}>&rsaquo;</button>
+          <button onClick={goNextMonth} style={navBtn}>{isAr ? "\u2039" : "\u203a"}</button>
         </div>
       </div>
       <p style={{ fontSize: 12, color: theme.gray, marginTop: 0, marginBottom: 16 }}>
-        Set real dates for this month, or use the buttons below to repeat a pattern instead of entering every day by hand.
+        {t("Set real dates for this month, or use the buttons below to repeat a pattern instead of entering every day by hand.")}
       </p>
 
-      {loading && <p style={{ color: theme.gray, fontSize: 13 }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray, fontSize: 13 }}>{t("Loading...")}</p>}
 
       {!loading && (
         <>
@@ -177,11 +182,11 @@ export default function MonthlySchedule({ employeeId }) {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: theme.navy }}>{d.day}</span>
-                  <span style={{ fontSize: 10, color: theme.gray }}>{DAY_ABBR[d.dow]}</span>
+                  <span style={{ fontSize: 10, color: theme.gray }}>{(isAr ? DAY_ABBR_AR : DAY_ABBR)[d.dow]}</span>
                 </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: theme.gray, marginBottom: 4 }}>
                   <input type="checkbox" checked={d.is_day_off} onChange={(e) => updateDay(d.date, "is_day_off", e.target.checked)} />
-                  Off
+                  {t("Off")}
                 </label>
                 {!d.is_day_off && (
                   <>
@@ -205,16 +210,16 @@ export default function MonthlySchedule({ employeeId }) {
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={handleSaveMonth} disabled={saving} style={primaryBtn}>
-              {saving ? "Saving..." : "Save This Month"}
+              {saving ? t("Saving...") : t("Save This Month")}
             </button>
-            <button onClick={handleRepeatWeekly} style={outlineBtn} title="Copies the first 7 days' pattern across the rest of this month">
-              Repeat Weekly (fill rest of month)
+            <button onClick={handleRepeatWeekly} style={outlineBtn} title={t("Copies the first 7 days' pattern across the rest of this month")}>
+              {t("Repeat Weekly (fill rest of month)")}
             </button>
-            <button onClick={handleRepeatToNextMonth} disabled={saving} style={outlineBtn} title="Saves this month, then applies the same weekday pattern to next month">
-              Repeat Monthly (apply to next month)
+            <button onClick={handleRepeatToNextMonth} disabled={saving} style={outlineBtn} title={t("Saves this month, then applies the same weekday pattern to next month")}>
+              {t("Repeat Monthly (apply to next month)")}
             </button>
           </div>
-          {saved && <p style={{ fontSize: 12, color: "#2e7d32", marginTop: 10 }}>Saved.</p>}
+          {saved && <p style={{ fontSize: 12, color: "#2e7d32", marginTop: 10 }}>{t("Saved.")}</p>}
         </>
       )}
     </div>
