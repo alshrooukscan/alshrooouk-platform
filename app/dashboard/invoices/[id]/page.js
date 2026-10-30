@@ -1,4 +1,5 @@
 "use client";
+import { bilingual } from "../../../../lib/whatsapp";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
@@ -86,13 +87,20 @@ export default function InvoiceViewPage() {
   function sendWhatsApp(stamped) {
     if (!patientMobile) return;
     const pdfUrl = `${APP_URL}/api/invoices/${id}/pdf${stamped ? "?stamp=1" : ""}`;
-    const text =
-      `Al Shrooouk Scan & Lab — Receipt ${invoice.invoice_number}\n` +
-      `Amount: ${formatMoney(invoice.amount)} EGP\n` +
-      `Patient: ${invoice.patient_name}\n` +
-      `Exam: ${invoice.exam}\n` +
-      `Date: ${formatVisitDate(invoice.exam_date)}\n\n` +
-      `View/Download Receipt: ${pdfUrl}`;
+    const text = bilingual(
+      `Al Shrooouk Scan & Lab, receipt ${invoice.invoice_number}\n` +
+        `Amount: ${formatMoney(invoice.amount)} EGP\n` +
+        `Patient: ${invoice.patient_name}\n` +
+        `Exam: ${invoice.exam}\n` +
+        `Date: ${formatVisitDate(invoice.exam_date)}\n\n` +
+        `View/Download Receipt: ${pdfUrl}`,
+      `Al Shrooouk Scan & Lab، إيصال ${invoice.invoice_number}\n` +
+        `المبلغ: ${formatMoney(invoice.amount)} جنيه\n` +
+        `المريض: ${invoice.patient_name}\n` +
+        `الفحص: ${invoice.exam}\n` +
+        `التاريخ: ${formatVisitDate(invoice.exam_date)}\n\n` +
+        `عرض / تنزيل الإيصال: ${pdfUrl}`
+    );
     window.open(
       `https://api.whatsapp.com/send?phone=${patientMobile}&text=${encodeURIComponent(text)}`,
       "_blank"
