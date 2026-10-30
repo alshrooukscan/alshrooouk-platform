@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifySession } from "../../../../../lib/session";
+import { buildAccountEntries } from "../../../../../lib/arStatement";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
 
@@ -44,15 +45,33 @@ export async function GET() {
   // request shown under the scan type it resolves to: "cbctq" and "cbct q"
   // both read "3D CBCT Quadrant" (Mohamed Said, 30 Oct 2026).
   const { data: types } = await supabaseAdmin
-    .from("exam_types").select("name, name_aliases, counts_in_report_baseline, is_active").eq("is_active", true);
+    .from("exam_types").select("name, name_aliases, counts_in_report_baseline, default_client_report_price, is_active").eq("is_active", true);
   const byName = new Map();
   for (const t of types || []) {
     byName.set(t.name.trim().toLowerCase(), t.name);
     for (const a of t.name_aliases || []) if (!byName.has(a.trim().toLowerCase())) byName.set(a.trim().toLowerCase(), t.name);
   }
   // Only the scans eligible for reports in the Reports Rule Center.
-  const scanTypes = (types || []).filter((t) => t.counts_in_report_baseline).map((t) => t.name).sort();
+  const eligible = (types || []).filter((t) => t.counts_in_report_baseline);
+  const { data: myPrices } = await supabaseAdmin
+    .from("client_report_prices").select("price, exam_types(name)").eq("client_id", session.id);
+  const priceByName = Object.fromEntries((myPrices || []).map((p) => [p.exam_types?.name, Number(p.price)]));
+  // Each scan type with this client's report price, shown as they choose it.
+  const scanTypes = eligible
+    .map((t) => ({ name: t.name, price: priceByName[t.name] ?? (t.default_client_report_price != null ? Number(t.default_client_report_price) : null) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // What they owe us and what it is made of, the same lines reception prints.
+  let account = { entries: [], totals: { balance: 0 } };
+  try { account = await buildAccountEntries([{ type: "client", id: session.id }]); } catch {}
+  let openFrom = 0;
+  account.entries.forEach((e, i) => { if (e.running <= 0.005) openFrom = i + 1; });
+  const trim = (e) => ({ id: e.id, date: e.date, brand: e.brand, kind: e.kind, label: e.label, receipt_no: e.receipt_no,
+    payment_method: e.payment_method, note: e.note, amount: e.amount, lines: e.lines, difference: e.difference, running: e.running });
   const shaped = (reports || []).map((r) => ({ ...r, scan_type_name: byName.get(String(r.scan_name || "").trim().toLowerCase()) || null }));
 
-  return NextResponse.json({ client, reports: shaped, scanTypes, mustChangePassword: session.impersonated ? false : !!client?.must_change_password, impersonatedBy: session.impersonatedBy || null });
+  return NextResponse.json({ client, reports: shaped, scanTypes,
+    owes: Math.round(Number(account.totals.balance || 0) * 100) / 100,
+    accountOpen: account.entries.slice(openFrom).map(trim),
+    accountHistory: account.entries.slice(Math.max(0, openFrom - 40), openFrom).map(trim), mustChangePassword: session.impersonated ? false : !!client?.must_change_password, impersonatedBy: session.impersonatedBy || null });
 }

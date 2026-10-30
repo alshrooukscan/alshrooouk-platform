@@ -9,6 +9,7 @@ import LoginAsButton from "../../../../components/LoginAsButton";
 import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
 import ClientReportPricing from "../../../../components/ClientReportPricing";
+import ClientAccountCard from "../../../../components/ClientAccountCard";
 import { APP_URL } from "../../../../lib/appUrl";
 import {
   clientPortalWhatsAppLink,
@@ -107,6 +108,8 @@ export default function ClientDetailPage() {
 
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
       {notice && <p style={{ color: "#1e7a3c", fontSize: 13 }}>{notice}</p>}
+
+      <ClientAccountCard client={client} />
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>

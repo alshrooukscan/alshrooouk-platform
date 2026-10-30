@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
+import DoctorAccount from "../../../components/DoctorAccount";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 
 export default function ClientPortalPage() {
@@ -139,6 +140,21 @@ export default function ClientPortalPage() {
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
         <h2 style={{ color: theme.navy, marginBottom: 20 }}>{data.client?.name}</h2>
 
+        {/* What they owe, and what it is made of: each finished report at its
+            price, and each payment. */}
+        {Number(data.owes || 0) > 0 && (
+          <div style={{ background: "#fff8e1", border: "1px solid #eedfae", borderRadius: 14, padding: "16px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ color: "#8a6d00", fontWeight: 700, fontSize: 14 }}>Amount due · المستحق</div>
+              <div style={{ color: "#8a6d00", fontSize: 12, marginTop: 2 }}>For finished reports. Settle it with Al Shrooouk.</div>
+            </div>
+            <div style={{ color: "#8a6d00", fontSize: 26, fontWeight: 700, whiteSpace: "nowrap" }}>{Number(data.owes).toLocaleString()} EGP</div>
+          </div>
+        )}
+        {Number(data.owes || 0) > 0 && (
+          <DoctorAccount open={data.accountOpen || []} history={data.accountHistory || []} balance={data.owes} />
+        )}
+
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showForm ? 16 : 0 }}>
             <h3 style={{ color: theme.navy, margin: 0 }}>Submit a Request</h3>
@@ -159,8 +175,17 @@ export default function ClientPortalPage() {
               <label style={lbl}>Scan type</label>
               <select style={inp} value={scanName} onChange={(e) => setScanName(e.target.value)}>
                 <option value="">Choose the scan type...</option>
-                {scanTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                {scanTypes.map((t) => <option key={t.name} value={t.name}>{t.name}{t.price != null ? ` · ${Number(t.price).toLocaleString()} EGP` : ""}</option>)}
               </select>
+              {(() => {
+                const sel = scanTypes.find((t) => t.name === scanName);
+                if (!sel) return null;
+                return (
+                  <div style={{ marginTop: -4, marginBottom: 10, padding: "8px 12px", borderRadius: 8, background: sel.price != null ? "#eef6f0" : "#fff8e1", fontSize: 13, color: sel.price != null ? "#1e5c33" : "#8a6d00", fontWeight: 600 }}>
+                    {sel.price != null ? `Report price: ${Number(sel.price).toLocaleString()} EGP` : "Price to be confirmed by Al Shrooouk"}
+                  </div>
+                );
+              })()}
               <label style={lbl}>Date Needed (optional)</label>
               <input type="date" style={inp} value={dateRequired} onChange={(e) => setDateRequired(e.target.value)} />
               <label style={lbl}>Attach File</label>

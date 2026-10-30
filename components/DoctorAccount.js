@@ -19,11 +19,17 @@ function Entry({ e }) {
     : e.label === "Order from the doctor portal" ? "Portal order · طلب من الموقع"
     : e.label.startsWith("Balance carried over") ? "Earlier balance · رصيد سابق"
     : e.label;
+  // A client report reads "Report: <scan> · <patient file>": the file goes on
+  // its own line so the amount stays beside the title.
+  const [mainTitle, subTitle] = title.startsWith("Report: ") && title.includes(" · ")
+    ? [title.slice(0, title.indexOf(" · ")), title.slice(title.indexOf(" · ") + 3)]
+    : [title, null];
   return (
     <div style={{ padding: "10px 0", borderTop: "1px solid #f0eee6" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}><bdi>{title}</bdi></div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}><bdi>{mainTitle}</bdi></div>
+          {subTitle && <div style={{ fontSize: 12, color: theme.navy }} dir="auto">{subTitle}</div>}
           <div style={{ fontSize: 11, color: theme.gray }}>
             {date(e.date)}{e.receipt_no ? ` · ${e.receipt_no}` : ""}{e.payment_method ? ` · ${METHOD[e.payment_method] || e.payment_method}` : ""}
           </div>
