@@ -579,19 +579,19 @@ export default function ActionCenterPage() {
       {isAdmin && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>
-            Payments to verify · تأكيد المدفوعات
-            {instapay.length > 0 && <span style={{ marginLeft: 8, fontSize: 12, background: "#fff3e0", color: "#a97c00", padding: "2px 10px", borderRadius: 999 }}>{instapay.length}</span>}
+            InstaPay to verify · تأكيد InstaPay
+            {instapay.filter((x) => x.kind === "instapay").length > 0 && <span style={{ marginLeft: 8, fontSize: 12, background: "#fff3e0", color: "#a97c00", padding: "2px 10px", borderRadius: 999 }}>{instapay.filter((x) => x.kind === "instapay").length}</span>}
           </h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
-            Every InstaPay payment waits here until you check it reached the HSBC account. Card payments on clinic accounts and counter sales come here when Paymob has no matching charge. Confirm and they show as Verified everywhere.
+            Every InstaPay payment waits here until you check it reached the HSBC account. Confirm and it shows as Verified everywhere.
           </p>
-          {!loading && instapay.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing waiting. Every InstaPay and card payment is verified.</p>}
+          {!loading && instapay.filter((x) => x.kind === "instapay").length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing waiting. Every InstaPay payment is verified.</p>}
           <div style={{ display: "grid", gap: 8 }}>
-            {instapay.map((p) => (
+            {instapay.filter((x) => x.kind === "instapay").map((p) => (
               <div key={p.kind + p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, minWidth: 92, textAlign: "center",
-                  background: p.kind === "card" ? "#fdecea" : "#eef2ff", color: p.kind === "card" ? "#ba1a1a" : "#3949ab" }}>
-                  {p.kind === "card" ? "Visa · no Paymob" : "InstaPay"}
+                  background: p.kind === "card" ? "#fff3e0" : "#eef2ff", color: p.kind === "card" ? "#a97c00" : "#3949ab" }}>
+                  {p.kind === "card" ? (p.source === "counter" ? "Counter sale" : "Account payment") : "InstaPay"}
                 </span>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>
@@ -951,7 +951,41 @@ export default function ActionCenterPage() {
             money did arrive and puts your name to it. Rejecting changes nothing on its own - correct
             the method on the visit itself, so the cash total moves with it.
           </p>
-          {cardReviews.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Every card payment is accounted for.</p>}
+          {cardReviews.length === 0 && instapay.every((x) => x.kind !== "card") && <p style={{ color: theme.gray, fontSize: 13 }}>Every card payment is accounted for.</p>}
+          {/* Clinic / client account payments and counter sales recorded as
+              Visa with no Paymob charge after an hour (0127). Same question
+              as the visit payments below, so they sit in the same section. */}
+          <div style={{ display: "grid", gap: 0 }}>
+            {instapay.filter((x) => x.kind === "card").map((p) => (
+              <div key={p.kind + p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, minWidth: 92, textAlign: "center",
+                  background: p.kind === "card" ? "#fff3e0" : "#eef2ff", color: p.kind === "card" ? "#a97c00" : "#3949ab" }}>
+                  {p.kind === "card" ? (p.source === "counter" ? "Counter sale" : "Account payment") : "InstaPay"}
+                </span>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>
+                    {formatMoney(p.amount)} EGP <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>from {p.payer}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    {p.detail} · {new Date(p.recorded_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · recorded by {p.recorded_by || "unknown"}
+                  </div>
+                  {p.kind === "card" && (
+                    <div style={{ fontSize: 12, color: p.hint ? "#8a6d00" : "#ba1a1a", marginTop: 2 }}>
+                      {p.hint ? `Clue: ${p.hint}. Maybe recorded on a different day.` : "No card charge of this amount on Paymob within 3 days. Check with whoever recorded it."}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => decideInstapay(p, true)} disabled={busyId === p.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                    {p.kind === "card" ? "✓ Money arrived" : "✓ Received"}
+                  </button>
+                  <button onClick={() => decideInstapay(p, false)} disabled={busyId === p.id} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: "#ba1a1a", cursor: "pointer", fontSize: 12 }}>
+                    {p.kind === "card" ? "Not by card" : "Not received"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
           {cardReviews.map((r) => (
             <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
               {/* This carried the amount, the method and the time captured and
