@@ -420,6 +420,24 @@ export default function EmployeePortalPage() {
                       {money(data.accrued.gross, { decimals: 2 })}
                     </div>
                   </div>
+                  {Number(data.accrued.report_bonus) > 0 && (
+                    <div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>Report bonus</div>
+                      <div style={{ color: "#1e7a3c", fontSize: 14, fontWeight: 600 }}>+{money(data.accrued.report_bonus, { decimals: 2 })}</div>
+                    </div>
+                  )}
+                  {Number(data.accrued.bonuses) > 0 && (
+                    <div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>Bonuses</div>
+                      <div style={{ color: "#1e7a3c", fontSize: 14, fontWeight: 600 }}>+{money(data.accrued.bonuses, { decimals: 2 })}</div>
+                    </div>
+                  )}
+                  {Number(data.accrued.advance_taken) > 0 && (
+                    <div>
+                      <div style={{ color: theme.gray, fontSize: 11 }}>Advance</div>
+                      <div style={{ color: "#ba1a1a", fontSize: 14, fontWeight: 600 }}>-{money(data.accrued.advance_taken, { decimals: 2 })}</div>
+                    </div>
+                  )}
                   {Number(data.accrued.rule_deductions) + Number(data.accrued.penalty_deductions) > 0 && (
                     <div>
                       <div style={{ color: theme.gray, fontSize: 11 }}>Deductions</div>
@@ -430,7 +448,27 @@ export default function EmployeePortalPage() {
                   )}
                 </div>
 
-                {Number(data.accrued.overtime_hours) > 0 && (
+                {/* Every approved plus and minus by name, the moment an admin
+                    approves or enters it (Mohamed Said, 30 Oct 2026). */}
+                {data.currentSlip && (data.currentSlip.bonuses.length > 0 || data.currentSlip.deductions.length > 0) && (
+                  <div style={{ marginTop: 12, borderTop: "1px solid #f0eef4", paddingTop: 8 }}>
+                    <div style={{ color: theme.gray, fontSize: 11, marginBottom: 4 }}>Approved this month · اتوافق عليه</div>
+                    {data.currentSlip.bonuses.map((b, i) => (
+                      <div key={"b" + i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0" }}>
+                        <span style={{ color: theme.navy }}>{b.name}</span>
+                        <span style={{ color: "#1e7a3c", fontWeight: 700 }}>+ {money(b.amount, { decimals: 2 })}</span>
+                      </div>
+                    ))}
+                    {data.currentSlip.deductions.map((d, i) => (
+                      <div key={"d" + i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0" }}>
+                        <span style={{ color: theme.navy }}>{d.name}{d.note && <span style={{ color: theme.gray, fontSize: 11 }}> · {d.note}</span>}</span>
+                        <span style={{ color: "#ba1a1a", fontWeight: 700 }}>- {money(d.amount, { decimals: 2 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {Number(data.accrued.overtime_hours) > 0 && data.currentSlip?.overtime_pending && (
                   // Shown but excluded from the figure above, and said so. A
                   // person should not read a total that includes hours nobody
                   // has approved yet and plan around it.

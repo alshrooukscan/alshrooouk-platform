@@ -185,6 +185,7 @@ export async function GET() {
           deferred: Number(pv.penalty_deferred || 0),
           advance: Number(pv.open_advances || 0),
           net: Number(pv.indicative_net || 0),
+          overtime_pending: !!pv.overtime_awaiting_decision,
         };
       }
     } catch { /* the portal is still worth serving without it */ }
