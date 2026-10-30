@@ -30,6 +30,11 @@ export async function POST(req) {
   if (!session || !TABLE_BY_ROLE[session.role]) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // An admin viewing someone's portal through Login As must not change that
+  // person's password (security review S-13).
+  if (session.impersonatedBy) {
+    return NextResponse.json({ error: "Password can't be changed while logged in as someone else." }, { status: 403 });
+  }
 
   try {
     const { newPassword } = await req.json();

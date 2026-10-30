@@ -1,5 +1,26 @@
 /** @type {import('next').NextConfig} */
+const securityHeaders = [
+  // Security review S-12: the site sent HSTS only.
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Camera and location are used by the clock-in face check and GPS.
+  { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=()" },
+];
+
 const nextConfig = {
+  poweredByHeader: false,
+  async headers() {
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Face models (about 7 MB) were revalidated on every clock-in. They only
+      // change when the files are replaced, so cache them for a week.
+      { source: "/models/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=604800, stale-while-revalidate=86400" }] },
+      { source: "/:file(logo-full.png|logo-mark.png)", headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }] },
+    ];
+  },
   outputFileTracingIncludes: {
     "/api/invoices/[id]/pdf": ["./public/fonts/**"],
   },

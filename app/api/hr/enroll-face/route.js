@@ -1,16 +1,9 @@
+import { requireStaff } from "../../../../lib/requireStaff";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { ensureEmployeePhotosFolder } from "../../../../lib/folderProvisioning";
 import { uploadFile } from "../../../../lib/googleDrive";
 
-async function requireStaff(req) {
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.replace("Bearer ", "");
-  if (!token) return null;
-  const { data: userData, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !userData?.user) return null;
-  return userData.user;
-}
 
 // Stores the reference face descriptor extracted client-side (self-hosted, in
 // the admin's own browser) against the employee, and files the reference photo
@@ -19,6 +12,10 @@ async function requireStaff(req) {
 export async function POST(req) {
   const staff = await requireStaff(req);
   if (!staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Only HR (or an admin) may change someone's face template (security review S-06).
+  if (!(staff.role === "admin" || staff.permissions?.hr === true)) {
+    return NextResponse.json({ error: "HR access required." }, { status: 403 });
+  }
 
   try {
     const { employeeId, descriptor, filename, mimeType, base64 } = await req.json();

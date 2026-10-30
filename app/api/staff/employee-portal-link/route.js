@@ -21,14 +21,24 @@ export async function POST(req) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const employeeId = userData.user.user_metadata?.employee_id;
-  if (!employeeId) {
+  // The link used to come from user_metadata.employee_id, which any signed-in
+  // user can rewrite for themselves (security review S-03). It now comes only
+  // from server-side records: an active staff profile, and the employee whose
+  // staff_account_email is this account's email.
+  const { data: profile } = await supabaseAdmin
+    .from("staff_profiles").select("id, is_active").eq("id", userData.user.id).maybeSingle();
+  if (!profile || profile.is_active === false) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const email = (userData.user.email || "").trim().toLowerCase();
+  if (!email) {
     return NextResponse.json({ error: "This staff account isn't linked to an employee profile" }, { status: 404 });
   }
-
-  const { data: employee } = await supabaseAdmin.from("employees").select("id, name").eq("id", employeeId).single();
+  const { data: matches } = await supabaseAdmin
+    .from("employees").select("id, name").eq("staff_account_email", email).limit(2);
+  const employee = matches && matches.length === 1 ? matches[0] : null;
   if (!employee) {
-    return NextResponse.json({ error: "Employee record not found" }, { status: 404 });
+    return NextResponse.json({ error: "This staff account isn't linked to an employee profile" }, { status: 404 });
   }
 
   const sessionId = randomUUID();

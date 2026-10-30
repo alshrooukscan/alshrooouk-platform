@@ -19,8 +19,8 @@ export async function POST(req) {
     const { data: updated, error: updateErr } = await supabaseAdmin
       .from("reports")
       .update({ client_uploaded_file_url: file.webViewLink || null, client_uploaded_file_name: fileName })
-      .eq("id", reportId).select().single();
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      .eq("id", reportId).eq("client_id", session.id).select().single();
+    if (updateErr || !updated) return NextResponse.json({ error: "Report not found" }, { status: 404 });
     return NextResponse.json({ ok: true, report: updated });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Could not finalize upload" }, { status: 500 });

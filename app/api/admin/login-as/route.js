@@ -83,10 +83,23 @@ export async function POST(req) {
     }
 
     if (type === "staff") {
-      const { data: profile } = await supabaseAdmin.from("staff_profiles").select("email, name").eq("id", id).single();
+      const { data: profile } = await supabaseAdmin.from("staff_profiles").select("email, name, role").eq("id", id).single();
       if (!profile) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
+      // Never into another admin's account, and always on the record (security review S-13).
+      if (profile.role === "admin") {
+        return NextResponse.json({ error: "You can't log in as another admin." }, { status: 403 });
+      }
+      await supabaseAdmin.from("activity_log").insert({
+        actor_id: admin.id,
+        actor_name: admin.adminName,
+        actor_type: "admin",
+        action: "logged_in_as",
+        entity_type: "staff",
+        entity_id: id,
+        details: { targetName: profile.name },
+      });
       // Same reason as the employee dashboard link: pinned to APP_URL rather
       // than inherited from the Supabase Site URL setting.
       const { data, error } = await supabaseAdmin.auth.admin.generateLink({

@@ -64,7 +64,11 @@ export async function GET(req, { params }) {
     if (parents.length > 0) {
       const [{ data: byPatient }, { data: byIndex }] = await Promise.all([
         supabaseAdmin.from("patients").select("id").in("drive_folder_id", parents).limit(1),
-        supabaseAdmin.from("drive_folder_index").select("id").in("drive_folder_id", parents).limit(1),
+        // Clinical folders only (security review S-05): the index also holds
+        // employee HR documents, doctor and client folders, which must never be
+        // served to whoever holds a link.
+        supabaseAdmin.from("drive_folder_index").select("id").in("drive_folder_id", parents)
+          .in("entity_type", ["patient", "visit", "report"]).limit(1),
       ]);
       if ((byPatient && byPatient.length) || (byIndex && byIndex.length)) {
         const meta = await getFileMeta(fileId).catch(() => null);
@@ -104,12 +108,19 @@ export async function GET(req, { params }) {
     // hundreds of megabytes and holding one in memory would be enough to take
     // the function down.
     const headers = new Headers();
-    headers.set("Content-Type", upstream.headers.get("content-type") || guessType(record.file_name));
+    // Only images, PDFs, video and DICOM open in the browser. Anything else
+    // (HTML, SVG, scripts) is forced to download and sandboxed, so an uploaded
+    // file can never run script on shscan.com (security review S-05).
+    const type = (upstream.headers.get("content-type") || guessType(record.file_name)).toLowerCase();
+    const safeInline = /^(image\/(jpeg|png|gif|webp|bmp|tiff)|application\/pdf|video\/|application\/dicom)/.test(type);
+    headers.set("Content-Type", safeInline ? type : "application/octet-stream");
+    headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; object-src 'self'");
     const len = upstream.headers.get("content-length");
     if (len) headers.set("Content-Length", len);
     headers.set(
       "Content-Disposition",
-      `inline; filename="${(record.file_name || "file").replace(/"/g, "")}"`
+      `${safeInline ? "inline" : "attachment"}; filename="${(record.file_name || "file").replace(/["\r\n]/g, "")}"`
     );
     // Private: this is one person's medical imaging and must not be held by a
     // shared cache along the way.

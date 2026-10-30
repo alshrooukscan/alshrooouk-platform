@@ -46,7 +46,8 @@ export async function GET(req) {
   return handler(req);
 }
 export async function POST(req) {
-  return handler(req);
+  // Same guard as GET: POST used to run the job for anyone (security review S-04).
+  return GET(req);
 }
 
 async function handler() {
