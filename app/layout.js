@@ -1,5 +1,12 @@
 export const dynamic = "force-dynamic";
 
+import { cookies } from "next/headers";
+import { LocaleProvider } from "../lib/i18n";
+import "@fontsource/ibm-plex-sans-arabic/400.css";
+import "@fontsource/ibm-plex-sans-arabic/500.css";
+import "@fontsource/ibm-plex-sans-arabic/600.css";
+import "@fontsource/ibm-plex-sans-arabic/700.css";
+
 export const metadata = {
   // Spelled the way the logo does - ALSHROOUK, two o's. The app had been
   // carrying a third one that appears nowhere on the brand itself.
@@ -49,15 +56,31 @@ const GLOBAL_CSS = `
     [style*="fixed"] > div { max-width: calc(100vw - 20px); }
     h1 { font-size: 22px; }
   }
+
+  /* Arabic (right-to-left). The language toggle sets <html lang="ar" dir="rtl">. */
+  html[lang="ar"] body { font-family: "IBM Plex Sans Arabic", system-ui, sans-serif !important; line-height: 1.6; }
+  html[lang="ar"] input, html[lang="ar"] select, html[lang="ar"] textarea, html[lang="ar"] button { font-family: inherit; }
+  /* Numbers, phones, emails and dates are typed left-to-right even in Arabic. */
+  html[dir="rtl"] input[type="number"], html[dir="rtl"] input[type="tel"], html[dir="rtl"] input[type="email"],
+  html[dir="rtl"] input[type="date"], html[dir="rtl"] input[type="time"], html[dir="rtl"] input[type="datetime-local"],
+  html[dir="rtl"] input[type="month"], html[dir="rtl"] input[type="password"], html[dir="rtl"] input[type="url"] {
+    direction: ltr; text-align: right;
+  }
+  /* Charts read left-to-right (time runs that way) in both languages. */
+  html[dir="rtl"] .recharts-wrapper, html[dir="rtl"] .recharts-responsive-container { direction: ltr; }
 `;
 
 export default function RootLayout({ children }) {
+  // English by default; Arabic when the person chose it with the toggle.
+  const locale = cookies().get("lang")?.value === "ar" ? "ar" : "en";
   return (
-    <html lang="en">
+    <html lang={locale} dir={locale === "ar" ? "rtl" : "ltr"}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />
       </head>
-      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif" }}>{children}</body>
+      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif" }}>
+        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }
