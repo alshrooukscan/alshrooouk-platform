@@ -595,7 +595,7 @@ export default function ActionCenterPage() {
                 </span>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>
-                    {formatMoney(p.amount)} EGP <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>from {p.payer}</span>
+                    {formatMoney(p.amount)} EGP <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>from {p.payer}{p.kind === "card" ? " · Visa" : ""}</span>
                   </div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
                     {p.detail} · {new Date(p.recorded_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · recorded by {p.recorded_by || "unknown"}
@@ -606,7 +606,13 @@ export default function ActionCenterPage() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  {p.link && (
+                    <a href={p.link} target="_blank" rel="noreferrer"
+                      style={{ color: theme.navy, fontSize: 12, fontWeight: 700, padding: "8px 10px", textDecoration: "underline" }}>
+                      {p.source === "counter" ? "Open orders" : "Open statement"}
+                    </a>
+                  )}
                   <button onClick={() => decideInstapay(p, true)} disabled={busyId === p.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
                     {p.kind === "card" ? "✓ Money arrived" : "✓ Received"}
                   </button>
@@ -947,9 +953,9 @@ export default function ActionCenterPage() {
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>Card Payments Awaiting Your Approval</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
-            Recorded as card, but no matching charge was found on the card machine. Approving says the
-            money did arrive and puts your name to it. Rejecting changes nothing on its own - correct
-            the method on the visit itself, so the cash total moves with it.
+            Recorded as Visa or wallet, but Paymob has no matching charge. "Money arrived" says it did and
+            puts your name to it. "Not by card" changes nothing on its own: correct the payment method
+            afterwards so the cash total moves with it.
           </p>
           {cardReviews.length === 0 && instapay.every((x) => x.kind !== "card") && <p style={{ color: theme.gray, fontSize: 13 }}>Every card payment is accounted for.</p>}
           {/* Clinic / client account payments and counter sales recorded as
@@ -964,7 +970,7 @@ export default function ActionCenterPage() {
                 </span>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>
-                    {formatMoney(p.amount)} EGP <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>from {p.payer}</span>
+                    {formatMoney(p.amount)} EGP <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>from {p.payer}{p.kind === "card" ? " · Visa" : ""}</span>
                   </div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
                     {p.detail} · {new Date(p.recorded_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · recorded by {p.recorded_by || "unknown"}
@@ -975,7 +981,13 @@ export default function ActionCenterPage() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  {p.link && (
+                    <a href={p.link} target="_blank" rel="noreferrer"
+                      style={{ color: theme.navy, fontSize: 12, fontWeight: 700, padding: "8px 10px", textDecoration: "underline" }}>
+                      {p.source === "counter" ? "Open orders" : "Open statement"}
+                    </a>
+                  )}
                   <button onClick={() => decideInstapay(p, true)} disabled={busyId === p.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
                     {p.kind === "card" ? "✓ Money arrived" : "✓ Received"}
                   </button>
@@ -986,69 +998,46 @@ export default function ActionCenterPage() {
               </div>
             ))}
           </div>
+          {/* Visit payments, drawn in the same row as the account and counter
+              payments above so the whole section reads as one list (30 Oct
+              2026): type tag, who and how much, the details, the clue, and
+              the two decisions on the right. */}
           {cardReviews.map((r) => (
-            <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
-              {/* This carried the amount, the method and the time captured and
-                  nothing else, so a reviewer could not tell whose payment it
-                  was or what it paid for - which is everything needed to judge
-                  whether a missing card charge is a real problem. */}
-              <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 2 }}>
-                {formatMoney(r.amount)} &middot; {r.payment_method}
-                {r.patient_name ? <> &middot; {r.patient_name}</> : null}
-              </div>
-
-              {(r.scan_types || []).length > 0 && (
-                <div style={{ fontSize: 12, color: theme.navy, marginBottom: 2 }}>
-                  {(r.scan_types || []).join(", ")}
-                  {r.doctor_name ? <span style={{ color: theme.gray }}> &middot; referred by {r.doctor_name}</span> : null}
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, minWidth: 92, textAlign: "center", background: "#fff3e0", color: "#a97c00" }}>
+                Patient visit
+              </span>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>
+                  {formatMoney(r.amount)} EGP{" "}
+                  <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>
+                    {r.patient_name ? `from ${r.patient_name}` : ""} · {r.payment_method}
+                  </span>
                 </div>
-              )}
-
-              <div style={{ fontSize: 12, color: theme.gray }}>
-                {/* Both times, deliberately. The visit is when the patient was
-                    seen; the capture is when the payment was keyed in, and the
-                    two drifting apart is often the reason no charge matched. */}
-                Visit {r.exam_date ? formatVisitDateTime(r.exam_date, r.exam_time) : "date not recorded"}
-                {" · "}captured {new Date(r.paid_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </div>
-
-              {r.visit_amount_due != null && (
                 <div style={{ fontSize: 12, color: theme.gray }}>
-                  Visit charged {formatMoney(r.visit_amount_due)} EGP, paid {formatMoney(r.visit_amount_paid)} EGP
-                  {Number(r.amount) !== Number(r.visit_amount_due) && (
-                    <span style={{ color: "#8a6d00" }}> &middot; this payment is part of it</span>
-                  )}
+                  {(r.scan_types || []).join(", ") || "Visit"}
+                  {r.doctor_name ? ` · referred by ${r.doctor_name}` : ""}
+                  {" · "}visit {r.exam_date ? formatVisitDateTime(r.exam_date, r.exam_time) : "date not recorded"}
+                  {" · "}captured {new Date(r.paid_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                  {r.visit_amount_due != null && Number(r.amount) !== Number(r.visit_amount_due) &&
+                    ` · part of ${formatMoney(r.visit_amount_due)} EGP`}
+                  {r.patient_mobile ? ` · ${r.patient_mobile}` : ""}
                 </div>
-              )}
-
-              {r.patient_mobile && (
-                <div style={{ fontSize: 12, color: theme.gray }}>{r.patient_mobile}</div>
-              )}
-
-              <div style={{ fontSize: 12, color: "#8a6d00", margin: "6px 0 8px" }}>{r.reason}</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button onClick={() => decideCardReview(r.id, "approve")} disabled={busyId === r.id}
-                  style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#1e7a3c", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                  Approve
-                </button>
-                <button onClick={() => decideCardReview(r.id, "reject")} disabled={busyId === r.id}
-                  style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                  Reject
-                </button>
-                {/* This pointed at /dashboard/patients?visit=<id> - the patient
-                    list, which ignores the parameter - so the reviewer landed
-                    on a list of every patient rather than the visit in
-                    question. It now opens that patient's record at that visit. */}
+                {r.reason && <div style={{ fontSize: 12, color: "#8a6d00", marginTop: 2 }}>{r.reason}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {r.patient_id && (
-                  <a
-                    href={`/dashboard/patients/${r.patient_id}?visit=${r.visit_id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: theme.gold, fontSize: 12, fontWeight: 700 }}
-                  >
+                  <a href={`/dashboard/patients/${r.patient_id}?visit=${r.visit_id}`} target="_blank" rel="noreferrer"
+                    style={{ color: theme.navy, fontSize: 12, fontWeight: 700, padding: "8px 10px", textDecoration: "underline" }}>
                     Open visit
                   </a>
                 )}
+                <button onClick={() => decideCardReview(r.id, "approve")} disabled={busyId === r.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                  ✓ Money arrived
+                </button>
+                <button onClick={() => decideCardReview(r.id, "reject")} disabled={busyId === r.id} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: "#ba1a1a", cursor: "pointer", fontSize: 12 }}>
+                  Not by card
+                </button>
               </div>
             </div>
           ))}
