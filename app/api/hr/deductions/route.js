@@ -114,6 +114,8 @@ export async function POST(req) {
       "absence_day_multiplier", "overtime_min_minutes", "overtime_multiplier", "extra_day_multiplier",
       "early_credit_cap_minutes", "stay_credit_cap_minutes", "early_min_minutes",
       "grace_reduces_overtime", "balance_mode", "partial_makeup_daily", "pay_unverified_days",
+      // report bonus: do external client reports use up the daily free reports (30 Oct 2026)
+      "external_reports_in_baseline",
     ]) {
       if (Object.prototype.hasOwnProperty.call(body, k)) {
         patch[k] = body[k] === "" ? null : body[k];

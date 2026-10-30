@@ -29,6 +29,7 @@ const RULES = [
 const SWITCHES = [
   ["grace_reduces_overtime", "Grace-period lateness reduces overtime", "Minutes late within the grace are never deducted, but are taken off extra time before overtime is paid."],
   ["pay_unverified_days", "Pay days with no clock record", "Days before an employee had an account, or for someone who never clocks in, are paid."],
+  ["external_reports_in_baseline", "External reports count toward the daily free reports", "On: external client reports are counted with clinic reports in each employee's daily free reports (5 by default). Off (Mohamed, 30 Oct 2026): only clinic reports are counted, and external reports are paid at their own external rate."],
 ];
 
 async function authHeaders() {
