@@ -97,17 +97,30 @@ export default function DashboardLayout({ children }) {
   // first landing, choosing Dashboard in the sidebar opens it as normal.
   // Read once, when the layout first mounts, so it holds steady while the
   // redirect happens.
-  const [isFirstLanding] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try { return !sessionStorage.getItem("dash_landed"); } catch { return false; }
+  // Kept per person: a tab opened from another tab inherits its session
+  // storage, so the admin's mark used to travel into the employee's dashboard
+  // tab (admin tab -> portal tab -> dashboard tab) and skip their landing.
+  const landKey = profile?.id ? `dash_landed:${profile.id}` : null;
+  const [landedAtMount] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try { return Object.fromEntries(Object.keys(sessionStorage).filter((k) => k.startsWith("dash_landed:")).map((k) => [k, true])); } catch { return {}; }
   });
-  const sendToActionCenter = ready && !permsLoading && profile && profile.role !== "admin" && pathname === "/dashboard" && isFirstLanding;
+  const isFirstLanding = !!landKey && !landedAtMount[landKey];
+  // Someone without Dashboard access is always taken there: /dashboard would
+  // only show them "Access restricted" (Merna, 30 Oct 2026, arriving from the
+  // portal's Open staff dashboard). Someone with access goes there only on the
+  // first open of the session.
+  const sendToActionCenter = !!(ready && !permsLoading && profile && profile.role !== "admin"
+    && pathname === "/dashboard" && (!can("dashboard") || isFirstLanding));
   useEffect(() => {
     if (!ready || permsLoading || !profile) return;
-    try { if (!sessionStorage.getItem("dash_landed")) sessionStorage.setItem("dash_landed", "1"); } catch {}
-    if (sendToActionCenter) router.replace("/dashboard/action-center");
+    if (sendToActionCenter) { router.replace("/dashboard/action-center"); return; }
+    // Marked only once a staff profile is settled on a page that was not
+    // redirected, so a session that briefly starts as someone else (a login
+    // link opened in a browser already signed in) cannot use up the landing.
+    try { if (landKey && !sessionStorage.getItem(landKey)) sessionStorage.setItem(landKey, "1"); } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, permsLoading, profile]);
+  }, [ready, permsLoading, profile, pathname, sendToActionCenter]);
 
   const required = permissionForPath(pathname);
   const adminOnly = ADMIN_ROUTES.some((p) => pathname.startsWith(p));
