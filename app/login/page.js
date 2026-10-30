@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
@@ -17,8 +17,29 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  // Tap-to-login from the WhatsApp account message (30 Oct 2026):
+  // /login#u=<username>&p=<password>. The part after "#" never reaches the
+  // server, so the password is not logged anywhere. It is read once, wiped
+  // from the address bar and history, and used to sign in straight away.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.location.hash.startsWith("#u=")) return;
+    const q = new URLSearchParams(window.location.hash.slice(1));
+    const u = q.get("u") || "";
+    const p = q.get("p") || "";
+    window.history.replaceState(null, "", window.location.pathname);
+    if (!u) return;
+    setEmail(u);
+    setPassword(p);
+    if (p) signInWith(u, p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleSubmit(e) {
     e.preventDefault();
+    return signInWith(email, password);
+  }
+
+  async function signInWith(email, password) {
     setError("");
     setLoading(true);
 
