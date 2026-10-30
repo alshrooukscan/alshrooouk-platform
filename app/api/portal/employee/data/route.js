@@ -164,8 +164,35 @@ export async function GET() {
     accrued = (trialRows || []).find((r) => r.employee_id === session.id) || null;
   } catch { /* the portal is still worth serving without it */ }
 
+  // This month's payslip as it stands, with only what an admin has approved:
+  // each bonus and deduction by name. Mohamed Said (30 Oct 2026): an employee
+  // opening their month should see what was approved, plus or minus.
+  let currentSlip = null;
+  if (!(payslips || []).some((p) => String(p.period).slice(0, 7) === accruedPeriod)) {
+    try {
+      const { data: pv } = await supabaseAdmin.rpc("payslip_preview", { p_employee_id: session.id, p_period: accruedPeriod });
+      if (pv) {
+        const approved = (pv.adjustments || []).filter((a) => a.status === "approved");
+        currentSlip = {
+          period: accruedPeriod,
+          pay_basis: pv.pay_basis,
+          paid_hours: Number(pv.paid_hours || 0),
+          base: Number(pv.gross || 0),
+          report_bonus: Number(pv.report_bonus || 0),
+          raw_data_bonus: Number(pv.raw_data_bonus || 0),
+          bonuses: approved.filter((a) => a.kind === "bonus").map((a) => ({ name: a.label, amount: Number(a.amount) })),
+          deductions: approved.filter((a) => a.kind === "deduction").map((a) => ({ name: a.label, amount: Number(a.amount), note: a.note || null })),
+          deferred: Number(pv.penalty_deferred || 0),
+          advance: Number(pv.open_advances || 0),
+          net: Number(pv.indicative_net || 0),
+        };
+      }
+    } catch { /* the portal is still worth serving without it */ }
+  }
+
   return NextResponse.json({
     accrued,
+    currentSlip,
     accruedPeriod,
     employee,
     cashBalances: myCash || [],

@@ -591,10 +591,20 @@ export default function EmployeeProfilePage() {
           {payslip && (
             <div>
               <p style={{ fontSize: 12, color: theme.gray }}>Period: {payslip.period}</p>
-              <Row label="Fixed Salary" value={`${formatMoney(payslip.fixed_salary, { decimals: 2 })} EGP`} />
-              <Row label="Variable Salary" value={`${formatMoney(payslip.variable_salary, { decimals: 2 })} EGP`} />
-              {(payslip.deductions || []).map((d, i) => (
+              {/* What was actually paid. "Fixed Salary 0.00" was all an hourly
+                  payslip showed, with the hours, the report bonus and the
+                  approved bonuses nowhere on it. */}
+              <Row label="Expected pay" value={`${formatMoney(Number(payslip.gross_pay || 0) - Number(payslip.report_bonus || 0) - Number(payslip.raw_data_bonus || 0), { decimals: 2 })} EGP`} />
+              {Number(payslip.report_bonus) > 0 && <Row label="Report bonus" value={`${formatMoney(payslip.report_bonus, { decimals: 2 })} EGP`} />}
+              {Number(payslip.raw_data_bonus) > 0 && <Row label="Raw data bonus" value={`${formatMoney(payslip.raw_data_bonus, { decimals: 2 })} EGP`} />}
+              {(payslip.bonuses || []).map((b, i) => (
+                <Row key={"b" + i} label={b.name} value={`+ ${formatMoney(b.amount, { decimals: 2 })} EGP`} />
+              ))}
+              {(payslip.deductions || []).filter((d) => d.source !== "cap").map((d, i) => (
                 <Row key={i} label={d.name} value={`- ${formatMoney(d.amount, { decimals: 2 })} EGP`} negative />
+              ))}
+              {(payslip.deductions || []).filter((d) => d.source === "cap").map((d, i) => (
+                <Row key={"c" + i} label={d.name} value={`${formatMoney(d.deferred, { decimals: 2 })} EGP`} />
               ))}
               <div style={{ borderTop: `2px solid ${theme.navy}`, marginTop: 12, paddingTop: 12, display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 700, color: theme.navy }}>Net Pay</span>

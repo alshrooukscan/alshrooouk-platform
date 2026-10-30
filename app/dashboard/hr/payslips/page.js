@@ -456,6 +456,16 @@ export default function PayslipsPage() {
             </div>
           )}
 
+          {slip.penaltyDeferred > 0 && (
+            <div style={{ ...card, marginBottom: 18, borderLeft: "4px solid #ba1a1a" }}>
+              <strong style={{ color: "#ba1a1a" }}>{formatMoney(slip.penaltyDeferred)} EGP of approved deductions move to next month.</strong>
+              <p style={{ fontSize: 12, color: theme.gray, margin: "6px 0 0" }}>
+                The deduction cap is {slip.penaltyCapPercent}% of this month&apos;s pay, and a deduction that does not fit moves whole
+                to next month. The net pay above already reflects this. Change the cap on HR Rules (100 = always apply in full).
+              </p>
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
             <div style={card}>
               <h3 style={{ color: theme.navy, marginTop: 0 }}>Adjustments this month</h3>

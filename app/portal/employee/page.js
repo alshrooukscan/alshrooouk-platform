@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { Fragment, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { theme } from "../../../lib/theme";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
@@ -575,21 +575,22 @@ export default function EmployeePortalPage() {
         {tab === "payslips" && (
           <>
             {payGate}
-            {data.payslips.length === 0 && <div style={cardStyle}>No payslips generated yet.</div>}
+            {data.currentSlip && <SlipCard slip={data.currentSlip} live money={money} />}
+            {data.payslips.length === 0 && !data.currentSlip && <div style={cardStyle}>No payslips generated yet.</div>}
             {data.payslips.map((p) => (
-              <div key={p.id} style={cardStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontWeight: 600, color: theme.navy }}>{p.period}</span>
-                  <span style={{ fontWeight: 700, color: theme.navy }}>{money(p.net_total, { decimals: 2 })} EGP</span>
-                </div>
-                {(p.deductions || []).length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    {p.deductions.map((d, i) => (
-                      <div key={i} style={{ fontSize: 11, color: "#ba1a1a" }}>- {d.name}: {money(d.amount, { decimals: 2 })} EGP</div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SlipCard key={p.id} money={money} slip={{
+                period: String(p.period).slice(0, 7),
+                pay_basis: p.pay_basis,
+                paid_hours: Number(p.paid_hours || 0),
+                base: Number(p.gross_pay || 0) - Number(p.report_bonus || 0) - Number(p.raw_data_bonus || 0),
+                report_bonus: Number(p.report_bonus || 0),
+                raw_data_bonus: Number(p.raw_data_bonus || 0),
+                bonuses: p.bonuses || [],
+                deductions: (p.deductions || []).filter((d) => d.source !== "cap"),
+                deferred: (p.deductions || []).filter((d) => d.source === "cap").reduce((s, d) => s + Number(d.deferred || 0), 0),
+                advance: 0,
+                net: Number(p.net_total || 0),
+              }} />
             ))}
           </>
         )}
@@ -1153,6 +1154,54 @@ function Row({ label, value, bold }) {
     <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13 }}>
       <span style={{ color: theme.gray }}>{label}</span>
       <span style={{ color: theme.navy, fontWeight: bold ? 700 : 600 }}>{value}</span>
+    </div>
+  );
+}
+
+// One month of pay, opened by tapping it: the expected pay, then every approved
+// plus and minus by name, then the net. Mohamed Said, 30 Oct 2026.
+function SlipCard({ slip, live, money }) {
+  const [open, setOpen] = useState(!!live);
+  const line = (label, value, color, sub) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "5px 0", borderTop: "1px solid #f2f2f2", fontSize: 13 }}>
+      <span style={{ color: theme.navy }}>{label}{sub && <div style={{ fontSize: 11, color: theme.gray }}>{sub}</div>}</span>
+      <span style={{ fontWeight: 700, color: color || theme.navy, whiteSpace: "nowrap" }}>{value}</span>
+    </div>
+  );
+  return (
+    <div style={{ ...cardStyle, cursor: "pointer" }} onClick={() => setOpen(!open)}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 600, color: theme.navy }}>
+          {slip.period}
+          {live && <span style={{ fontSize: 10, fontWeight: 700, color: "#a97c00", background: "#fff8e1", padding: "2px 8px", borderRadius: 999, marginLeft: 8 }}>This month · not final</span>}
+        </span>
+        <span style={{ fontWeight: 700, color: theme.navy }}>{money(slip.net, { decimals: 2 })} EGP {open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+          {line(
+            "Expected pay · الأساسي",
+            `${money(slip.base, { decimals: 2 })} EGP`,
+            null,
+            slip.pay_basis === "hourly" && slip.paid_hours ? `${money(slip.paid_hours, { decimals: 2 })} hours` : null
+          )}
+          {slip.report_bonus > 0 && line("Report bonus · بونص التقارير", `+ ${money(slip.report_bonus, { decimals: 2 })} EGP`, "#1e7a3c")}
+          {slip.raw_data_bonus > 0 && line("Raw data bonus · بونص الـ Raw data", `+ ${money(slip.raw_data_bonus, { decimals: 2 })} EGP`, "#1e7a3c")}
+          {slip.bonuses.map((b, i) => <Fragment key={"b" + i}>{line(b.name, `+ ${money(b.amount, { decimals: 2 })} EGP`, "#1e7a3c")}</Fragment>)}
+          {slip.deductions.map((d, i) => <Fragment key={"d" + i}>{line(d.name, `- ${money(d.amount, { decimals: 2 })} EGP`, "#ba1a1a", d.note)}</Fragment>)}
+          {slip.deferred > 0 && line("Moved to next month (deduction cap) · مترحّل للشهر الجاي", `${money(slip.deferred, { decimals: 2 })} EGP`, theme.gray)}
+          {slip.advance > 0 && line("Advance repayment · سداد سلفة", `- ${money(slip.advance, { decimals: 2 })} EGP`, "#ba1a1a")}
+          <div style={{ display: "flex", justifyContent: "space-between", borderTop: `2px solid ${theme.navy}`, marginTop: 6, paddingTop: 8, fontWeight: 800, color: theme.navy }}>
+            <span>Net pay · الصافي</span>
+            <span>{money(slip.net, { decimals: 2 })} EGP</span>
+          </div>
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 6 }}>
+            {live
+              ? "Only items an admin has approved are included. This can still change until the payslip is issued."
+              : "Issued payslip. Only approved items are included."}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

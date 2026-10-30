@@ -25,6 +25,7 @@ const RULES = [
   ["early_leave_grace_minutes", "Early leave grace (minutes)", "Early leave up to this is ignored."],
   ["absence_day_multiplier", "Absence (days charged per absent day)", "The absent day is already unpaid; the extra charge is this minus one."],
   ["extra_day_multiplier", "Extra day multiplier", "A day worked with no shift pays one day times this."],
+  ["penalty_cap_percent", "Deduction cap (% of the month's pay)", "No payslip loses more than this share of what was earned to approved deductions. A deduction that does not fit moves whole to next month. 100 = approved deductions always apply in full."],
 ];
 const SWITCHES = [
   ["grace_reduces_overtime", "Grace-period lateness reduces overtime", "Minutes late within the grace are never deducted, but are taken off extra time before overtime is paid."],
