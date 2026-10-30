@@ -8,6 +8,7 @@ import { resolveUniqueUsername } from "../../../../lib/uniqueUsername";
 import LoginAsButton from "../../../../components/LoginAsButton";
 import WhatsAppDropdown from "../../../../components/WhatsAppDropdown";
 import PortalAccessCard from "../../../../components/PortalAccessCard";
+import ClientReportPricing from "../../../../components/ClientReportPricing";
 import { APP_URL } from "../../../../lib/appUrl";
 import {
   clientPortalWhatsAppLink,
@@ -100,7 +101,8 @@ export default function ClientDetailPage() {
             {" · "}Username: {client.username || "no login yet"}
           </p>
         </div>
-        {client.username && <LoginAsButton type="client" id={client.id} name={client.name} size="small" />}
+        {/* Full size: it was a small pale button at the far edge and easy to miss. */}
+        {client.username && <LoginAsButton type="client" id={client.id} name={client.name} />}
       </div>
 
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
@@ -141,9 +143,27 @@ export default function ClientDetailPage() {
         <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 12px" }}>
           Shown on this client&apos;s portal in place of ours. Their patients see that page, so it should carry their name, not ours.
         </p>
-        <input type="file" accept="image/*" onChange={(e) => uploadLogo(e.target.files?.[0])} disabled={uploading} style={{ fontSize: 12 }} />
-        {uploading && <span style={{ fontSize: 12, color: theme.gray, marginLeft: 8 }}>Uploading...</span>}
+        {/* The current logo stays on show. The file picker only ever said "No
+            file chosen", which read as if the logo had not been kept. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          {client.logo_url ? (
+            <img src={client.logo_url} alt={`${client.name} logo`} style={{ height: 88, width: 88, objectFit: "contain", borderRadius: 12, border: "1px solid #eee", background: "#fff", padding: 6 }} />
+          ) : (
+            <div style={{ height: 88, width: 88, borderRadius: 12, border: "1px dashed #ddd", display: "flex", alignItems: "center", justifyContent: "center", color: theme.gray, fontSize: 11, textAlign: "center" }}>no logo yet</div>
+          )}
+          <div>
+            <div style={{ fontSize: 12, color: client.logo_url ? "#1e7a3c" : theme.gray, fontWeight: 700, marginBottom: 8 }}>
+              {client.logo_url ? "✓ Saved. Shown on their portal." : "Upload their logo to show it on their portal."}
+            </div>
+            <label style={{ display: "inline-block", padding: "8px 16px", borderRadius: 8, border: `1px solid ${theme.navy}`, color: theme.navy, fontWeight: 700, fontSize: 12, cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.6 : 1 }}>
+              {uploading ? "Uploading..." : client.logo_url ? "Replace logo" : "Upload logo"}
+              <input type="file" accept="image/*" onChange={(e) => uploadLogo(e.target.files?.[0])} disabled={uploading} style={{ display: "none" }} />
+            </label>
+          </div>
+        </div>
       </div>
+
+      <ClientReportPricing client={client} />
 
       {/* The same card doctors use. It already distinguishes creating an
           account from resetting a password, confirms before resetting, and
