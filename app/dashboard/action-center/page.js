@@ -81,12 +81,15 @@ export default function ActionCenterPage() {
   }, [permsLoading, profile, approvalFilter, visitEditFilter]);
 
   async function decideInstapay(item, approve) {
-    if (!approve && !confirm(`Mark ${formatMoney(item.amount)} EGP from ${item.payer} as NOT received?`)) return;
+    if (!approve && !confirm(item.kind === "card"
+      ? `Mark ${formatMoney(item.amount)} EGP from ${item.payer} as NOT paid by card? Correct its payment method afterwards.`
+      : `Mark ${formatMoney(item.amount)} EGP from ${item.payer} as NOT received?`)) return;
     setBusyId(item.id);
-    const { error } = await supabase.rpc("verify_instapay", { p_source: item.source, p_id: item.id, p_approve: approve });
+    const fn = item.kind === "card" ? "verify_card_manual" : "verify_instapay";
+    const { error } = await supabase.rpc(fn, { p_source: item.source, p_id: item.id, p_approve: approve });
     setBusyId(null);
     if (error) { alert(error.message); return; }
-    setInstapay((list) => list.filter((x) => x.id !== item.id));
+    setInstapay((list) => list.filter((x) => !(x.id === item.id && x.kind === item.kind)));
   }
 
   async function decideStockChange(id, status) {
@@ -275,10 +278,17 @@ export default function ActionCenterPage() {
         if (!r.ok) throw new Error("fixes");
         setClockFixes((await r.json()).requests || []);
       }));
-      jobs.push(track("InstaPay to verify", async () => {
-        const { data, error } = await supabase.rpc("instapay_pending");
-        if (error) throw error;
-        setInstapay(data || []);
+      // InstaPay has no gateway, so every receipt waits here; card payments on
+      // accounts and counter sales come here only when Paymob has no charge
+      // for them after an hour (0126, 0127).
+      jobs.push(track("Payments to verify", async () => {
+        const [ip, cards] = await Promise.all([supabase.rpc("instapay_pending"), supabase.rpc("cards_unproven")]);
+        if (ip.error) throw ip.error;
+        if (cards.error) throw cards.error;
+        setInstapay([
+          ...(ip.data || []).map((x) => ({ ...x, kind: "instapay" })),
+          ...(cards.data || []).map((x) => ({ ...x, kind: "card" })),
+        ].sort((a, b) => String(a.recorded_at).localeCompare(String(b.recorded_at))));
       }));
       jobs.push(track("Card payments to review", async () => {
         const r = await fetch("/api/paymob/reviews?status=pending", auth);
@@ -569,16 +579,20 @@ export default function ActionCenterPage() {
       {isAdmin && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginBottom: 20 }}>
           <h3 style={{ color: theme.navy, marginTop: 0 }}>
-            InstaPay to verify · تأكيد InstaPay
+            Payments to verify · تأكيد المدفوعات
             {instapay.length > 0 && <span style={{ marginLeft: 8, fontSize: 12, background: "#fff3e0", color: "#a97c00", padding: "2px 10px", borderRadius: 999 }}>{instapay.length}</span>}
           </h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 12 }}>
-            Every InstaPay payment waits here until you check it reached the HSBC account. Confirm and it shows as Verified everywhere.
+            Every InstaPay payment waits here until you check it reached the HSBC account. Card payments on clinic accounts and counter sales come here when Paymob has no matching charge. Confirm and they show as Verified everywhere.
           </p>
-          {!loading && instapay.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing waiting. Every InstaPay payment is verified.</p>}
+          {!loading && instapay.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing waiting. Every InstaPay and card payment is verified.</p>}
           <div style={{ display: "grid", gap: 8 }}>
             {instapay.map((p) => (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
+              <div key={p.kind + p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, minWidth: 92, textAlign: "center",
+                  background: p.kind === "card" ? "#fdecea" : "#eef2ff", color: p.kind === "card" ? "#ba1a1a" : "#3949ab" }}>
+                  {p.kind === "card" ? "Visa · no Paymob" : "InstaPay"}
+                </span>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>
                     {formatMoney(p.amount)} EGP <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>from {p.payer}</span>
@@ -586,13 +600,18 @@ export default function ActionCenterPage() {
                   <div style={{ fontSize: 12, color: theme.gray }}>
                     {p.detail} · {new Date(p.recorded_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · recorded by {p.recorded_by || "unknown"}
                   </div>
+                  {p.kind === "card" && (
+                    <div style={{ fontSize: 12, color: p.hint ? "#8a6d00" : "#ba1a1a", marginTop: 2 }}>
+                      {p.hint ? `Clue: ${p.hint}. Maybe recorded on a different day.` : "No card charge of this amount on Paymob within 3 days. Check with whoever recorded it."}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => decideInstapay(p, true)} disabled={busyId === p.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-                    ✓ Received
+                    {p.kind === "card" ? "✓ Money arrived" : "✓ Received"}
                   </button>
                   <button onClick={() => decideInstapay(p, false)} disabled={busyId === p.id} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: "#ba1a1a", cursor: "pointer", fontSize: 12 }}>
-                    Not received
+                    {p.kind === "card" ? "Not by card" : "Not received"}
                   </button>
                 </div>
               </div>

@@ -33,8 +33,10 @@ export default function VerifyPill({ method, verification, paymobId, cardLast4, 
   if (m === "visa" || m === "wallet" || m === "card") {
     if (paymobId || v.startsWith("verified"))
       return <span style={{ ...pill, ...GREEN }} title={paymobId ? `Paymob transaction ${paymobId}` : "Matched on Paymob"}>✓ Verified{cardLast4 ? ` · ••${cardLast4}` : ""}</span>;
+    if (v === "rejected_card")
+      return <span style={{ ...pill, ...RED }} title={verifiedBy ? `Marked by ${verifiedBy}: not paid by card, fix the method` : "Not paid by card"}>✕ Not on Paymob</span>;
     if (v === "approved_by_admin")
-      return <span style={{ ...pill, background: "#f4f6fb", border: "1px solid #ccd6ea", color: "#31518f" }}>Approved by admin</span>;
+      return <span style={{ ...pill, background: "#f4f6fb", border: "1px solid #ccd6ea", color: "#31518f" }} title="No Paymob charge; an admin confirmed the money arrived">✓ Approved by {verifiedBy || "admin"}</span>;
     return <span style={{ ...pill, ...AMBER }} title="No matching Paymob charge found yet">Awaiting card proof</span>;
   }
   return null;
