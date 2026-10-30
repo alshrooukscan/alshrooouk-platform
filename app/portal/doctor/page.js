@@ -327,7 +327,7 @@ export default function DoctorPortalPage() {
                     {(() => {
                       const files = filesByPatient[patientId] || [];
                       const FileGrid = ({ items }) => (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 150px), 1fr))", gap: 8 }}>
                           {items.map((f) =>
                             f.seriesCount > 1 ? (
                               // The server folds a large set into one entry. It
