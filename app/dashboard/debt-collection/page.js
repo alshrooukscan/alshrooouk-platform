@@ -31,6 +31,7 @@ export default function DebtCollectionPage() {
   const { can, isAdmin, loading: permsLoading } = usePermissions();
   const [customers, setCustomers] = useState([]);
   const [patientDebts, setPatientDebts] = useState([]);
+  const [recentPayments, setRecentPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [target, setTarget] = useState(null);
@@ -64,6 +65,7 @@ export default function DebtCollectionPage() {
       if (!res.ok) throw new Error(json.error || "Could not load outstanding balances.");
       setCustomers(json.customers || []);
       setPatientDebts(json.patientDebts || []);
+      setRecentPayments(json.recentPayments || []);
       setStaffList(json.staff || []);
       setSelfEmployeeId(json.selfEmployeeId || null);
     } catch (e) {
@@ -267,6 +269,47 @@ export default function DebtCollectionPage() {
         </div>
       )}
 
+      {/* Payments in the last 30 days, each with its invoice. A clinic that pays
+          in full leaves the list above, and this is how its invoice is found
+          again afterwards. */}
+      {recentPayments.filter((r) => brandFilter === "all" || r.brand === brandFilter).length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)", marginTop: 20 }}>
+          <h3 style={{ color: theme.navy, margin: "0 0 2px", fontSize: 16 }}>Recent payments · آخر المدفوعات</h3>
+          <p style={{ color: theme.gray, fontSize: 12, margin: "0 0 14px" }}>
+            The last 30 days. Print the invoice for what each payment covered, including accounts that are now closed.
+          </p>
+          <div style={{ display: "grid", gap: 6 }}>
+            {recentPayments
+              .filter((r) => brandFilter === "all" || r.brand === brandFilter)
+              .map((r) => (
+                <div key={r.ledger_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid #eceff1", background: "#fafbfc", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: theme.navy, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      {r.clinic_code && (
+                        <span style={{ background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999 }}>{r.clinic_code}</span>
+                      )}
+                      <span>{r.name}</span>
+                      {Math.abs(r.balance_now) < 0.005 && (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "#1e7a3c", background: "#e6f4ea", padding: "2px 8px", borderRadius: 999 }}>Account closed</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: theme.gray }}>
+                      {r.date} · {BRAND_LABEL[r.brand] || r.brand} · {r.receipt_no || "no receipt no."} · {r.method}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontWeight: 800, color: "#1e7a3c", whiteSpace: "nowrap" }}>{money(r.amount)} EGP</div>
+                    <a href={invoiceHref(r.customer_id, r.brand, r.ledger_id)} target="_blank" rel="noreferrer"
+                      style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}>
+                      Invoice
+                    </a>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {target && (
         <PaymentModal
           staffList={staffList}
@@ -325,7 +368,7 @@ function PaymentModal({ customer, staffList, selfEmployeeId, authedFetch, onClos
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not record that payment.");
-      onSaved({ ...json.result, customerName: customer.name, brand: customer.brand });
+      onSaved({ ...json.result, customerName: customer.name, customerId: customer.customer_id, brand: customer.brand });
     } catch (e) {
       setError(e.message);
     }
@@ -486,12 +529,27 @@ function ReceiptModal({ receipt, onClose }) {
         <Row k="Method" v={receipt.method} />
         <Row k="Remaining Balance" v={`${money(receipt.outstanding)} EGP`} strong />
       </div>
-      <p style={{ fontSize: 12, color: theme.gray, marginTop: 0 }}>
-        Sending the printed and WhatsApp receipt to the customer is the next part of this stage.
-      </p>
-      <button onClick={onClose} style={primaryBtn}>Done</button>
+      <div style={{ display: "flex", gap: 8 }}>
+        {receipt.ledger_id && receipt.customerId && (
+          <a
+            href={invoiceHref(receipt.customerId, receipt.brand, receipt.ledger_id)}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...primaryBtn, textDecoration: "none", display: "inline-block" }}
+          >
+            Print invoice · طباعة فاتورة
+          </a>
+        )}
+        <button onClick={onClose} style={cancelBtn}>Done</button>
+      </div>
     </Modal>
   );
+}
+
+// The invoice for one payment: what the clinic took since its account was last
+// clear, at the price charged, and what this payment settled.
+function invoiceHref(customerId, brand, ledgerId) {
+  return `/dashboard/debt-collection/statement/${customerId}/${brand}?payment=${ledgerId}`;
 }
 
 function Row({ k, v, strong }) {

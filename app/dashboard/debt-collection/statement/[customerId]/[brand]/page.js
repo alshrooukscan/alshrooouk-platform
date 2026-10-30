@@ -25,6 +25,11 @@ export default function AccountStatementPage() {
   const [error, setError] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // ?payment=<ledger id> turns this page into the invoice for that payment.
+  const [paymentId, setPaymentId] = useState(null);
+  useEffect(() => {
+    setPaymentId(new URLSearchParams(window.location.search).get("payment"));
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -59,6 +64,7 @@ export default function AccountStatementPage() {
 
   if (error) return <p style={{ padding: 24, color: "#ba1a1a" }}>{error}</p>;
   if (!data || !view) return <p style={{ padding: 24, color: theme.gray }}>Loading...</p>;
+  if (paymentId) return <Invoice data={data} paymentId={paymentId} />;
   const c = data.customer;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(new Date());
 
@@ -221,3 +227,157 @@ const th = { padding: "8px 8px", textAlign: "right", fontWeight: 700, fontSize: 
 const td = { padding: "5px 8px", textAlign: "right", verticalAlign: "top" };
 const sumL = { padding: "4px 14px", color: theme.gray };
 const sumR = { padding: "4px 0", textAlign: "right", fontWeight: 700 };
+
+// Invoice for one payment (Doaa, 28 Oct 2026: when a doctor closes the account
+// and pays, print him an invoice of what he took).
+//
+// It covers everything charged since the account was last clear, up to this
+// payment: each order or sale with its items at the price charged, any returns,
+// anything already paid in that stretch, this payment, and what is left. Later
+// charges are left out, so the invoice reads the same whenever it is reprinted.
+function Invoice({ data, paymentId }) {
+  const entries = data.entries;
+  const p = entries.findIndex((e) => e.id === paymentId);
+  if (p < 0) return <p style={{ padding: 24, color: "#ba1a1a" }}>That payment is not on this account.</p>;
+  const pay = entries[p];
+
+  const signed = (e) => (e.kind === "charge" ? e.amount : -e.amount);
+  let running = 0;
+  let start = 0;
+  let opening = 0;
+  for (let i = 0; i < p; i++) {
+    running = Math.round((running + signed(entries[i])) * 100) / 100;
+    if (running <= 0.005) { start = i + 1; opening = running; }
+  }
+  const window_ = entries.slice(start, p);
+  const charges = window_.filter((e) => e.kind === "charge");
+  const returns = window_.filter((e) => e.kind === "return");
+  const earlier = window_.filter((e) => e.kind === "payment" || e.kind === "adjustment");
+  const sum = (xs) => Math.round(xs.reduce((t, e) => t + e.amount, 0) * 100) / 100;
+  const totalCharged = sum(charges);
+  const totalReturned = sum(returns);
+  const totalEarlier = sum(earlier);
+  const remaining = Math.round((opening + totalCharged - totalReturned - totalEarlier - pay.amount) * 100) / 100;
+  const c = data.customer;
+  const paidInFull = remaining <= 0.005;
+
+  const rows = [];
+  for (const e of [...charges, ...returns].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))) {
+    const sign = e.kind === "return" ? -1 : 1;
+    const head = `${e.kind === "return" ? "Returned" : e.label}${e.receipt_no ? " · " + e.receipt_no : ""}`;
+    if (e.lines.length) {
+      e.lines.forEach((l, i) => rows.push({ key: e.id + i, date: i === 0 ? e.date : null, head: i === 0 ? head : null, item: l.item, qty: l.qty, unit: l.unit_price, total: sign * l.line_total }));
+      if (e.difference !== 0) rows.push({ key: e.id + "d", item: e.difference < 0 ? "Discount" : "Other charges", total: sign * e.difference });
+    } else {
+      rows.push({ key: e.id, date: e.date, head, item: e.note || "", total: sign * e.amount });
+    }
+  }
+
+  return (
+    <div style={{ background: "#fff", maxWidth: 820, margin: "0 auto", padding: 32, color: theme.navy }}>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: #fff !important; }
+          aside, nav { display: none !important; }
+          tr { break-inside: avoid; }
+        }
+        @page { size: A4; margin: 12mm; }
+      `}</style>
+
+      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20, padding: 12, background: "#f7f7f8", borderRadius: 10, flexWrap: "wrap" }}>
+        <a href={window.location.pathname} style={{ fontSize: 13, color: theme.navy }}>Full account statement</a>
+        <button onClick={() => window.print()} style={printBtn}>Print / Save as PDF</button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: `3px solid ${theme.gold}`, paddingBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>Al Shrooouk Scan &amp; Lab</div>
+          <div style={{ fontSize: 13, color: theme.gray }}>{BRAND_LABEL[data.brand] || data.brand}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>Invoice</div>
+          <div style={{ fontSize: 13, color: theme.gray }}>فاتورة</div>
+          {pay.receipt_no && <div style={{ fontSize: 12, marginTop: 4 }}>No. <strong>{pay.receipt_no}</strong></div>}
+          <div style={{ fontSize: 12, color: theme.gray }}>{formatDate(pay.date)}</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, margin: "18px 0", fontSize: 13, flexWrap: "wrap" }}>
+        <div>
+          <div style={smallCap}>Billed to · العميل</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>
+            {c.clinic_code && <span style={{ background: theme.goldLight, padding: "1px 8px", borderRadius: 999, marginRight: 6, fontSize: 13 }}>{c.clinic_code}</span>}
+            {c.name}
+          </div>
+          {c.doctors?.length > 0 && <div dir="auto">{c.doctors.join(" · ")}</div>}
+          {c.phone && <div style={{ color: theme.gray }}>{c.phone}</div>}
+        </div>
+        {paidInFull && (
+          <div style={{ alignSelf: "center", border: "3px solid #2e7d32", color: "#2e7d32", borderRadius: 10, padding: "6px 16px", fontWeight: 900, fontSize: 18, transform: "rotate(-4deg)" }}>
+            PAID IN FULL · خالص
+          </div>
+        )}
+      </div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+        <thead>
+          <tr style={{ background: theme.navy, color: "#fff" }}>
+            <th style={{ ...th, width: 82 }}>Date</th>
+            <th style={{ ...th, textAlign: "left" }}>Item</th>
+            <th style={{ ...th, width: 50 }}>Qty</th>
+            <th style={{ ...th, width: 90 }}>Unit price</th>
+            <th style={{ ...th, width: 100 }}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: theme.gray, padding: 20 }}>No charges before this payment.</td></tr>
+          )}
+          {rows.map((r) => (
+            <Fragment key={r.key}>
+              {r.head && (
+                <tr style={{ borderTop: "1px solid #e6e6ea", background: "#faf9fb" }}>
+                  <td style={td}>{formatDate(r.date)}</td>
+                  <td style={{ ...td, textAlign: "left", fontWeight: 700 }} colSpan={4}>{r.head}</td>
+                </tr>
+              )}
+              <tr>
+                <td style={td}></td>
+                <td style={{ ...td, textAlign: "left", paddingLeft: 18 }} dir="auto">{r.item}</td>
+                <td style={td}>{r.qty != null ? qtyText(r.qty) : ""}</td>
+                <td style={td}>{r.unit != null ? money(r.unit) : ""}</td>
+                <td style={{ ...td, fontWeight: 700, color: r.total < 0 ? "#a06000" : theme.navy }}>{money(r.total)}</td>
+              </tr>
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+        <table style={{ fontSize: 14, minWidth: 320 }}>
+          <tbody>
+            {opening < -0.005 && <tr><td style={sumL}>Credit brought forward</td><td style={sumR}>{money(opening)} EGP</td></tr>}
+            <tr><td style={sumL}>Total · الإجمالي</td><td style={sumR}>{money(totalCharged)} EGP</td></tr>
+            {totalReturned > 0 && <tr><td style={sumL}>Returned · مرتجع</td><td style={{ ...sumR, color: "#a06000" }}>-{money(totalReturned)} EGP</td></tr>}
+            {totalEarlier > 0 && <tr><td style={sumL}>Paid earlier · مدفوع سابقا</td><td style={{ ...sumR, color: "#2e7d32" }}>-{money(totalEarlier)} EGP</td></tr>}
+            <tr>
+              <td style={sumL}>Paid now · المدفوع{pay.payment_method ? ` (${METHOD_LABEL[pay.payment_method] || pay.payment_method})` : ""}</td>
+              <td style={{ ...sumR, color: "#2e7d32" }}>-{money(pay.amount)} EGP</td>
+            </tr>
+            <tr style={{ borderTop: `2px solid ${theme.navy}` }}>
+              <td style={{ ...sumL, fontWeight: 800, color: theme.navy }}>Remaining · المتبقي</td>
+              <td style={{ ...sumR, fontWeight: 800, fontSize: 16, color: remaining > 0.005 ? "#ba1a1a" : "#2e7d32" }}>{money(Math.max(remaining, 0))} EGP</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ fontSize: 11, color: theme.gray, marginTop: 28 }}>
+        Covers what was charged since the account was last clear, up to this payment. Prices are as charged at the time of each sale.
+        {charges.some((e) => e.label.startsWith("Balance carried over")) && " Balances carried over from before the platform have no item breakdown."}
+        {data.generated_by ? ` Printed by ${data.generated_by}.` : ""}
+      </p>
+    </div>
+  );
+}

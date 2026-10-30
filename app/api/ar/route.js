@@ -211,7 +211,35 @@ export async function GET(req) {
     .eq("is_active", true)
     .order("name");
 
-  return NextResponse.json({ customers: rows, patientDebts, staff: staffRows || [], selfEmployeeId: selfEmployeeId || null });
+  // Payments from the last 30 days. Once a clinic pays its balance in full it
+  // drops off the owing list above, so without this there was no way back to
+  // print the invoice for what they had just settled (Doaa, 28 Oct 2026).
+  const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const { data: pays } = await supabaseAdmin
+    .from("customer_ar_ledger")
+    .select("id, customer_id, customer_type, brand, amount, payment_method, receipt_no, entry_date, created_at")
+    .eq("direction", "payment")
+    .gte("entry_date", since)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  const balanceOf = new Map((balances || []).map((b) => [`${b.customer_id}|${b.brand}`, Number(b.balance)]));
+  const recentPayments = (pays || []).map((x) => {
+    const c = byId.get(x.customer_id) || {};
+    return {
+      ledger_id: x.id,
+      customer_id: x.customer_id,
+      brand: x.brand,
+      amount: Number(x.amount),
+      method: x.payment_method,
+      receipt_no: x.receipt_no,
+      date: x.entry_date,
+      name: c.name || "Unknown",
+      clinic_code: c.clinic_code || null,
+      balance_now: balanceOf.get(`${x.customer_id}|${x.brand}`) || 0,
+    };
+  });
+
+  return NextResponse.json({ customers: rows, patientDebts, recentPayments, staff: staffRows || [], selfEmployeeId: selfEmployeeId || null });
 }
 
 export async function POST(req) {
