@@ -16,9 +16,18 @@ export default function ClientPortalPage() {
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
+  const [scanTypes, setScanTypes] = useState([]);
+  // White label from the first frame: the client's logo on the loading screen,
+  // never ours. Remembered on this device, and fetched on its own so it arrives
+  // before the rest of the portal.
+  const [brandLogo, setBrandLogo] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    try { const cached = localStorage.getItem("client_portal_logo"); if (cached) setBrandLogo(cached); } catch {}
+    fetch("/api/portal/client/brand").then((r) => (r.ok ? r.json() : null)).then((b) => {
+      if (b?.logo_url) { setBrandLogo(b.logo_url); try { localStorage.setItem("client_portal_logo", b.logo_url); } catch {} }
+    }).catch(() => {});
     load();
   }, []);
 
@@ -34,6 +43,7 @@ export default function ClientPortalPage() {
           return;
         }
         setData(d);
+        setScanTypes(d.scanTypes || []);
         setLoading(false);
       })
       .catch(() => router.replace("/login"));
@@ -47,7 +57,7 @@ export default function ClientPortalPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!scanName.trim() || !file) {
-      setError("Enter what this is for and attach a file.");
+      setError("Choose the scan type and attach a file.");
       return;
     }
     setSubmitting(true);
@@ -105,7 +115,7 @@ export default function ClientPortalPage() {
     setUploadProgress(0);
   }
 
-  if (loading) return <Loading />;
+  if (loading) return <Loading logo={brandLogo} />;
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg }}>
@@ -140,8 +150,14 @@ export default function ClientPortalPage() {
           </div>
           {showForm && (
             <form onSubmit={handleSubmit}>
-              <label style={lbl}>What is this for?</label>
-              <input style={inp} value={scanName} onChange={(e) => setScanName(e.target.value)} placeholder="e.g. CBCT report for patient X" />
+              {/* Chosen from the list rather than typed, so every request carries
+                  the same name as the price list ("cbctq" and "cbct q" were the
+                  same scan written two ways). */}
+              <label style={lbl}>Scan type</label>
+              <select style={inp} value={scanName} onChange={(e) => setScanName(e.target.value)}>
+                <option value="">Choose the scan type...</option>
+                {scanTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
               <label style={lbl}>Date Needed (optional)</label>
               <input type="date" style={inp} value={dateRequired} onChange={(e) => setDateRequired(e.target.value)} />
               <label style={lbl}>Attach File</label>
@@ -164,7 +180,7 @@ export default function ClientPortalPage() {
             <div key={r.id} style={{ borderBottom: "1px solid #f0f0f0", padding: "12px 0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
-                  <div style={{ fontWeight: 600, color: theme.navy, fontSize: 14 }}>{r.scan_name}</div>
+                  <div style={{ fontWeight: 600, color: theme.navy, fontSize: 14 }}>{r.scan_type_name || r.scan_name}</div>
                   <div style={{ fontSize: 12, color: theme.gray }}>Needed by {r.date_required}</div>
                 </div>
                 <span

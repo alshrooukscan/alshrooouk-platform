@@ -40,5 +40,18 @@ export async function GET() {
     // Impersonating admins are exempt: they are inspecting the account, not
   // using it, and cannot set someone else's password.
   if (!session.impersonated && client?.must_change_password) return passwordChangeRequired();
-  return NextResponse.json({ client, reports: reports || [], mustChangePassword: session.impersonated ? false : !!client?.must_change_password, impersonatedBy: session.impersonatedBy || null });
+  // Scan types the client can ask for (those that need a report), and each
+  // request shown under the scan type it resolves to: "cbctq" and "cbct q"
+  // both read "3D CBCT Quadrant" (Mohamed Said, 30 Oct 2026).
+  const { data: types } = await supabaseAdmin
+    .from("exam_types").select("name, name_aliases, requires_report, is_active").eq("is_active", true);
+  const byName = new Map();
+  for (const t of types || []) {
+    byName.set(t.name.trim().toLowerCase(), t.name);
+    for (const a of t.name_aliases || []) if (!byName.has(a.trim().toLowerCase())) byName.set(a.trim().toLowerCase(), t.name);
+  }
+  const scanTypes = (types || []).filter((t) => t.requires_report).map((t) => t.name).sort();
+  const shaped = (reports || []).map((r) => ({ ...r, scan_type_name: byName.get(String(r.scan_name || "").trim().toLowerCase()) || null }));
+
+  return NextResponse.json({ client, reports: shaped, scanTypes, mustChangePassword: session.impersonated ? false : !!client?.must_change_password, impersonatedBy: session.impersonatedBy || null });
 }
