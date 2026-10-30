@@ -634,6 +634,8 @@ export default function EmployeePortalPage() {
                 deferred: (p.deductions || []).filter((d) => d.source === "cap").reduce((s, d) => s + Number(d.deferred || 0), 0),
                 advance: 0,
                 net: Number(p.net_total || 0),
+                paid_at: p.paid_at || null,
+                paid_method: p.paid_method || null,
               }} />
             ))}
           </>
@@ -1242,7 +1244,9 @@ function SlipCard({ slip, live, money }) {
           <div style={{ fontSize: 11, color: theme.gray, marginTop: 6 }}>
             {live
               ? "Only items an admin has approved are included. This can still change until the payslip is issued."
-              : "Issued payslip. Only approved items are included."}
+              : slip.paid_at
+              ? `Paid on ${new Date(slip.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} via ${({ cash: "Cash", instapay: "InstaPay", wallet: "Wallet", bank_transfer: "Bank transfer", visa: "Visa" })[slip.paid_method] || slip.paid_method} · اتصرف`
+              : "Issued payslip, not paid yet. Only approved items are included."}
           </div>
         </div>
       )}

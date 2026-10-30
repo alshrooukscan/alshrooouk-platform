@@ -281,6 +281,32 @@ export async function POST(req) {
     return NextResponse.json({ ok: true });
   }
 
+  // Confirming an issued payslip was paid, and how (30 Oct 2026). Once.
+  if (action === "confirm_payment") {
+    if (staff.role !== "admin") {
+      return NextResponse.json({ error: "Only an admin can confirm a salary payment." }, { status: 403 });
+    }
+    const { runId, method, note } = body;
+    if (!runId || !["cash", "instapay", "wallet", "bank_transfer", "visa"].includes(method)) {
+      return NextResponse.json({ error: "Choose how it was paid." }, { status: 400 });
+    }
+    const { data: run } = await supabaseAdmin.from("payroll_runs").select("id, employee_id, period, net_total, paid_at").eq("id", runId).maybeSingle();
+    if (!run) return NextResponse.json({ error: "That payslip no longer exists." }, { status: 404 });
+    if (run.paid_at) return NextResponse.json({ error: "That payslip is already marked as paid." }, { status: 409 });
+    const { data: updated, error } = await supabaseAdmin
+      .from("payroll_runs")
+      .update({ paid_at: new Date().toISOString(), paid_method: method, paid_by_name: staff.name || staff.email, paid_note: note || null })
+      .eq("id", runId).is("paid_at", null)
+      .select("*").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    await supabaseAdmin.from("activity_log").insert({
+      actor_id: staff.id, actor_name: staff.name, actor_type: "admin", action: "payslip_paid",
+      entity_type: "payroll_runs", entity_id: runId,
+      details: { employee_id: run.employee_id, period: run.period, amount: Number(run.net_total), method, note: note || null },
+    });
+    return NextResponse.json({ ok: true, payslip: updated });
+  }
+
   // Approve or reject a proposed plus or minus (perfect attendance, an item
   // HR entered). Nothing proposed reaches a payslip until an admin decides it.
   if (action === "decide_adjustment") {

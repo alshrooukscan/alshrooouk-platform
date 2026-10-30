@@ -19,6 +19,8 @@ import { APP_URL } from "../../../../lib/appUrl";
 import BonusRatesPanel from "../../../../components/hr/BonusRatesPanel";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const PAY_METHOD_LABEL = { cash: "Cash", instapay: "InstaPay", wallet: "Wallet", bank_transfer: "Bank transfer", visa: "Visa" };
+
 export default function EmployeeProfilePage() {
   const { id } = useParams();
   const router = useRouter();
@@ -319,6 +321,27 @@ export default function EmployeeProfilePage() {
   }
 
 
+  // Confirming the salary was paid, and how (30 Oct 2026).
+  const [payMethod, setPayMethod] = useState("cash");
+  const [payNote, setPayNote] = useState("");
+  const [paying, setPaying] = useState(false);
+  async function confirmPayment() {
+    if (!payslip?.id) return;
+    if (!confirm(`Confirm ${formatMoney(payslip.net_total, { decimals: 2 })} EGP was paid to ${employee?.name || "this employee"} for ${payslip.period}?`)) return;
+    setPaying(true);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ action: "confirm_payment", runId: payslip.id, method: payMethod, note: payNote || null }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setPaying(false);
+    if (!res.ok) { alert(j.error || "Could not confirm the payment."); return; }
+    setPayslip(j.payslip);
+    setPayNote("");
+  }
+
   async function loadSkills() {
     const { data: session } = await supabase.auth.getSession();
     const res = await fetch(`/api/hr/skills?employeeId=${id}`, {
@@ -610,6 +633,31 @@ export default function EmployeeProfilePage() {
                 <span style={{ fontWeight: 700, color: theme.navy }}>Net Pay</span>
                 <span style={{ fontWeight: 700, color: theme.navy, fontSize: 20 }}>{formatMoney(payslip.net_total, { decimals: 2 })} EGP</span>
               </div>
+              {payslip.paid_at ? (
+                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#e7f6ec", color: "#1e5c33", fontSize: 13, fontWeight: 600 }}>
+                  ✓ Paid on {new Date(payslip.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} via {PAY_METHOD_LABEL[payslip.paid_method] || payslip.paid_method}
+                  {payslip.paid_by_name ? ` · confirmed by ${payslip.paid_by_name}` : ""}
+                  {payslip.paid_note ? <div style={{ fontWeight: 400, fontSize: 12, marginTop: 2 }}>{payslip.paid_note}</div> : null}
+                </div>
+              ) : isAdmin ? (
+                <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: "#fff8e1" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#6b5200", marginBottom: 8 }}>Not marked as paid yet · لسه ماتصرفش</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}
+                      style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13 }}>
+                      {Object.entries(PAY_METHOD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
+                    <input value={payNote} onChange={(e) => setPayNote(e.target.value)} placeholder="Note (optional)"
+                      style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, flex: 1, minWidth: 140 }} />
+                    <button onClick={confirmPayment} disabled={paying}
+                      style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      {paying ? "Saving..." : "Confirm payment · تأكيد الصرف"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, fontSize: 12, color: "#8a6d00" }}>Not marked as paid yet.</div>
+              )}
             </div>
           )}
         </div>
