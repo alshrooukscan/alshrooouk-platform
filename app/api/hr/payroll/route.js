@@ -42,7 +42,8 @@ export async function GET(req) {
     if (url.searchParams.get("trial")) {
       const trialPeriod = normalizePeriod(url.searchParams.get("trial"));
       const [{ data: rows, error }, { data: settings }] = await Promise.all([
-        supabaseAdmin.rpc("payroll_trial_run", { p_period: trialPeriod }),
+        // The employee page asks for its own person only (0123).
+        supabaseAdmin.rpc("payroll_trial_run", { p_period: trialPeriod, p_employee_id: empId }),
         supabaseAdmin.from("payroll_settings").select("trial_period").maybeSingle(),
       ]);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });

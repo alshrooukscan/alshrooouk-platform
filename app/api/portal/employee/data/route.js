@@ -25,38 +25,46 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: employee } = await supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary, hourly_rate, permissions, staff_account_email, must_change_password").eq("id", session.id).single();
-  const { data: payslips } = await supabaseAdmin
-    .from("payroll_runs")
-    .select("*")
-    .eq("employee_id", session.id)
-    .order("generated_at", { ascending: false })
-    .limit(6);
-  // The whole of the current pay period, not the last ten events. Ten events
-  // is five days of signing in and out, so on the 16th Nourhan could see
-  // nothing before the 11th and reasonably concluded her attendance was only
-  // being counted from the 10th. Her pay was right - all fourteen days were
-  // counted - but she had no way to see that, and an employee who cannot check
-  // their own attendance has to take payroll on trust.
+  // Everything this page needs, asked for at once rather than one query after
+  // another (30 Oct 2026: opening the portal took several seconds).
   const periodStart = `${new Date().toISOString().slice(0, 7)}-01`;
-  const { data: events } = await supabaseAdmin
-    .from("timeclock_events")
-    .select("*")
-    .eq("employee_id", session.id)
-    .gte("event_time", periodStart)
-    .order("event_time", { ascending: false })
-    .limit(400);
-
-  // A day-by-day account of the month: every day they were scheduled, whether
-  // they signed in and out, and so which days their pay is built from. This is
-  // the thing that answers "why does it say ten days" without anybody having
-  // to ask.
-  const { data: scheduled } = await supabaseAdmin
-    .from("employee_schedule_days")
-    .select("work_date, is_day_off")
-    .eq("employee_id", session.id)
-    .gte("work_date", periodStart)
-    .order("work_date");
+  const today = new Date().toISOString().slice(0, 10);
+  const accruedPeriod = new Date().toISOString().slice(0, 7);
+  const [
+    { data: employee }, { data: payslips }, { data: events }, { data: scheduled },
+    { data: leaveRequests }, { data: excuseRules }, { data: excuseSubmissions }, { data: incomingTransfers },
+    { data: schedule }, { data: myCash }, { data: myTab }, { data: myCapacity }, { data: myMovements },
+    trialRes, previewRes, monthRes,
+  ] = await Promise.all([
+    supabaseAdmin.from("employees").select("id, name, hr_id, role, fixed_salary, variable_salary, hourly_rate, permissions, staff_account_email, must_change_password").eq("id", session.id).single(),
+    supabaseAdmin.from("payroll_runs").select("*").eq("employee_id", session.id).order("generated_at", { ascending: false }).limit(6),
+    // The whole of the current pay period, not the last ten events, so an
+    // employee can check every day their pay is built from.
+    supabaseAdmin.from("timeclock_events").select("*").eq("employee_id", session.id).gte("event_time", periodStart).order("event_time", { ascending: false }).limit(400),
+    supabaseAdmin.from("employee_schedule_days").select("work_date, is_day_off").eq("employee_id", session.id).gte("work_date", periodStart).order("work_date"),
+    supabaseAdmin.from("leave_requests").select("*").eq("employee_id", session.id).order("created_at", { ascending: false }),
+    supabaseAdmin.from("excuse_rules").select("id, name").order("name"),
+    supabaseAdmin.from("excuse_submissions").select("*, excuse_rules(name)").eq("employee_id", session.id).order("created_at", { ascending: false }),
+    supabaseAdmin.from("expense_transactions").select("*, from_employee:from_employee_id(name)").eq("to_employee_id", session.id).eq("type", "cash_transfer").order("created_at", { ascending: false }),
+    supabaseAdmin.from("employee_schedule_days").select("*").eq("employee_id", session.id).gte("work_date", today).order("work_date", { ascending: true }).limit(45),
+    // A29: an employee sees their own cash and tab position, and nobody else's.
+    supabaseAdmin.from("employee_cash_balances").select("brand, balance").eq("employee_id", session.id),
+    supabaseAdmin.from("employee_tab_balances").select("balance").eq("employee_id", session.id).maybeSingle(),
+    supabaseAdmin.rpc("employee_spend_capacity", { p_employee_id: session.id }),
+    // Their own cash movements, on either side of a transaction.
+    supabaseAdmin
+      .from("expense_transactions")
+      .select("id, brand, type, amount, payment_method, note, status, entry_date, created_at, from_employee_id, to_employee_id")
+      .or(`from_employee_id.eq.${session.id},to_employee_id.eq.${session.id}`)
+      .in("type", ["cash_transfer", "cash_collection", "cash_out", "cash_conversion"])
+      .order("created_at", { ascending: false })
+      .limit(30),
+    // Earned so far, for this employee only (0123): the whole-staff run took
+    // 6-7 seconds to read back one row.
+    supabaseAdmin.rpc("payroll_trial_run", { p_period: accruedPeriod, p_employee_id: session.id }),
+    supabaseAdmin.rpc("payslip_preview", { p_employee_id: session.id, p_period: accruedPeriod }),
+    supabaseAdmin.rpc("payroll_month", { p_employee_id: session.id, p_period: accruedPeriod }),
+  ]);
 
   const dayIn = new Set();
   const dayOut = new Set();
@@ -95,61 +103,11 @@ export async function GET() {
   // days worked - has no denominator without one. They should know that is why,
   // rather than seeing a number they cannot reconcile with their own days.
   const noRoster = rosterDays.size === 0 && Number(employee?.hourly_rate || 0) === 0;
-  const { data: leaveRequests } = await supabaseAdmin
-    .from("leave_requests")
-    .select("*")
-    .eq("employee_id", session.id)
-    .order("created_at", { ascending: false });
-  const { data: excuseRules } = await supabaseAdmin.from("excuse_rules").select("id, name").order("name");
-  const { data: excuseSubmissions } = await supabaseAdmin
-    .from("excuse_submissions")
-    .select("*, excuse_rules(name)")
-    .eq("employee_id", session.id)
-    .order("created_at", { ascending: false });
-  const { data: incomingTransfers } = await supabaseAdmin
-    .from("expense_transactions")
-    .select("*, from_employee:from_employee_id(name)")
-    .eq("to_employee_id", session.id)
-    .eq("type", "cash_transfer")
-    .order("created_at", { ascending: false });
-
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: schedule } = await supabaseAdmin
-    .from("employee_schedule_days")
-    .select("*")
-    .eq("employee_id", session.id)
-    .gte("work_date", today)
-    .order("work_date", { ascending: true })
-    .limit(45);
-
   // Checked fresh here, not read from the session token - see the identical
   // note in the client data route for why.
   // Impersonating admins are exempt: they are inspecting the account, not
   // using it, and cannot set someone else's password.
   if (!session.impersonated && employee?.must_change_password) return passwordChangeRequired();
-
-  // A29: an employee sees their own cash and tab position, and nobody
-  // else's. Both are scoped to this session's employee id.
-  const [{ data: myCash }, { data: myTab }, { data: myCapacity }] = await Promise.all([
-    supabaseAdmin.from("employee_cash_balances").select("brand, balance").eq("employee_id", session.id),
-    supabaseAdmin.from("employee_tab_balances").select("balance").eq("employee_id", session.id).maybeSingle(),
-    supabaseAdmin.rpc("employee_spend_capacity", { p_employee_id: session.id }),
-  ]);
-
-  // Their own cash movements, so the balance above is explainable without
-  // asking an admin to open the dashboard. Scoped to this employee on every
-  // side of a transaction - money they took, handed over, or received.
-  const { data: myMovements } = await supabaseAdmin
-    .from("expense_transactions")
-    // employee_id does not exist on this table - the query errored on every
-    // load, the error was discarded, and no employee has ever seen their cash
-    // movements. Money is held by the person on one side of a transfer or the
-    // other, which is what from_employee_id and to_employee_id already say.
-    .select("id, brand, type, amount, payment_method, note, status, entry_date, created_at, from_employee_id, to_employee_id")
-    .or(`from_employee_id.eq.${session.id},to_employee_id.eq.${session.id}`)
-    .in("type", ["cash_transfer", "cash_collection", "cash_out", "cash_conversion"])
-    .order("created_at", { ascending: false })
-    .limit(30);
 
   // What this person has earned so far this month, from their own shifts and
   // their own sign-ins. The portal only ever showed fixed_salary, so the five
@@ -157,12 +115,7 @@ export async function GET() {
   // that field never carries. Scoped to the signed-in employee: the trial run
   // returns every employee, so their row is picked out here and the rest is
   // never sent to the browser.
-  let accrued = null;
-  const accruedPeriod = new Date().toISOString().slice(0, 7);
-  try {
-    const { data: trialRows } = await supabaseAdmin.rpc("payroll_trial_run", { p_period: accruedPeriod });
-    accrued = (trialRows || []).find((r) => r.employee_id === session.id) || null;
-  } catch { /* the portal is still worth serving without it */ }
+  const accrued = (trialRes.data || []).find((r) => r.employee_id === session.id) || null;
 
   // This month's payslip as it stands, with only what an admin has approved:
   // each bonus and deduction by name. Mohamed Said (30 Oct 2026): an employee
@@ -170,7 +123,7 @@ export async function GET() {
   let currentSlip = null;
   if (!(payslips || []).some((p) => String(p.period).slice(0, 7) === accruedPeriod)) {
     try {
-      const { data: pv } = await supabaseAdmin.rpc("payslip_preview", { p_employee_id: session.id, p_period: accruedPeriod });
+      const pv = previewRes.data;
       if (pv) {
         const approved = (pv.adjustments || []).filter((a) => a.status === "approved");
         currentSlip = {
@@ -194,7 +147,7 @@ export async function GET() {
   // Perfect attendance progress for the month, shown as a goal on the portal.
   let attendanceGoal = null;
   try {
-    const { data: m } = await supabaseAdmin.rpc("payroll_month", { p_employee_id: session.id, p_period: accruedPeriod });
+    const m = monthRes.data;
     if (m) {
       attendanceGoal = {
         perfect_attendance: !!m.perfect_attendance, perfect_attendance_bonus: Number(m.perfect_attendance_bonus || 0),

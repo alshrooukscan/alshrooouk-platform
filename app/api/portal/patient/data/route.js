@@ -29,42 +29,24 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: patient } = await supabaseAdmin.from("patients").select("id, name, mobile, email").eq("id", session.id).single();
-  const { data: auth } = await supabaseAdmin.from("patient_auth").select("must_change_password").eq("patient_id", session.id).single();
-  const { data: visits } = await supabaseAdmin
-    .from("visits")
-    .select("id, scan_types, exam_date, payment_status, branches(name), doctors(name)")
-    .eq("patient_id", session.id)
-    .order("exam_date", { ascending: false });
-
-  // Files explicitly linked to a specific visit - real, exact matches, not
-  // guessed. This is what /api/drive/upload has always written to
-  // patient_files; anything uploaded through that path already has this.
-  const { data: linkedFiles } = await supabaseAdmin
-    .from("patient_files")
-    .select("id, visit_id, drive_file_id, file_name, file_type, created_at")
-    .eq("patient_id", session.id);
-
-  let driveFiles = [];
-  const { data: folder } = await supabaseAdmin
-    .from("drive_folder_index")
-    .select("drive_folder_id")
-    .eq("entity_type", "patient")
-    .eq("entity_id", session.id)
-    .maybeSingle();
-  if (folder) {
+  // Asked for together, and the Drive folder listing (the slow part) starts
+  // as soon as the folder is known (30 Oct 2026: slow to open after Login as).
+  const listDrive = async (folderId) => {
     try {
-      // Only real files. The patient folder also holds each visit's own
-      // folder, and it came through as a "possibly related" file that failed
-      // to open ("Only files with binary content can be downloaded"). Google's
-      // own Docs/Sheets types cannot be streamed either, so they are left out.
-      driveFiles = (await listFiles(folder.drive_folder_id)).filter(
-        (f) => !String(f.mimeType || "").startsWith("application/vnd.google-apps.")
-      );
-    } catch (e) {
-      driveFiles = [];
-    }
-  }
+      // Only real files: the folder also holds each visit's own folder, and
+      // Google's own Docs/Sheets types cannot be streamed.
+      return (await listFiles(folderId)).filter((f) => !String(f.mimeType || "").startsWith("application/vnd.google-apps."));
+    } catch { return []; }
+  };
+  const [{ data: patient }, { data: auth }, { data: visits }, { data: linkedFiles }, driveFiles] = await Promise.all([
+    supabaseAdmin.from("patients").select("id, name, mobile, email").eq("id", session.id).single(),
+    supabaseAdmin.from("patient_auth").select("must_change_password").eq("patient_id", session.id).single(),
+    supabaseAdmin.from("visits").select("id, scan_types, exam_date, payment_status, branches(name), doctors(name)").eq("patient_id", session.id).order("exam_date", { ascending: false }),
+    // Files explicitly linked to a specific visit - exact matches.
+    supabaseAdmin.from("patient_files").select("id, visit_id, drive_file_id, file_name, file_type, created_at").eq("patient_id", session.id),
+    supabaseAdmin.from("drive_folder_index").select("drive_folder_id").eq("entity_type", "patient").eq("entity_id", session.id).maybeSingle()
+      .then(({ data: folder }) => (folder ? listDrive(folder.drive_folder_id) : [])),
+  ]);
 
   const linkedDriveIds = new Set((linkedFiles || []).map((f) => f.drive_file_id));
   const unlinkedDriveFiles = driveFiles.filter((f) => !linkedDriveIds.has(f.id));

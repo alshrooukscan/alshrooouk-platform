@@ -34,15 +34,18 @@ export async function GET() {
   // clinic_code (shouldn't normally happen) falls back to their own referrals
   // only, so this can never accidentally expose the whole system.
   let clinicDoctorIds = [session.id];
-  if (doctor?.clinic_code) {
-    const { data: clinicDoctors } = await supabaseAdmin
-      .from("doctors")
-      .select("id")
-      .eq("clinic_code", doctor.clinic_code);
-    if (clinicDoctors?.length) clinicDoctorIds = clinicDoctors.map((d) => d.id);
-  }
+  // The clinic's doctors and the clinic itself are fetched together (30 Oct
+  // 2026: the portal was slow to open after Login as).
+  const [peersRes, clinicRes] = doctor?.clinic_code
+    ? await Promise.all([
+        supabaseAdmin.from("doctors").select("id").eq("clinic_code", doctor.clinic_code),
+        supabaseAdmin.from("clinics").select("id, name").eq("code", doctor.clinic_code).maybeSingle(),
+      ])
+    : [{ data: null }, { data: null }];
+  if (peersRes.data?.length) clinicDoctorIds = peersRes.data.map((d) => d.id);
+  const clinic = clinicRes.data;
 
-  const { data: visits } = await supabaseAdmin
+  const visitsPromise = supabaseAdmin
     .from("visits")
     .select("id, patient_id, doctor_id, scan_types, exam_date, scanned, raw_data_uploaded, report_done, payment_status, amount_due, amount_paid, patients(name, mobile), doctors(name), visit_payments(payment_method)")
     .in("doctor_id", clinicDoctorIds)
@@ -68,16 +71,9 @@ export async function GET() {
   let clinicName = null;
   const owners = [{ type: "doctor", id: doctor?.id }];
 
-  if (doctor?.clinic_code) {
-    const { data: clinic } = await supabaseAdmin
-      .from("clinics")
-      .select("id, name")
-      .eq("code", doctor.clinic_code)
-      .maybeSingle();
-    if (clinic) {
-      clinicName = clinic.name;
-      owners.push({ type: "clinic", id: clinic.id });
-    }
+  if (clinic) {
+    clinicName = clinic.name;
+    owners.push({ type: "clinic", id: clinic.id });
   }
 
   // What the balance is made of: every sale and order with its items at the
@@ -85,9 +81,11 @@ export async function GET() {
   // (clinic 358, 30 Oct 2026) saw "owes 415" over an empty Supply Orders tab -
   // the 415 came from items picked up at reception, which that tab never shows.
   let account = { entries: [], totals: { charged: 0, paid: 0, balance: 0 } };
-  try {
-    account = await buildAccountEntries(owners.filter((o) => o.id));
-  } catch { /* the balance below still shows */ }
+  const [{ data: visits }, acct] = await Promise.all([
+    visitsPromise,
+    buildAccountEntries(owners.filter((o) => o.id)).catch(() => null),
+  ]);
+  if (acct) account = acct;
   clinicOwes = account.totals.balance;
   // Only what the doctor needs, newest stretch first: everything since the
   // account was last clear, plus up to 40 earlier lines for the full history.
