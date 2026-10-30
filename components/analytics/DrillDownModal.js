@@ -1,7 +1,9 @@
 "use client";
 import { theme } from "../../lib/theme";
+import { useT } from "../../lib/i18n";
 
 export default function DrillDownModal({ title, subtitle, columns, rows, loading, onClose }) {
+  const { t } = useT();
   return (
     <div
       style={{
@@ -34,20 +36,20 @@ export default function DrillDownModal({ title, subtitle, columns, rows, loading
             <h3 style={{ margin: 0, color: theme.navy }}>{title}</h3>
             {subtitle && <p style={{ margin: "4px 0 0", fontSize: 13, color: theme.gray }}>{subtitle}</p>}
           </div>
-          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: theme.gray }}>×</button>
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: theme.gray }} aria-label={t("Close")}>×</button>
         </div>
 
         <div style={{ overflowY: "auto", padding: "0 0 12px" }}>
-          {loading && <p style={{ padding: 24, color: theme.gray, textAlign: "center" }}>Loading...</p>}
+          {loading && <p style={{ padding: 24, color: theme.gray, textAlign: "center" }}>{t("Loading...")}</p>}
           {!loading && (!rows || rows.length === 0) && (
-            <p style={{ padding: 24, color: theme.gray, textAlign: "center" }}>No records found.</p>
+            <p style={{ padding: 24, color: theme.gray, textAlign: "center" }}>{t("No records found.")}</p>
           )}
           {!loading && rows && rows.length > 0 && (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ position: "sticky", top: 0, background: "#faf9fb" }}>
                   {columns.map((c) => (
-                    <th key={c.key} style={{ textAlign: "left", padding: "10px 16px", fontSize: 11, color: "#48464E", fontWeight: 700, textTransform: "uppercase" }}>
+                    <th key={c.key} style={{ textAlign: "start", padding: "10px 16px", fontSize: 11, color: "#48464E", fontWeight: 700, textTransform: "uppercase" }}>
                       {c.label}
                     </th>
                   ))}

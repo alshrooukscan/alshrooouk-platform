@@ -6,6 +6,7 @@ import { formatMoney } from "../../lib/format";
 import DrillDownModal from "./DrillDownModal";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
 import { fetchAll, cairoToday } from "../../lib/dashboardData";
+import { useT, tx, Ltr } from "../../lib/i18n";
 
 // Money owed to the clinic, in one place. Revenue answers "what came in";
 // this answers "what hasn't", which is the number that actually needs chasing
@@ -18,6 +19,7 @@ const AGE_BUCKETS = [
 ];
 
 export default function OutstandingAnalytics() {
+  const { t, tCode, isAr } = useT();
   const [visits, setVisits] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,10 +62,10 @@ export default function OutstandingAnalytics() {
             if (b.customer_type === "clinic") {
               const c = clinicById[b.customer_id] || {};
               const docs = (clinicDoctors || []).filter((d) => d.clinic_code === c.code).map((d) => d.name);
-              return { id: `${b.customer_id}-${b.brand}`, customerId: b.customer_id, brand: b.brand, name: c.name && c.name !== "0" ? `${c.name} (${c.code})` : `Clinic ${c.code || ""}`, sub: docs.join(", "), owed: Number(b.balance) };
+              return { id: `${b.customer_id}-${b.brand}`, customerId: b.customer_id, brand: b.brand, name: c.name && c.name !== "0" ? `${c.name} (${c.code})` : `${tx("Clinic")} ${c.code || ""}`, sub: docs.join(", "), owed: Number(b.balance) };
             }
             const d = doctorById[b.customer_id] || {};
-            return { id: `${b.customer_id}-${b.brand}`, customerId: b.customer_id, brand: b.brand, name: d.name || "Doctor", sub: d.clinic_code ? `Clinic ${d.clinic_code}` : "", owed: Number(b.balance) };
+            return { id: `${b.customer_id}-${b.brand}`, customerId: b.customer_id, brand: b.brand, name: d.name || tx("Doctor"), sub: d.clinic_code ? `${tx("Clinic")} ${d.clinic_code}` : "", owed: Number(b.balance) };
           })
           .sort((x, y) => y.owed - x.owed)
       );
@@ -72,7 +74,7 @@ export default function OutstandingAnalytics() {
     }
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
 
   const owedOn = (v) => Math.max(Number(v.amount_due || 0) - Number(v.amount_paid || 0), 0);
   const open = visits.filter((v) => owedOn(v) > 0.005);
@@ -112,15 +114,15 @@ export default function OutstandingAnalytics() {
 
   function openDrill(title, rows) {
     setDrill({
-      title,
-      subtitle: `${rows.length} visit${rows.length === 1 ? "" : "s"} · ${formatMoney(rows.reduce((s, v) => s + owedOn(v), 0))} EGP owed`,
+      title: t(title),
+      subtitle: (rows.length === 1 ? t("1 visit") : t("{n} visits", { n: rows.length })) + " · " + t("{amount} EGP owed", { amount: formatMoney(rows.reduce((s, v) => s + owedOn(v), 0)) }),
       columns: [
-        { key: "patient", label: "Patient" },
-        { key: "mobile", label: "Mobile" },
-        { key: "date", label: "Visit Date" },
-        { key: "scan", label: "Scan" },
-        { key: "owed", label: "Owed (EGP)" },
-        { key: "age", label: "Days" },
+        { key: "patient", label: t("Patient") },
+        { key: "mobile", label: t("Mobile"), render: (r) => <Ltr>{r.mobile}</Ltr> },
+        { key: "date", label: t("Visit Date") },
+        { key: "scan", label: t("Scan") },
+        { key: "owed", label: t("Owed (EGP)") },
+        { key: "age", label: t("Days") },
       ],
       rows: rows
         .sort((a, b) => owedOn(b) - owedOn(a))
@@ -139,72 +141,72 @@ export default function OutstandingAnalytics() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Money Owed</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Money Owed")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        Everything billed but not yet collected, from patient visits and clinic / doctor stock accounts.
+        {t("Everything billed but not yet collected, from patient visits and clinic / doctor stock accounts.")}
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
-        <button onClick={() => openDrill("All outstanding visits", open)} style={{ ...card, border: "none", textAlign: "left", cursor: "pointer" }}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Owed by patients</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: patientTotal > 0 ? "#ba1a1a" : theme.navy }}>{formatMoney(patientTotal)} EGP</div>
-          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{open.length} unpaid or part-paid visits</div>
+        <button onClick={() => openDrill("All outstanding visits", open)} style={{ ...card, border: "none", textAlign: "start", cursor: "pointer" }}>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{t("Owed by patients")}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: patientTotal > 0 ? "#ba1a1a" : theme.navy }}>{t("{amount} EGP", { amount: formatMoney(patientTotal) })}</div>
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{t("{n} unpaid or part-paid visits", { n: open.length })}</div>
         </button>
         <div style={card}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Owed on stock accounts</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: orderTotal > 0 ? "#ba1a1a" : theme.navy }}>{money2(orderTotal)} EGP</div>
-          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{orders.length} clinic / doctor account{orders.length === 1 ? "" : "s"}</div>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{t("Owed on stock accounts")}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: orderTotal > 0 ? "#ba1a1a" : theme.navy }}>{t("{amount} EGP", { amount: money2(orderTotal) })}</div>
+          <div style={{ fontSize: 11, color: theme.gray, marginTop: 4 }}>{orders.length === 1 ? t("1 clinic / doctor account") : t("{n} clinic / doctor accounts", { n: orders.length })}</div>
         </div>
         <div style={card}>
-          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Total outstanding</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: theme.navy }}>{money2(patientTotal + orderTotal)} EGP</div>
+          <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{t("Total outstanding")}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: theme.navy }}>{t("{amount} EGP", { amount: money2(patientTotal + orderTotal) })}</div>
         </div>
       </div>
 
       <div style={{ ...card, marginBottom: 24 }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>How old is the debt?</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("How old is the debt?")}</h3>
         <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
-          Measured from the visit date. The older a balance, the less likely it is to be collected — click any band to see who is in it.
+          {t("Measured from the visit date. The older a balance, the less likely it is to be collected — click any band to see who is in it.")}
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
           {buckets.map((b) => (
             <button key={b.key} onClick={() => openDrill(b.label, b.rows)}
-              style={{ background: "#faf9fb", border: "none", borderRadius: 12, padding: 14, textAlign: "left", cursor: "pointer" }}>
-              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, marginBottom: 5 }}>{b.label}</div>
-              <div style={{ fontSize: 19, fontWeight: 800, color: b.min >= 91 ? "#ba1a1a" : theme.navy }}>{formatMoney(b.total)} EGP</div>
-              <div style={{ fontSize: 11, color: theme.gray, marginTop: 3 }}>{b.rows.length} visits</div>
+              style={{ background: "#faf9fb", border: "none", borderRadius: 12, padding: 14, textAlign: "start", cursor: "pointer" }}>
+              <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, marginBottom: 5 }}>{t(b.label)}</div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: b.min >= 91 ? "#ba1a1a" : theme.navy }}>{t("{amount} EGP", { amount: formatMoney(b.total) })}</div>
+              <div style={{ fontSize: 11, color: theme.gray, marginTop: 3 }}>{t("{n} visits", { n: b.rows.length })}</div>
             </button>
           ))}
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[{ k: "patients", l: "Patients who owe" }, { k: "clinics", l: "By clinic" }, { k: "doctors", l: "Stock accounts" }].map((t) => (
-          <button key={t.k} onClick={() => setTab(t.k)}
+        {[{ k: "patients", l: "Patients who owe" }, { k: "clinics", l: "By clinic" }, { k: "doctors", l: "Stock accounts" }].map((tb) => (
+          <button key={tb.k} onClick={() => setTab(tb.k)}
             style={{ padding: "8px 18px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
-              background: tab === t.k ? theme.navy : "#fff", color: tab === t.k ? "#fff" : theme.navy,
+              background: tab === tb.k ? theme.navy : "#fff", color: tab === tb.k ? "#fff" : theme.navy,
               boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>
-            {t.l}
+            {t(tb.l)}
           </button>
         ))}
       </div>
 
       {tab === "patients" && (
         <div style={card}>
-          {debtors.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing outstanding.</p>}
+          {debtors.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>{t("Nothing outstanding.")}</p>}
           {debtors.slice(0, 40).map((d, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f2f2f2" }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{d.name}</div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {d.mobile || "no number"} · {d.visits} visit{d.visits === 1 ? "" : "s"} · oldest {d.oldest} days
+                  {d.mobile ? <Ltr>{d.mobile}</Ltr> : t("no number")} · {d.visits === 1 ? t("1 visit") : t("{n} visits", { n: d.visits })} · {t("oldest {n} days", { n: d.oldest })}
                 </div>
               </div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: "#ba1a1a" }}>{formatMoney(d.owed)} EGP</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#ba1a1a" }}>{t("{amount} EGP", { amount: formatMoney(d.owed) })}</span>
             </div>
           ))}
           {debtors.length > 40 && (
-            <p style={{ fontSize: 12, color: theme.gray, marginBottom: 0 }}>Showing the 40 largest of {debtors.length}.</p>
+            <p style={{ fontSize: 12, color: theme.gray, marginBottom: 0 }}>{t("Showing the 40 largest of {n}.", { n: debtors.length })}</p>
           )}
         </div>
       )}
@@ -213,8 +215,8 @@ export default function OutstandingAnalytics() {
         <div style={card}>
           {clinics.map(([code, amt]) => (
             <div key={code} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f2f2f2" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: theme.navy }}>{code}</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: "#ba1a1a" }}>{formatMoney(amt)} EGP</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: theme.navy }}>{code === "No referring doctor" ? t(code) : code}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#ba1a1a" }}>{t("{amount} EGP", { amount: formatMoney(amt) })}</span>
             </div>
           ))}
         </div>
@@ -222,17 +224,17 @@ export default function OutstandingAnalytics() {
 
       {tab === "doctors" && (
         <div style={card}>
-          {orders.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>No clinic or doctor owes anything on stock.</p>}
+          {orders.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>{t("No clinic or doctor owes anything on stock.")}</p>}
           {orders.map((o) => (
             <a key={o.id} href={`/dashboard/debt-collection/statement/${o.customerId}/${o.brand}`}
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f2f2f2", textDecoration: "none" }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{o.name}</div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {o.sub ? `${o.sub} · ` : ""}{o.brand === "dental_stock" ? "Dental stock" : o.brand} · open statement
+                  {o.sub ? `${o.sub} · ` : ""}{o.brand === "dental_stock" ? t("Dental stock") : isAr ? tCode(o.brand) : o.brand} · {t("open statement")}
                 </div>
               </div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: "#ba1a1a" }}>{money2(o.owed)} EGP</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#ba1a1a" }}>{t("{amount} EGP", { amount: money2(o.owed) })}</span>
             </a>
           ))}
         </div>

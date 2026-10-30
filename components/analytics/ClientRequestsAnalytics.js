@@ -6,6 +6,7 @@ import DrillDownModal from "./DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 import { fetchAll, cairoDate, cairoToday } from "../../lib/dashboardData";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { useT } from "../../lib/i18n";
 
 // Oversight layer for report requests: how many are open, who they came from,
 // which ones are late, and how long they actually take to turn around.
@@ -15,6 +16,7 @@ import { useAutoRefresh } from "../../lib/useAutoRefresh";
 // written report. Both are shown, because an admin chasing outstanding work
 // cares about the backlog as a whole, with the source as a filter on top.
 export default function ClientRequestsAnalytics() {
+  const { t } = useT();
   const [reports, setReports] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,8 +55,8 @@ export default function ClientRequestsAnalytics() {
     }
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (error && reports.length === 0) return <p style={{ color: "#ba1a1a" }}>Could not load requests: {error}</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (error && reports.length === 0) return <p style={{ color: "#ba1a1a" }}>{t("Could not load requests: {error}", { error: t(error) })}</p>;
 
   const clientById = Object.fromEntries(clients.map((c) => [c.id, c]));
   // Bucket by the Cairo calendar day, not the UTC date in the ISO string.
@@ -94,8 +96,8 @@ export default function ClientRequestsAnalytics() {
   for (const r of scoped) {
     const label =
       (r.source_type || "internal") === "client"
-        ? clientById[r.client_id]?.name || "Unknown client"
-        : "Internal (from scans)";
+        ? clientById[r.client_id]?.name || t("Unknown client")
+        : t("Internal (from scans)");
     const b = (byRequester[label] = byRequester[label] || { total: 0, open: 0, overdue: 0 });
     b.total++;
     if (!isDone(r)) b.open++;
@@ -118,24 +120,24 @@ export default function ClientRequestsAnalytics() {
 
   function openDrill(title, rows) {
     setDrill({
-      title,
-      subtitle: `${rows.length} request${rows.length === 1 ? "" : "s"}`,
+      title: t(title),
+      subtitle: rows.length === 1 ? t("1 request") : t("{n} requests", { n: rows.length }),
       columns: [
-        { key: "requester", label: "From" },
-        { key: "scan", label: "Scan / Report" },
-        { key: "required", label: "Due" },
-        { key: "status", label: "Status" },
-        { key: "assigned", label: "Assigned To" },
+        { key: "requester", label: t("From") },
+        { key: "scan", label: t("Scan / Report") },
+        { key: "required", label: t("Due") },
+        { key: "status", label: t("Status") },
+        { key: "assigned", label: t("Assigned To") },
       ],
       rows: rows.map((r) => ({
         requester:
           (r.source_type || "internal") === "client"
-            ? clientById[r.client_id]?.name || "Unknown client"
-            : "Internal",
+            ? clientById[r.client_id]?.name || t("Unknown client")
+            : t("Internal"),
         scan: r.scan_name || "-",
         required: r.date_required || "-",
-        status: isDone(r) ? "Completed" : r.date_required && r.date_required < today ? "Overdue" : "Pending",
-        assigned: r.assigned_to_name || "Unassigned",
+        status: isDone(r) ? t("Completed") : r.date_required && r.date_required < today ? t("Overdue") : t("Pending"),
+        assigned: r.assigned_to_name || t("Unassigned"),
       })),
     });
   }
@@ -149,9 +151,9 @@ export default function ClientRequestsAnalytics() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Client Requests</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Client Requests")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        Every report request in the system, where it came from, and what is overdue.
+        {t("Every report request in the system, where it came from, and what is overdue.")}
       </p>
 
       <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
@@ -172,7 +174,7 @@ export default function ClientRequestsAnalytics() {
               fontWeight: 700, cursor: "pointer", fontSize: 13, boxShadow: "0 2px 8px rgba(39,33,77,0.06)",
             }}
           >
-            {f.label}
+            {t(f.label)}
           </button>
         ))}
       </div>
@@ -182,25 +184,27 @@ export default function ClientRequestsAnalytics() {
           <button
             key={c.label}
             onClick={() => openDrill(c.label, c.rows)}
-            style={{ background: "#fff", borderRadius: 16, padding: 20, border: "none", textAlign: "left", cursor: "pointer", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}
+            style={{ background: "#fff", borderRadius: 16, padding: 20, border: "none", textAlign: "start", cursor: "pointer", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}
           >
-            <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{c.label}</div>
+            <div style={{ fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{t(c.label)}</div>
             <div style={{ fontSize: 30, fontWeight: 800, color: c.color }}>{c.value}</div>
           </button>
         ))}
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Average Turnaround</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Average Turnaround")}</h3>
         {avgTurnaround === null ? (
           <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>
-            No completed requests with both a start and finish time yet, so there is nothing to average.
+            {t("No completed requests with both a start and finish time yet, so there is nothing to average.")}
           </p>
         ) : (
           <p style={{ margin: 0 }}>
             <span style={{ fontSize: 30, fontWeight: 800, color: theme.navy }}>{avgTurnaround}</span>
-            <span style={{ fontSize: 13, color: theme.gray, marginLeft: 8 }}>
-              {avgUnit} from request to completed report, across {turnarounds.length} finished request{turnarounds.length === 1 ? "" : "s"}
+            <span style={{ fontSize: 13, color: theme.gray, marginInlineStart: 8 }}>
+              {avgUnit === "hours"
+                ? (turnarounds.length === 1 ? t("hours from request to completed report, across 1 finished request") : t("hours from request to completed report, across {n} finished requests", { n: turnarounds.length }))
+                : (turnarounds.length === 1 ? t("days from request to completed report, across 1 finished request") : t("days from request to completed report, across {n} finished requests", { n: turnarounds.length }))}
             </span>
           </p>
         )}
@@ -208,27 +212,27 @@ export default function ClientRequestsAnalytics() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Requests by Requester</h3>
-          {requesterRows.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>No requests in this period.</p>}
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Requests by Requester")}</h3>
+          {requesterRows.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("No requests in this period.")}</p>}
           {requesterRows.map(([name, b]) => (
             <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f0f0f0" }}>
               <span style={{ color: theme.navy, fontWeight: 600, fontSize: 13 }}>{name}</span>
               <span style={{ fontSize: 12, color: theme.gray, whiteSpace: "nowrap" }}>
-                {b.total} total &middot; {b.open} open
-                {b.overdue > 0 && <span style={{ color: "#ba1a1a", fontWeight: 700 }}> &middot; {b.overdue} overdue</span>}
+                {t("{total} total · {open} open", { total: b.total, open: b.open })}
+                {b.overdue > 0 && <span style={{ color: "#ba1a1a", fontWeight: 700 }}> &middot; {t("{n} overdue", { n: b.overdue })}</span>}
               </span>
             </div>
           ))}
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Most Requested Reports</h3>
-          {topScans.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing recorded in this period.</p>}
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Most Requested Reports")}</h3>
+          {topScans.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("Nothing recorded in this period.")}</p>}
           {topScans.map(([name, count]) => (
             <div key={name} style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                <span style={{ color: theme.navy, fontWeight: 600 }}>{name}</span>
-                <span style={{ color: theme.gray, marginLeft: 8 }}>{count}</span>
+                <span style={{ color: theme.navy, fontWeight: 600 }}>{name === "Unspecified" ? t(name) : name}</span>
+                <span style={{ color: theme.gray, marginInlineStart: 8 }}>{count}</span>
               </div>
               <div style={{ height: 8, background: "#f0f0f0", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(count / topScans[0][1]) * 100}%`, background: theme.gold, borderRadius: 4 }} />

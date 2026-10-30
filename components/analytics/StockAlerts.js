@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { useT, tx } from "../../lib/i18n";
 
 // What needs reordering, and what has already gone wrong.
 //
@@ -11,6 +12,7 @@ import { useAutoRefresh } from "../../lib/useAutoRefresh";
 // recorded sales so far, so any "days of stock left" figure would be invented
 // precision. Once sales history builds up, burn rate becomes worth adding.
 export default function StockAlerts() {
+  const { t } = useT();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState("all");
@@ -35,13 +37,13 @@ export default function StockAlerts() {
     const n = Number(level);
     if (isNaN(n) || n < 0) return;
     const { error } = await supabase.from("stock_items").update({ reorder_level: n }).eq("id", id);
-    if (error) return alert(`Could not save the level: ${error.message}`);
+    if (error) return alert(tx("Could not save the level: {error}", { error: tx(error.message) }));
     setEditing(null);
     setLevel("");
     load();
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
 
   const scoped = cat === "all" ? items : items.filter((i) => i.category === cat);
   // Negative is judged on what is on the books (available is floored at 0);
@@ -66,16 +68,16 @@ export default function StockAlerts() {
 
   const Group = ({ title, rows, tone, note }) => (
     <div style={{ ...card, marginBottom: 18 }}>
-      <h3 style={{ margin: "0 0 2px", color: tone, fontSize: 15 }}>{title} ({rows.length})</h3>
-      {note && <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 12px" }}>{note}</p>}
-      {rows.length === 0 && <p style={{ fontSize: 13, color: theme.gray, margin: 0 }}>Nothing here.</p>}
+      <h3 style={{ margin: "0 0 2px", color: tone, fontSize: 15 }}>{t(title)} ({rows.length})</h3>
+      {note && <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 12px" }}>{t(note)}</p>}
+      {rows.length === 0 && <p style={{ fontSize: 13, color: theme.gray, margin: 0 }}>{t("Nothing here.")}</p>}
       {rows.map((i) => (
         <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #f2f2f2" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis" }}>{i.name}</div>
             <div style={{ fontSize: 11, color: theme.gray }}>
-              {i.category === "dental" ? "Dental" : "El3awama"} · restock at {lvl(i)}
-              {i.purchase_price ? ` · costs ${formatMoney(i.purchase_price)} EGP each` : ""}
+              {i.category === "dental" ? t("Dental") : t("El3awama")} · {t("restock at {n}", { n: lvl(i) })}
+              {i.purchase_price ? " · " + t("costs {amount} EGP each", { amount: formatMoney(i.purchase_price) }) : ""}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
@@ -84,12 +86,12 @@ export default function StockAlerts() {
               <>
                 <input value={level} onChange={(e) => setLevel(e.target.value)} placeholder={String(lvl(i))}
                   style={{ width: 54, padding: "5px 6px", borderRadius: 6, border: "1px solid #ddd", fontSize: 12 }} />
-                <button onClick={() => saveLevel(i.id)} style={miniBtn(theme.navy, "#fff")}>Save</button>
+                <button onClick={() => saveLevel(i.id)} style={miniBtn(theme.navy, "#fff")}>{t("Save")}</button>
                 <button onClick={() => setEditing(null)} style={miniBtn("#fff", theme.navy)}>×</button>
               </>
             ) : (
               <button onClick={() => { setEditing(i.id); setLevel(String(lvl(i))); }} style={miniBtn("#fff", theme.navy)}>
-                Set level
+                {t("Set level")}
               </button>
             )}
           </div>
@@ -100,9 +102,9 @@ export default function StockAlerts() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Stock Alerts</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Stock Alerts")}</h1>
       <p style={{ color: theme.gray, marginBottom: 18 }}>
-        What has run out, what is about to, and what it would cost to restock.
+        {t("What has run out, what is about to, and what it would cost to restock.")}
       </p>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
@@ -110,16 +112,16 @@ export default function StockAlerts() {
           <button key={c.k} onClick={() => setCat(c.k)}
             style={{ padding: "8px 18px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
               background: cat === c.k ? theme.navy : "#fff", color: cat === c.k ? "#fff" : theme.navy,
-              boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>{c.l}</button>
+              boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>{t(c.l)}</button>
         ))}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { l: "Negative", v: negative.length, c: "#7a1010" },
-          { l: "Out of stock", v: zero.length, c: "#ba1a1a" },
-          { l: "Below reorder level", v: low.length, c: "#a97c00" },
-          { l: unpriced ? `Cost to restock (+${unpriced} with no cost price)` : "Cost to restock", v: `${formatMoney(restockCost)} EGP`, c: theme.navy },
+          { l: t("Negative"), v: negative.length, c: "#7a1010" },
+          { l: t("Out of stock"), v: zero.length, c: "#ba1a1a" },
+          { l: t("Below reorder level"), v: low.length, c: "#a97c00" },
+          { l: unpriced ? t("Cost to restock (+{n} with no cost price)", { n: unpriced }) : t("Cost to restock"), v: t("{amount} EGP", { amount: formatMoney(restockCost) }), c: theme.navy },
         ].map((k) => (
           <div key={k.l} style={card}>
             <div style={{ fontSize: 10, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{k.l}</div>
@@ -136,9 +138,9 @@ export default function StockAlerts() {
         note="At or below the restock level. Set a different level per item where the default of 3 doesn't fit." />
 
       <div style={{ ...card }}>
-        <h3 style={{ margin: "0 0 8px", color: theme.navy, fontSize: 15 }}>Healthy stock ({ok.length})</h3>
+        <h3 style={{ margin: "0 0 8px", color: theme.navy, fontSize: 15 }}>{t("Healthy stock")} ({ok.length})</h3>
         <p style={{ fontSize: 12, color: theme.gray, margin: 0 }}>
-          {ok.length} item{ok.length === 1 ? "" : "s"} above their restock level.
+          {ok.length === 1 ? t("1 item above its restock level.") : t("{n} items above their restock level.", { n: ok.length })}
         </p>
       </div>
     </div>

@@ -1,31 +1,39 @@
 "use client";
 import { theme } from "../../lib/theme";
+import { useT } from "../../lib/i18n";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Arabic month names for display only; date math and grouping keys stay numeric/English.
+export const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+// Display name of month index 0-11: short English ("Jan") or full Arabic.
+export function monthLabel(i, isAr) {
+  return isAr ? MONTHS_AR[i] : MONTHS[i];
+}
 
 export default function PeriodFilterBar({ years, year, quarter, month, day, onChange }) {
+  const { t, isAr } = useT();
   const daysInMonth = year && month ? new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate() : 0;
 
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>FILTER:</span>
+      <span style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>{t("FILTER:")}</span>
       <select value={year} onChange={(e) => onChange({ year: e.target.value, quarter, month: "", day: "" })} style={selStyle}>
-        <option value="">All Years</option>
+        <option value="">{t("All Years")}</option>
         {years.map((y) => (
           <option key={y} value={y}>{y}</option>
         ))}
       </select>
       <select value={quarter} onChange={(e) => onChange({ year, quarter: e.target.value, month: "", day: "" })} style={selStyle} disabled={!year}>
-        <option value="">All Quarters</option>
-        <option value="1">Q1 (Jan–Mar)</option>
-        <option value="2">Q2 (Apr–Jun)</option>
-        <option value="3">Q3 (Jul–Sep)</option>
-        <option value="4">Q4 (Oct–Dec)</option>
+        <option value="">{t("All Quarters")}</option>
+        <option value="1">{t("Q1 (Jan–Mar)")}</option>
+        <option value="2">{t("Q2 (Apr–Jun)")}</option>
+        <option value="3">{t("Q3 (Jul–Sep)")}</option>
+        <option value="4">{t("Q4 (Oct–Dec)")}</option>
       </select>
       <select value={month} onChange={(e) => onChange({ year, quarter: "", month: e.target.value, day: "" })} style={selStyle} disabled={!year}>
-        <option value="">All Months</option>
+        <option value="">{t("All Months")}</option>
         {MONTHS.map((m, i) => (
-          <option key={m} value={i + 1}>{m}</option>
+          <option key={m} value={i + 1}>{monthLabel(i, isAr)}</option>
         ))}
       </select>
       <select
@@ -34,7 +42,7 @@ export default function PeriodFilterBar({ years, year, quarter, month, day, onCh
         style={selStyle}
         disabled={!year || !month}
       >
-        <option value="">All Days</option>
+        <option value="">{t("All Days")}</option>
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
           <option key={d} value={d}>{d}</option>
         ))}
@@ -44,7 +52,7 @@ export default function PeriodFilterBar({ years, year, quarter, month, day, onCh
           onClick={() => onChange({ year: "", quarter: "", month: "", day: "" })}
           style={{ background: "none", border: "none", color: theme.gold, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
         >
-          Clear
+          {t("Clear")}
         </button>
       )}
     </div>

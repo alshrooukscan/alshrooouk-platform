@@ -6,11 +6,12 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { usePermissions } from "../../lib/usePermissions";
+import { useT, tx, Ltr } from "../../lib/i18n";
 // Every tab was being downloaded before the first one could render - eight
 // analytics bundles plus recharts, for a page where only one tab is ever on
 // screen. Each now loads when its tab is opened. Same components, same
 // behaviour, just not all at once.
-const loading = () => <p style={{ color: theme.gray, padding: 20 }}>Loading...</p>;
+const loading = () => <p style={{ color: theme.gray, padding: 20 }}>{tx("Loading...")}</p>;
 const EXPENSE_LABEL = {
   rent: "Rent", utilities: "Utilities", maintenance: "Maintenance", supplies: "Supplies / misc purchases",
   courier: "Courier / rep cash", other: "Other expenses",
@@ -44,8 +45,9 @@ const TABS = [
 ];
 
 export default function DashboardHome() {
+  const { t } = useT();
   return (
-    <Suspense fallback={<p style={{ color: theme.gray }}>Loading...</p>}>
+    <Suspense fallback={<p style={{ color: theme.gray }}>{t("Loading...")}</p>}>
       <DashboardTabs />
     </Suspense>
   );
@@ -56,6 +58,7 @@ export default function DashboardHome() {
 // the open tab within a second or two; it also refreshes every minute and when
 // the tab comes back into view.
 function LiveBadge() {
+  const { t } = useT();
   const { connected, lastUpdated } = useLiveStatus();
   const [, tick] = useState(0);
   useEffect(() => {
@@ -66,13 +69,14 @@ function LiveBadge() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, background: "#fff", boxShadow: "0 2px 8px rgba(39,33,77,0.06)", fontSize: 12, color: theme.navy, marginTop: 6 }}>
       <span style={{ width: 8, height: 8, borderRadius: 999, background: connected ? "#2e7d32" : "#c9a86a", display: "inline-block", boxShadow: connected ? "0 0 0 3px rgba(46,125,50,0.15)" : "none" }} />
-      <strong>{connected ? "Live" : "Auto-refresh"}</strong>
-      {time && <span style={{ color: theme.gray }}>updated {time}</span>}
+      <strong>{connected ? t("Live") : t("Auto-refresh")}</strong>
+      {time && <span style={{ color: theme.gray }}>{t("updated {time}", { time })}</span>}
     </div>
   );
 }
 
 function DashboardTabs() {
+  const { t: tr } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab") || "overview";
@@ -85,8 +89,8 @@ function DashboardTabs() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ color: theme.navy, marginBottom: 4 }}>Dashboard &amp; Analytics</h1>
-          <p style={{ color: theme.gray, marginBottom: 20 }}>Everything measurable in the system, in one place.</p>
+          <h1 style={{ color: theme.navy, marginBottom: 4 }}>{tr("Dashboard & Analytics")}</h1>
+          <p style={{ color: theme.gray, marginBottom: 20 }}>{tr("Everything measurable in the system, in one place.")}</p>
         </div>
         <LiveBadge />
       </div>
@@ -108,7 +112,7 @@ function DashboardTabs() {
               boxShadow: "0 2px 8px rgba(39,33,77,0.06)",
             }}
           >
-            {t.label}
+            {tr(t.label)}
           </button>
         ))}
       </div>
@@ -127,6 +131,7 @@ function DashboardTabs() {
 }
 
 function Overview() {
+  const { t, isAr } = useT();
   const { isAdmin, profile } = usePermissions();
   useAutoRefresh(["visit_payments", "visits", "counter_sales", "customer_ar_ledger", "expense_transactions", "purchase_orders", "stock_items", "stock_batches"], () => load());
   const [allLedger, setAllLedger] = useState([]);
@@ -299,14 +304,14 @@ function Overview() {
       .filter((l) => l.source_stream === stream && l.direction === "in")
       .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)));
     setDrill({
-      title: `${streamLabel}: money received`,
-      subtitle: `${rows.length.toLocaleString()} payments, ${formatMoney(rows.reduce((s, r) => s + r.amount, 0))} EGP${start ? " in the selected period" : ""}${rows.length > 300 ? " (latest 300 shown)" : ""}`,
+      title: t("{stream}: money received", { stream: t(streamLabel) }),
+      subtitle: t("{n} payments, {amount} EGP", { n: rows.length.toLocaleString(), amount: formatMoney(rows.reduce((s, r) => s + r.amount, 0)) }) + (start ? t(" in the selected period") : "") + (rows.length > 300 ? t(" (latest 300 shown)") : ""),
       columns: [
-        { key: "entry_date", label: "Date" },
-        { key: "kind", label: "Type" },
-        { key: "who", label: stream === "scans" ? "Patient" : "Receipt" },
-        { key: "method", label: "Method" },
-        { key: "amount", label: "Amount (EGP)", render: (r) => formatMoney(r.amount, { decimals: 2 }) },
+        { key: "entry_date", label: t("Date") },
+        { key: "kind", label: t("Type"), render: (r) => t(r.kind) },
+        { key: "who", label: stream === "scans" ? t("Patient") : t("Receipt") },
+        { key: "method", label: t("Method"), render: (r) => (isAr ? t(normMethod(r.method)) : r.method) },
+        { key: "amount", label: t("Amount (EGP)"), render: (r) => formatMoney(r.amount, { decimals: 2 }) },
       ],
       rows: rows.slice(0, 300),
     });
@@ -347,7 +352,7 @@ function Overview() {
     ).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
   ].filter((e) => e.value > 0);
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
 
   return (
     <div>
@@ -361,66 +366,66 @@ function Overview() {
       <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} day={filter.day} onChange={setFilter} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
-        <KpiCard label="Cash In: Scans" value={cashInScans} />
-        <KpiCard label="Cash In: El3awama" value={cashInEl3awama} />
-        <KpiCard label="Cash In: Stock" value={cashInStock} />
+        <KpiCard label={t("Cash In: Scans")} value={cashInScans} />
+        <KpiCard label={t("Cash In: El3awama")} value={cashInEl3awama} />
+        <KpiCard label={t("Cash In: Stock")} value={cashInStock} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
-        <KpiCard label="Total Cash Out" value={totalCashOut} negative />
-        <KpiCard label="Net P&L" value={netPL} highlight />
+        <KpiCard label={t("Total Cash Out")} value={totalCashOut} negative />
+        <KpiCard label={t("Net P&L")} value={netPL} highlight />
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <div style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>STOCK CAPACITY</div>
-          <div style={{ fontSize: 13, color: theme.navy, marginTop: 8 }}>Dental: <strong>{dentalUnits}</strong> units</div>
-          <div style={{ fontSize: 13, color: theme.navy }}>El3awama: <strong>{el3awamaUnits}</strong> units</div>
+          <div style={{ fontSize: 12, color: theme.gray, fontWeight: 600 }}>{t("STOCK CAPACITY")}</div>
+          <div style={{ fontSize: 13, color: theme.navy, marginTop: 8 }}>{t("Dental:")} <strong>{dentalUnits}</strong> {t("units")}</div>
+          <div style={{ fontSize: 13, color: theme.navy }}>{t("El3awama:")} <strong>{el3awamaUnits}</strong> {t("units")}</div>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Stream</h3>
-          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>Click a bar to see the real transactions behind it.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Revenue by Stream")}</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 8 }}>{t("Click a bar to see the real transactions behind it.")}</p>
           <ResponsiveContainer width="100%" height={250}>
             {/* Each business line split by how it was paid (30 Oct 2026). */}
             <BarChart data={revenueStreams.map((r) => ({ label: r.label, ...lineMethod[{ Scans: "scans", El3awama: "el3awama", Stock: "stock" }[r.label]] }))}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} tickFormatter={(v) => t(v)} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v, n) => [`${formatMoney(v)} EGP`, n]} cursor={{ fill: "rgba(39,33,77,0.05)" }} />
+              <Tooltip formatter={(v, n) => [t("{amount} EGP", { amount: formatMoney(v) }), n]} labelFormatter={(l) => t(l)} cursor={{ fill: "rgba(39,33,77,0.05)" }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {methodOrder.map((m, i) => (
-                <Bar key={m} dataKey={m} stackId="rev" fill={methodColor(m)} style={{ cursor: "pointer" }}
+                <Bar key={m} dataKey={m} name={t(m)} stackId="rev" fill={methodColor(m)} style={{ cursor: "pointer" }}
                   radius={i === methodOrder.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
                   onClick={(d) => d?.label && openRevenueDrill(d.label)} />
               ))}
             </BarChart>
           </ResponsiveContainer>
           <div style={{ marginTop: 12, paddingTop: 16, borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontWeight: 700, color: theme.navy }}>Total Revenue</span>
-            <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(totalCashIn)} EGP</span>
+            <span style={{ fontWeight: 700, color: theme.navy }}>{t("Total Revenue")}</span>
+            <span style={{ fontWeight: 700, color: theme.navy }}>{t("{amount} EGP", { amount: formatMoney(totalCashIn) })}</span>
           </div>
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Expenses Overview</h3>
-          {expenses.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No expenses recorded yet.</p>}
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Expenses Overview")}</h3>
+          {expenses.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>{t("No expenses recorded yet.")}</p>}
           {expenses.map((e) => (
             <div key={e.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
-              <span style={{ color: theme.navy }}>{e.label}</span>
-              <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{formatMoney(e.value)} EGP</span>
+              <span style={{ color: theme.navy }}>{t(e.label)}</span>
+              <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{t("{amount} EGP", { amount: formatMoney(e.value) })}</span>
             </div>
           ))}
           {expenses.length > 0 && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 4px", fontSize: 14, fontWeight: 800 }}>
-                <span style={{ color: theme.navy }}>Total expenses</span>
-                <span style={{ color: "#ba1a1a" }}>{formatMoney(totalCashOut)} EGP</span>
+                <span style={{ color: theme.navy }}>{t("Total expenses")}</span>
+                <span style={{ color: "#ba1a1a" }}>{t("{amount} EGP", { amount: formatMoney(totalCashOut) })}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 14, fontWeight: 800 }}>
-                <span style={{ color: theme.navy }}>Net profit</span>
-                <span style={{ color: netPL >= 0 ? "#1e7a3c" : "#ba1a1a" }}>{formatMoney(netPL)} EGP</span>
+                <span style={{ color: theme.navy }}>{t("Net profit")}</span>
+                <span style={{ color: netPL >= 0 ? "#1e7a3c" : "#ba1a1a" }}>{t("{amount} EGP", { amount: formatMoney(netPL) })}</span>
               </div>
               <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
-                Salaries count from issued payslips only. Salaries paid outside the system (September) are not included.
+                {t("Salaries count from issued payslips only. Salaries paid outside the system (September) are not included.")}
               </p>
             </>
           )}
@@ -428,14 +433,14 @@ function Overview() {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by Payment Method</h3>
-        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>How customers actually paid{methodLine === "all" ? ", all business lines together" : ""}{start ? ", within the selected period" : ""}.</p>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Revenue by Payment Method")}</h3>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>{t("How customers actually paid")}{methodLine === "all" ? t(", all business lines together") : ""}{start ? t(", within the selected period") : ""}.</p>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
           {[["all", "All business lines"], ["scans", "Scans"], ["el3awama", "El3awama"], ["stock", "Dental Stock"]].map(([k, l]) => (
             <button key={k} onClick={() => setMethodLine(k)}
               style={{ padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
                        border: `1px solid ${methodLine === k ? theme.navy : "#ddd"}`, background: methodLine === k ? theme.navy : "#fff", color: methodLine === k ? "#fff" : theme.navy }}>
-              {l}
+              {t(l)}
             </button>
           ))}
         </div>
@@ -444,9 +449,9 @@ function Overview() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>BUSINESS LINE</th>
-                  {methodOrder.map((m) => <th key={m} style={{ textAlign: "right", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>{m.toUpperCase()}</th>)}
-                  <th style={{ textAlign: "right", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>TOTAL</th>
+                  <th style={{ textAlign: "start", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>{t("BUSINESS LINE")}</th>
+                  {methodOrder.map((m) => <th key={m} style={{ textAlign: "end", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>{t(m).toUpperCase()}</th>)}
+                  <th style={{ textAlign: "end", padding: "6px 8px", color: theme.gray, fontSize: 11, borderBottom: "1px solid #eee" }}>{t("TOTAL")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -454,9 +459,9 @@ function Overview() {
                   const row = lineMethod[k]; const tot = Object.values(row).reduce((a, b) => a + b, 0);
                   return (
                     <tr key={k} onClick={() => setMethodLine(k)} style={{ cursor: "pointer", background: methodLine === k ? "#faf7ef" : "transparent" }}>
-                      <td style={{ padding: "7px 8px", fontWeight: 700, color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{l}</td>
-                      {methodOrder.map((m) => <td key={m} style={{ padding: "7px 8px", textAlign: "right", color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{row[m] ? formatMoney(row[m]) : "-"}</td>)}
-                      <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800, color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{formatMoney(tot)}</td>
+                      <td style={{ padding: "7px 8px", fontWeight: 700, color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{t(l)}</td>
+                      {methodOrder.map((m) => <td key={m} style={{ padding: "7px 8px", textAlign: "end", color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{row[m] ? formatMoney(row[m]) : "-"}</td>)}
+                      <td style={{ padding: "7px 8px", textAlign: "end", fontWeight: 800, color: theme.navy, borderBottom: "1px solid #f5f5f5" }}>{formatMoney(tot)}</td>
                     </tr>
                   );
                 })}
@@ -466,10 +471,10 @@ function Overview() {
         )}
         {paymentMethodTotals.some(([m]) => m === "Not recorded (migrated)") && (
           <p style={{ fontSize: 11, color: "#a97c00", marginTop: -10, marginBottom: 14, background: "#fff8e1", padding: "8px 12px", borderRadius: 8 }}>
-            "Not recorded (migrated)" covers {migratedCount.toLocaleString()} payments brought over from the original Excel files, every one of them dated before September 2026. The method was stored there literally as "Unknown", was never captured at the time, and cannot be recovered from the source. It is not a reporting fault. Every payment taken in the platform since go-live carries its real method.
+            {t("\"Not recorded (migrated)\" covers {n} payments brought over from the original Excel files, every one of them dated before September 2026. The method was stored there literally as \"Unknown\", was never captured at the time, and cannot be recovered from the source. It is not a reporting fault. Every payment taken in the platform since go-live carries its real method.", { n: migratedCount.toLocaleString() })}
           </p>
         )}
-        {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>No payments recorded for this period.</p>}
+        {paymentMethodTotals.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>{t("No payments recorded for this period.")}</p>}
         {paymentMethodTotals.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 20 }}>
             <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(paymentMethodTotals.length, 3)}, 1fr)`, gap: 14, alignContent: "start" }}>
@@ -477,9 +482,9 @@ function Overview() {
                 <div key={method} style={{ background: "#faf9fb", borderRadius: 12, padding: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: theme.gray, fontWeight: 600 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: methodColor(method), display: "inline-block" }} />
-                    {method.toUpperCase()}
+                    {t(method).toUpperCase()}
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy, marginTop: 4 }}>{formatMoney(total)} <span style={{ fontSize: 12, fontWeight: 500 }}>EGP</span></div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy, marginTop: 4 }}>{formatMoney(total)} <span style={{ fontSize: 12, fontWeight: 500 }}>{t("EGP")}</span></div>
                   <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>{paymentMethodTotalSum > 0 ? ((total / paymentMethodTotalSum) * 100).toFixed(1) : 0}%</div>
                 </div>
               ))}
@@ -487,7 +492,7 @@ function Overview() {
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
-                  data={paymentMethodTotals.map(([method, total]) => ({ name: method, value: total }))}
+                  data={paymentMethodTotals.map(([method, total]) => ({ name: t(method), value: total }))}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -500,7 +505,7 @@ function Overview() {
                     <PieCell key={i} fill={methodColor(m)} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v, n) => [`${formatMoney(v)} EGP`, n]} />
+                <Tooltip formatter={(v, n) => [t("{amount} EGP", { amount: formatMoney(v) }), n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -509,8 +514,8 @@ function Overview() {
       </div>
 
       <p style={{ fontSize: 11, color: "#999", marginTop: 20 }}>
-        Money in: scan visit payments, dental stock paid at the counter and collected on account. Money out: confirmed cash expenses by category (rent, utilities and the rest), supplier payments and salaries from issued payslips. All dated on the day the money moved.
-        {consolidatedSupplier > 0 && ` The one-off settlement of ${formatMoney(consolidatedSupplier)} EGP for supplier purchases before launch (31 Aug 2026) is kept out of these totals.`}
+        {t("Money in: scan visit payments, dental stock paid at the counter and collected on account. Money out: confirmed cash expenses by category (rent, utilities and the rest), supplier payments and salaries from issued payslips. All dated on the day the money moved.")}
+        {consolidatedSupplier > 0 && " " + t("The one-off settlement of {amount} EGP for supplier purchases before launch (31 Aug 2026) is kept out of these totals.", { amount: formatMoney(consolidatedSupplier) })}
       </p>
 
       {drill && (
@@ -528,6 +533,7 @@ function Overview() {
 }
 
 function KpiCard({ label, value, negative, highlight }) {
+  const { t } = useT();
   return (
     <div
       style={{
@@ -539,7 +545,7 @@ function KpiCard({ label, value, negative, highlight }) {
     >
       <div style={{ fontSize: 12, color: highlight ? theme.goldLight : theme.gray, fontWeight: 600 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: 24, fontWeight: 700, color: highlight ? "#fff" : negative ? "#ba1a1a" : theme.navy, marginTop: 6 }}>
-        {formatMoney(value)} <span style={{ fontSize: 14, fontWeight: 500 }}>EGP</span>
+        {formatMoney(value)} <span style={{ fontSize: 14, fontWeight: 500 }}>{t("EGP")}</span>
       </div>
     </div>
   );

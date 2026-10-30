@@ -6,6 +6,7 @@ import DrillDownModal from "./DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 import { fetchAll, cairoToday } from "../../lib/dashboardData";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { useT } from "../../lib/i18n";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend,
@@ -52,6 +53,7 @@ function buildScanNamer(visits) {
 }
 
 export default function ScanInsights() {
+  const { t, tCode, isAr } = useT();
   const [allVisits, setAllVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
@@ -81,8 +83,8 @@ export default function ScanInsights() {
     }
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (error && allVisits.length === 0) return <p style={{ color: "#ba1a1a" }}>Could not load scan data: {error}</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (error && allVisits.length === 0) return <p style={{ color: "#ba1a1a" }}>{t("Could not load scan data: {error}", { error: t(error) })}</p>;
 
   const scanName = buildScanNamer(allVisits);
   const years = [...new Set(allVisits.filter(hasRealDate).map((v) => v.exam_date.slice(0, 4)))].sort().reverse();
@@ -133,15 +135,15 @@ export default function ScanInsights() {
   function openScanTypeDrill(typeName) {
     const rows = visits
       .filter((v) => (v.scan_types || []).some((t) => scanName(t) === typeName))
-      .map((v) => ({ patient: v.patients?.name || "—", doctor: v.doctors?.name || "Walk-in", date: v.exam_date, status: v.payment_status }));
+      .map((v) => ({ patient: v.patients?.name || "—", doctor: v.doctors?.name || t("Walk-in"), date: v.exam_date, status: v.payment_status }));
     setDrill({
       title: typeName,
-      subtitle: `${rows.length} visit${rows.length === 1 ? "" : "s"} included this scan type`,
+      subtitle: rows.length === 1 ? t("1 visit included this scan type") : t("{n} visits included this scan type", { n: rows.length }),
       columns: [
-        { key: "patient", label: "Patient" },
-        { key: "doctor", label: "Doctor" },
-        { key: "date", label: "Date" },
-        { key: "status", label: "Payment" },
+        { key: "patient", label: t("Patient") },
+        { key: "doctor", label: t("Doctor") },
+        { key: "date", label: t("Date") },
+        { key: "status", label: t("Payment"), render: (r) => (isAr ? tCode(r.status) : r.status) },
       ],
       rows,
     });
@@ -152,13 +154,13 @@ export default function ScanInsights() {
       .filter((v) => hasRealDate(v) && v.exam_date.startsWith(key))
       .map((v) => ({ patient: v.patients?.name || "—", scans: (v.scan_types || []).join(", "), date: v.exam_date, status: v.payment_status }));
     setDrill({
-      title: `Visits in ${monthLabel}`,
-      subtitle: `${rows.length} visit${rows.length === 1 ? "" : "s"}`,
+      title: t("Visits in {month}", { month: monthLabel }),
+      subtitle: rows.length === 1 ? t("1 visit") : t("{n} visits", { n: rows.length }),
       columns: [
-        { key: "patient", label: "Patient" },
-        { key: "scans", label: "Scan Types" },
-        { key: "date", label: "Date" },
-        { key: "status", label: "Payment" },
+        { key: "patient", label: t("Patient") },
+        { key: "scans", label: t("Scan Types") },
+        { key: "date", label: t("Date") },
+        { key: "status", label: t("Payment"), render: (r) => (isAr ? tCode(r.status) : r.status) },
       ],
       rows,
     });
@@ -169,16 +171,16 @@ export default function ScanInsights() {
       <PeriodFilterBar years={years} year={filter.year} quarter={filter.quarter} month={filter.month} day={filter.day} onChange={setFilter} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-        <StatCard label="Total Scans" value={totalScans.toLocaleString()} />
-        <StatCard label="Total Visits" value={totalVisits.toLocaleString()} />
-        <StatCard label="Distinct Scan Types Used" value={Object.keys(typeCounts).length} />
-        <StatCard label="Visits Paid in Full" value={`${paidRate}%`} />
+        <StatCard label={t("Total Scans")} value={totalScans.toLocaleString()} />
+        <StatCard label={t("Total Visits")} value={totalVisits.toLocaleString()} />
+        <StatCard label={t("Distinct Scan Types Used")} value={Object.keys(typeCounts).length} />
+        <StatCard label={t("Visits Paid in Full")} value={`${paidRate}%`} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>{start ? "Scans by Month" : "Scans, Last 12 Months"}</h3>
-          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Click a point to see that month's visits.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{start ? t("Scans by Month") : t("Scans, Last 12 Months")}</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>{t("Click a point to see that month's visits.")}</p>
           <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={monthData} onClick={(e) => { if (e && e.activePayload) openMonthDrill(e.activePayload[0].payload.month, e.activePayload[0].payload.key); }}>
               <defs>
@@ -190,33 +192,33 @@ export default function ScanInsights() {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v) => [v, "Scans"]} cursor={{ fill: "rgba(169,139,77,0.08)" }} />
+              <Tooltip formatter={(v) => [v, t("Scans")]} cursor={{ fill: "rgba(169,139,77,0.08)" }} />
               <Area type="monotone" dataKey="scans" stroke={theme.navy} fill="url(#scanGradient)" strokeWidth={2} style={{ cursor: "pointer" }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Top Scan Types</h3>
-          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Click a bar to see the matching visits.</p>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Top Scan Types")}</h3>
+          <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>{t("Click a bar to see the matching visits.")}</p>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={topTypes} layout="vertical" margin={{ left: 10 }} onClick={(e) => { if (e && e.activePayload) openScanTypeDrill(e.activePayload[0].payload.name); }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
               <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 10 }} />
               <Tooltip cursor={{ fill: "rgba(39,33,77,0.05)" }} />
-              <Bar dataKey="count" fill={theme.navy} radius={[0, 4, 4, 0]} style={{ cursor: "pointer" }} />
+              <Bar dataKey="count" name={t("Count")} fill={theme.navy} radius={[0, 4, 4, 0]} style={{ cursor: "pointer" }} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Visits by Branch</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Visits by Branch")}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie
-              data={Object.entries(branchCounts).map(([name, count]) => ({ name, value: count }))}
+              data={Object.entries(branchCounts).map(([name, count]) => ({ name: name === "Unassigned" ? t(name) : name, value: count }))}
               dataKey="value"
               nameKey="name"
               cx="50%"

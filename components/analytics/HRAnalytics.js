@@ -6,9 +6,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 import { fetchAll, cairoDate, cairoToday } from "../../lib/dashboardData";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
+import { useT, Ltr } from "../../lib/i18n";
 
 const TREND_DAYS_DEFAULT = 30;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Display only, same index order as DAY_NAMES (getUTCDay).
+const DAY_NAMES_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 // Attendance tracking went live on this date; days before it are never "Absent".
 const GO_LIVE = "2026-09-01";
 // Never "employees" / "staff_profiles": Realtime would broadcast salary columns.
@@ -38,6 +41,7 @@ function trendFromKey(dateFilter) {
 }
 
 export default function HRAnalytics() {
+  const { t, isAr } = useT();
   const [employees, setEmployees] = useState([]);
   const [shiftsByEmployee, setShiftsByEmployee] = useState({});
   const [events, setEvents] = useState([]);
@@ -84,7 +88,7 @@ export default function HRAnalytics() {
     }
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
 
   const todayKey = cairoToday();
   const nowHM = cairoHM(new Date());
@@ -203,62 +207,64 @@ export default function HRAnalytics() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Attendance Tracking</h1>
-      <p style={{ color: theme.gray, marginBottom: 20 }}>Daily flags and trends, measured against each employee's own weekly shift schedule.</p>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Attendance Tracking")}</h1>
+      <p style={{ color: theme.gray, marginBottom: 20 }}>{t("Daily flags and trends, measured against each employee's own weekly shift schedule.")}</p>
 
       <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
 
       {noShiftCount > 0 && (
         <div style={{ background: "#fff3e0", border: "1px solid #ffe0b2", borderRadius: 12, padding: 14, marginBottom: 20, fontSize: 13, color: "#a97c00" }}>
-          {noShiftCount} employee{noShiftCount !== 1 ? "s don't" : " doesn't"} have a shift schedule set yet, their attendance can't be flagged accurately until one is set on their profile.
+          {noShiftCount === 1
+            ? t("1 employee doesn't have a shift schedule set yet, their attendance can't be flagged accurately until one is set on their profile.")
+            : t("{n} employees don't have a shift schedule set yet, their attendance can't be flagged accurately until one is set on their profile.", { n: noShiftCount })}
         </div>
       )}
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Today's Flags &middot; {DAY_NAMES[todayDow]}</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Today's Flags")} &middot; {isAr ? DAY_NAMES_AR[todayDow] : DAY_NAMES[todayDow]}</h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
           {todayFlags.map(({ emp, status, loginTime, logoutTime }) => {
             const meta = statusMeta[status];
             return (
               <a key={emp.id} href={`/dashboard/hr/${emp.id}`} style={{ textDecoration: "none", border: `1px solid ${meta.bg}`, background: meta.bg, borderRadius: 10, padding: 12, display: "block" }}>
                 <div style={{ fontWeight: 600, color: theme.navy, fontSize: 13 }}>{emp.name}</div>
-                <div style={{ fontSize: 11, color: meta.color, fontWeight: 700, marginTop: 2 }}>{meta.label}</div>
-                {loginTime && <div style={{ fontSize: 10, color: theme.gray, marginTop: 2 }}>In: {new Date(loginTime).toLocaleTimeString([], { timeZone: "Africa/Cairo" })}</div>}
-                {logoutTime && <div style={{ fontSize: 10, color: theme.gray }}>Out: {new Date(logoutTime).toLocaleTimeString([], { timeZone: "Africa/Cairo" })}</div>}
+                <div style={{ fontSize: 11, color: meta.color, fontWeight: 700, marginTop: 2 }}>{t(meta.label)}</div>
+                {loginTime && <div style={{ fontSize: 10, color: theme.gray, marginTop: 2 }}>{t("In: {time}", { time: new Date(loginTime).toLocaleTimeString([], { timeZone: "Africa/Cairo" }) })}</div>}
+                {logoutTime && <div style={{ fontSize: 10, color: theme.gray }}>{t("Out: {time}", { time: new Date(logoutTime).toLocaleTimeString([], { timeZone: "Africa/Cairo" }) })}</div>}
               </a>
             );
           })}
         </div>
-        {employees.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No active employees yet.</p>}
+        {employees.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No active employees yet.")}</p>}
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Trend by Employee</h3>
-        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>Hover a bar for exact counts. Click a row below for full detail.</p>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Trend by Employee")}</h3>
+        <p style={{ fontSize: 11, color: theme.gray, marginTop: -8, marginBottom: 12 }}>{t("Hover a bar for exact counts. Click a row below for full detail.")}</p>
         <ResponsiveContainer width="100%" height={Math.max(200, trend.length * 32)}>
-          <BarChart data={trend.map((t) => ({ name: t.emp.name, Late: t.lateDays, Absent: t.absentDays, Vacation: t.vacationDays }))} layout="vertical" margin={{ left: 10 }}>
+          <BarChart data={trend.map((tr) => ({ name: tr.emp.name, Late: tr.lateDays, Absent: tr.absentDays, Vacation: tr.vacationDays }))} layout="vertical" margin={{ left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="Late" fill="#a97c00" radius={[0, 3, 3, 0]} />
-            <Bar dataKey="Absent" fill="#ba1a1a" radius={[0, 3, 3, 0]} />
-            <Bar dataKey="Vacation" fill="#1565c0" radius={[0, 3, 3, 0]} />
+            <Bar dataKey="Late" name={t("Late")} fill="#a97c00" radius={[0, 3, 3, 0]} />
+            <Bar dataKey="Absent" name={t("Absent")} fill="#ba1a1a" radius={[0, 3, 3, 0]} />
+            <Bar dataKey="Vacation" name={t("Vacation")} fill="#1565c0" radius={[0, 3, 3, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Trend, Detail</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Trend, Detail")}</h3>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ textAlign: "left" }}>
-              <th style={th}>Employee</th>
-              <th style={th}>Late Days</th>
-              <th style={th}>Absent Days</th>
-              <th style={th}>Missing Sign-out</th>
-              <th style={th}>Vacation Days</th>
+            <tr style={{ textAlign: "start" }}>
+              <th style={th}>{t("Employee")}</th>
+              <th style={th}>{t("Late Days")}</th>
+              <th style={th}>{t("Absent Days")}</th>
+              <th style={th}>{t("Missing Sign-out")}</th>
+              <th style={th}>{t("Vacation Days")}</th>
             </tr>
           </thead>
           <tbody>
@@ -266,7 +272,7 @@ export default function HRAnalytics() {
               <tr key={emp.id} style={{ borderTop: "1px solid #f0f0f0" }}>
                 <td style={td}>
                   <a href={`/dashboard/hr/${emp.id}`} style={{ color: theme.navy, textDecoration: "none", fontWeight: 600 }}>{emp.name}</a>
-                  {noShiftDays > 0 && <div style={{ fontSize: 10, color: "#a97c00" }}>{noShiftDays} days with no shift defined</div>}
+                  {noShiftDays > 0 && <div style={{ fontSize: 10, color: "#a97c00" }}>{t("{n} days with no shift defined", { n: noShiftDays })}</div>}
                 </td>
                 <td style={{ ...td, color: lateDays > 0 ? "#a97c00" : theme.gray, fontWeight: lateDays > 2 ? 700 : 400 }}>{lateDays}</td>
                 <td style={{ ...td, color: absentDays > 0 ? "#ba1a1a" : theme.gray, fontWeight: absentDays > 0 ? 700 : 400 }}>{absentDays}</td>
@@ -279,16 +285,16 @@ export default function HRAnalytics() {
       </div>
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Vacations</h3>
-        {upcomingVacations.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>No current or upcoming approved vacations.</p>}
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Vacations")}</h3>
+        {upcomingVacations.length === 0 && <p style={{ color: theme.gray, fontSize: 14 }}>{t("No current or upcoming approved vacations.")}</p>}
         {upcomingVacations.map((r) => {
           const emp = employees.find((e) => e.id === r.employee_id);
           const active = r.start_date <= todayKey && r.end_date >= todayKey;
           return (
             <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
-              <span style={{ color: theme.navy, fontWeight: 600 }}>{emp?.name || "Unknown"}</span>
-              <span style={{ color: theme.gray }}>{r.start_date} &rarr; {r.end_date}</span>
-              {active && <span style={{ color: "#1565c0", fontWeight: 700, fontSize: 11 }}>Currently away</span>}
+              <span style={{ color: theme.navy, fontWeight: 600 }}>{emp?.name || t("Unknown")}</span>
+              <span style={{ color: theme.gray }}><Ltr>{r.start_date}</Ltr> {isAr ? "←" : "→"} <Ltr>{r.end_date}</Ltr></span>
+              {active && <span style={{ color: "#1565c0", fontWeight: 700, fontSize: 11 }}>{t("Currently away")}</span>}
             </div>
           );
         })}

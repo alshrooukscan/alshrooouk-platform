@@ -5,11 +5,14 @@ import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
 import { fetchAll, fetchStockCashIn, cairoToday } from "../../lib/dashboardData";
+import { useT } from "../../lib/i18n";
+import { MONTHS_AR } from "./PeriodFilterBar";
 
 // Direction, not a snapshot. Every other panel answers "what did this period
 // look like"; nothing answered "is it getting better or worse", which is the
 // question a business actually runs on.
 export default function TrendsAnalytics() {
+  const { t, isAr } = useT();
   const [visits, setVisits] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +40,7 @@ export default function TrendsAnalytics() {
     }
   }
 
-  if (loading) return <p style={{ color: theme.gray }}>Loading...</p>;
+  if (loading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
 
   const key = (d) => String(d).slice(0, 7);
   const today = cairoToday();
@@ -83,7 +86,10 @@ export default function TrendsAnalytics() {
     const b = byMonth[m];
     return {
       month: m,
-      label: new Date(m + "-01T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+      // Display only; the month key above stays "YYYY-MM".
+      label: isAr
+        ? `${MONTHS_AR[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`
+        : new Date(m + "-01T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
       visits: b.visits,
       revenue: b.revenue,
       scanRevenue: b.scanRevenue,
@@ -113,7 +119,7 @@ export default function TrendsAnalytics() {
       <div style={{ fontSize: 22, fontWeight: 800, color: theme.navy }}>{value}{suffix}</div>
       {change !== null && change !== undefined && (
         <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: change >= 0 ? "#1e7a3c" : "#ba1a1a" }}>
-          {change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(0)}% vs previous month
+          {change >= 0 ? "▲" : "▼"} {t("{pct}% vs previous month", { pct: Math.abs(change).toFixed(0) })}
         </div>
       )}
     </div>
@@ -121,9 +127,9 @@ export default function TrendsAnalytics() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Trends</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Trends")}</h1>
       <p style={{ color: theme.gray, marginBottom: 16 }}>
-        Month by month, so you can see direction rather than a single period in isolation.
+        {t("Month by month, so you can see direction rather than a single period in isolation.")}
       </p>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
@@ -131,21 +137,21 @@ export default function TrendsAnalytics() {
           <button key={m} onClick={() => setMonths(m)}
             style={{ padding: "8px 18px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
               background: months === m ? theme.navy : "#fff", color: months === m ? "#fff" : theme.navy,
-              boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>Last {m} months</button>
+              boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>{t("Last {n} months", { n: m })}</button>
         ))}
       </div>
 
       {last && prev && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
-          <Kpi label={`Revenue — ${last.label}`} value={formatMoney(last.revenue)} suffix=" EGP" change={delta(last.revenue, prev.revenue)} />
-          <Kpi label={`Visits — ${last.label}`} value={last.visits} change={delta(last.visits, prev.visits)} />
-          <Kpi label="Average per visit" value={formatMoney(last.perVisit)} suffix=" EGP" change={delta(last.perVisit, prev.perVisit)} />
-          <Kpi label="Referring doctors" value={last.doctors} change={delta(last.doctors, prev.doctors)} />
+          <Kpi label={t("Revenue — {month}", { month: last.label })} value={formatMoney(last.revenue)} suffix={" " + t("EGP")} change={delta(last.revenue, prev.revenue)} />
+          <Kpi label={t("Visits — {month}", { month: last.label })} value={last.visits} change={delta(last.visits, prev.visits)} />
+          <Kpi label={t("Average per visit")} value={formatMoney(last.perVisit)} suffix={" " + t("EGP")} change={delta(last.perVisit, prev.perVisit)} />
+          <Kpi label={t("Referring doctors")} value={last.doctors} change={delta(last.doctors, prev.doctors)} />
         </div>
       )}
 
       <div style={{ ...card, marginBottom: 20 }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Revenue by month</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Revenue by month")}</h3>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 190, marginTop: 14 }}>
           {rows.map((r, i) => (
             <div key={r.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
@@ -153,7 +159,7 @@ export default function TrendsAnalytics() {
                 {r.revenue > 0 ? formatMoney(Math.round(r.revenue / 1000)) + "k" : ""}
               </div>
               <div
-                title={`${r.label}: ${formatMoney(r.revenue)} EGP (scans ${formatMoney(r.scanRevenue)} from ${r.visits} visits, stock ${formatMoney(r.stockRevenue)})`}
+                title={t("{month}: {amount} EGP (scans {scans} from {visits} visits, stock {stock})", { month: r.label, amount: formatMoney(r.revenue), scans: formatMoney(r.scanRevenue), visits: r.visits, stock: formatMoney(r.stockRevenue) })}
                 style={{
                   width: "100%",
                   height: `${Math.max((r.revenue / maxRev) * 100, 1)}%`,
@@ -166,17 +172,16 @@ export default function TrendsAnalytics() {
           ))}
         </div>
         <p style={{ fontSize: 11, color: theme.gray, marginBottom: 0, marginTop: 10 }}>
-          The final bar is the month in progress, so it is not comparable yet. Anything before 2026 was reconstructed from the
-          migrated records rather than recorded at the counter.
+          {t("The final bar is the month in progress, so it is not comparable yet. Anything before 2026 was reconstructed from the migrated records rather than recorded at the counter.")}
         </p>
       </div>
 
       <div style={{ ...card, marginBottom: 20 }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Visits by month</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Visits by month")}</h3>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 130, marginTop: 14 }}>
           {rows.map((r) => (
             <div key={r.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
-              <div title={`${r.label}: ${r.visits} visits, ${r.patients} patients`}
+              <div title={t("{month}: {visits} visits, {patients} patients", { month: r.label, visits: r.visits, patients: r.patients })}
                 style={{ width: "100%", height: `${Math.max((r.visits / maxVisits) * 100, 1)}%`, background: theme.gold, borderRadius: "4px 4px 0 0" }} />
               <div style={{ fontSize: 9, color: theme.gray, marginTop: 5 }}>{r.visits}</div>
             </div>
@@ -185,13 +190,13 @@ export default function TrendsAnalytics() {
       </div>
 
       <div style={card}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>The numbers</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("The numbers")}</h3>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#faf9fb" }}>
                 {["Month", "Visits", "Patients", "Doctors", "Scan revenue", "Stock revenue", "Total revenue", "Avg / visit", "Cash out"].map((h) => (
-                  <th key={h} style={{ textAlign: h === "Month" ? "left" : "right", padding: "8px 10px", color: theme.navy, fontWeight: 700 }}>{h}</th>
+                  <th key={h} style={{ textAlign: h === "Month" ? "start" : "end", padding: "8px 10px", color: theme.navy, fontWeight: 700 }}>{t(h)}</th>
                 ))}
               </tr>
             </thead>
@@ -199,14 +204,14 @@ export default function TrendsAnalytics() {
               {[...rows].reverse().map((r) => (
                 <tr key={r.month} style={{ borderBottom: "1px solid #f2f2f2" }}>
                   <td style={{ padding: "8px 10px", color: theme.navy, fontWeight: 600 }}>{r.label}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{r.visits}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{r.patients}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{r.doctors}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", color: theme.navy }}>{formatMoney(r.scanRevenue)}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", color: theme.navy }}>{formatMoney(r.stockRevenue)}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: theme.navy }}>{formatMoney(r.revenue)}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{formatMoney(r.perVisit)}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", color: r.cashOut ? "#ba1a1a" : theme.gray }}>{formatMoney(r.cashOut)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end" }}>{r.visits}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end" }}>{r.patients}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end" }}>{r.doctors}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end", color: theme.navy }}>{formatMoney(r.scanRevenue)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end", color: theme.navy }}>{formatMoney(r.stockRevenue)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end", fontWeight: 700, color: theme.navy }}>{formatMoney(r.revenue)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end" }}>{formatMoney(r.perVisit)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "end", color: r.cashOut ? "#ba1a1a" : theme.gray }}>{formatMoney(r.cashOut)}</td>
                 </tr>
               ))}
             </tbody>

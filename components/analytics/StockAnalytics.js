@@ -7,8 +7,10 @@ import { exportToCsv } from "../../lib/exportCsv";
 import PeriodFilterBar, { getDateRange } from "./PeriodFilterBar";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
 import { fetchAll, cairoDate } from "../../lib/dashboardData";
+import { useT } from "../../lib/i18n";
 
 export default function StockAnalytics() {
+  const { t } = useT();
   const [category, setCategory] = useState("dental");
   const [items, setItems] = useState([]);
   const [allTxns, setAllTxns] = useState([]);
@@ -109,8 +111,8 @@ export default function StockAnalytics() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h1 style={{ color: theme.navy, margin: 0 }}>Stock Analytics</h1>
-        <button onClick={handleExport} style={exportBtn}>Export CSV</button>
+        <h1 style={{ color: theme.navy, margin: 0 }}>{t("Stock Analytics")}</h1>
+        <button onClick={handleExport} style={exportBtn}>{t("Export CSV")}</button>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
@@ -124,7 +126,7 @@ export default function StockAnalytics() {
               fontWeight: 700, cursor: "pointer", fontSize: 13, boxShadow: "0 2px 8px rgba(39,33,77,0.06)",
             }}
           >
-            {c === "dental" ? "Dental Stock" : "El3awama Stock"}
+            {c === "dental" ? t("Dental Stock") : t("El3awama Stock")}
           </button>
         ))}
       </div>
@@ -132,33 +134,33 @@ export default function StockAnalytics() {
       <PeriodFilterBar years={years} year={dateFilter.year} quarter={dateFilter.quarter} month={dateFilter.month} day={dateFilter.day} onChange={setDateFilter} />
 
       <p style={{ fontSize: 12, color: theme.gray, marginTop: -10, marginBottom: 16 }}>
-        Inventory value below always reflects current stock on hand (real quantities × real prices), the period filter above applies only to Purchases and Sales, which are transaction history, not a point-in-time snapshot.
+        {t("Inventory value below always reflects current stock on hand (real quantities × real prices), the period filter above applies only to Purchases and Sales, which are transaction history, not a point-in-time snapshot.")}
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}>
-        <KpiCard label="Inventory Cost (on hand)" value={totals.inventoryCost} />
-        <KpiCard label="Potential Revenue (on hand)" value={totals.inventoryPotentialRevenue} />
-        <KpiCard label="Potential Profit (on hand)" value={totals.inventoryPotentialProfit} highlight />
-        <KpiCard label="At / Below Reorder Level" value={totals.lowStock} isCount warn={totals.lowStock > 0} />
-        <KpiCard label="Owed to Suppliers (all)" value={supplierOwed} warn={supplierOwed > 0} />
+        <KpiCard label={t("Inventory Cost (on hand)")} value={totals.inventoryCost} />
+        <KpiCard label={t("Potential Revenue (on hand)")} value={totals.inventoryPotentialRevenue} />
+        <KpiCard label={t("Potential Profit (on hand)")} value={totals.inventoryPotentialProfit} highlight />
+        <KpiCard label={t("At / Below Reorder Level")} value={totals.lowStock} isCount warn={totals.lowStock > 0} />
+        <KpiCard label={t("Owed to Suppliers (all)")} value={supplierOwed} warn={supplierOwed > 0} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 24 }}>
-        <KpiCard label="Purchases (net of supplier returns)" value={totals.totalPurchased} small />
-        <KpiCard label="Sales (net of customer returns)" value={totals.totalSold} small />
+        <KpiCard label={t("Purchases (net of supplier returns)")} value={totals.totalPurchased} small />
+        <KpiCard label={t("Sales (net of customer returns)")} value={totals.totalSold} small />
       </div>
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
 
       <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
-            <tr style={{ background: "#faf9fb", textAlign: "left" }}>
-              <Th>Item</Th>
-              <Th>Qty on Hand</Th>
-              <Th>Inventory Cost</Th>
-              <Th>Potential Revenue</Th>
-              <Th>Potential Profit</Th>
+            <tr style={{ background: "#faf9fb", textAlign: "start" }}>
+              <Th>{t("Item")}</Th>
+              <Th>{t("Qty on Hand")}</Th>
+              <Th>{t("Inventory Cost")}</Th>
+              <Th>{t("Potential Revenue")}</Th>
+              <Th>{t("Potential Profit")}</Th>
             </tr>
           </thead>
           <tbody>
@@ -169,15 +171,15 @@ export default function StockAnalytics() {
                 <tr key={r.id} style={{ borderTop: "1px solid #f0f0f0" }}>
                   <Td><strong>{r.name}</strong> <span style={{ color: theme.gray }}>({r.item_code})</span></Td>
                   <Td>{r.qty}</Td>
-                  <Td>{formatMoney(r.inventoryCost)} EGP</Td>
-                  <Td>{formatMoney(r.inventoryPotentialRevenue)} EGP</Td>
-                  <Td style={{ color: r.inventoryPotentialProfit >= 0 ? "#2e7d32" : "#ba1a1a", fontWeight: 700 }}>{formatMoney(r.inventoryPotentialProfit)} EGP</Td>
+                  <Td>{t("{amount} EGP", { amount: formatMoney(r.inventoryCost) })}</Td>
+                  <Td>{t("{amount} EGP", { amount: formatMoney(r.inventoryPotentialRevenue) })}</Td>
+                  <Td style={{ color: r.inventoryPotentialProfit >= 0 ? "#2e7d32" : "#ba1a1a", fontWeight: 700 }}>{t("{amount} EGP", { amount: formatMoney(r.inventoryPotentialProfit) })}</Td>
                 </tr>
               ))}
           </tbody>
         </table>
         {!loading && rows.filter((r) => r.qty > 0).length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No stock on hand for this category.</div>
+          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>{t("No stock on hand for this category.")}</div>
         )}
       </div>
 
@@ -186,11 +188,12 @@ export default function StockAnalytics() {
 }
 
 function KpiCard({ label, value, highlight, warn, isCount, small }) {
+  const { t } = useT();
   return (
     <div style={{ background: highlight ? theme.navy : "#fff", borderRadius: 14, padding: small ? 12 : 16, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
       <div style={{ fontSize: 10, color: highlight ? theme.goldLight : theme.gray, fontWeight: 700 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: small ? 15 : 18, fontWeight: 700, color: highlight ? "#fff" : warn && value > 0 ? "#a97c00" : theme.navy, marginTop: 4 }}>
-        {isCount ? value : <>{formatMoney(value)} <span style={{ fontSize: 11, fontWeight: 500 }}>EGP</span></>}
+        {isCount ? value : <>{formatMoney(value)} <span style={{ fontSize: 11, fontWeight: 500 }}>{t("EGP")}</span></>}
       </div>
     </div>
   );
