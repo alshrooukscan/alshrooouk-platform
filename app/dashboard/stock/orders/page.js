@@ -5,6 +5,7 @@ import Link from "next/link";
 import DentalOrdersPanel from "../../../../components/orders/DentalOrdersPanel";
 import El3awamaOrdersPanel from "../../../../components/orders/El3awamaOrdersPanel";
 import { theme } from "../../../../lib/theme";
+import { useT } from "../../../../lib/i18n";
 
 // One Stock Orders screen for both businesses, mirroring Stock Details. The
 // chosen stock is in the URL so the Counter Sale button below can hand the same
@@ -15,6 +16,7 @@ const STOCKS = [
 ];
 
 function OrdersInner() {
+  const { t } = useT();
   const params = useSearchParams();
   const router = useRouter();
   const fromUrl = params.get("stock");
@@ -42,7 +44,7 @@ function OrdersInner() {
               cursor: "pointer",
             }}
           >
-            {s.label}
+            {t(s.label)}
           </button>
         ))}
         {/* Counter Sale left the sidebar and lives here instead. It carries the
@@ -51,7 +53,7 @@ function OrdersInner() {
         <Link
           href={`/dashboard/counter-sale?stock=${stock}`}
           style={{
-            marginLeft: "auto",
+            marginInlineStart: "auto",
             padding: "10px 22px",
             borderRadius: 10,
             border: "none",
@@ -61,7 +63,7 @@ function OrdersInner() {
             textDecoration: "none",
           }}
         >
-          + Counter Sale
+          {t("+ Counter Sale")}
         </Link>
       </div>
       {stock === "dental" ? <DentalOrdersPanel /> : <El3awamaOrdersPanel />}

@@ -40,7 +40,7 @@ for (const f of files) {
   let m;
   while ((m = re.exec(src))) {
     if (m[1] === "`" && m[2].includes("${")) continue;
-    const key = m[2].replace(/\\(["'`\\])/g, "$1").replace(/\\n/g, "\n");
+    const key = m[2].replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/\\(["'`\\])/g, "$1").replace(/\\n/g, "\n");
     used++;
     if (merged[key] === undefined) (missing[f] = missing[f] || []).push(key);
   }

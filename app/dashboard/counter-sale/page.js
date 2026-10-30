@@ -5,6 +5,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { usePermissions } from "../../../lib/usePermissions";
 import { formatMoney } from "../../../lib/format";
+import { useT, tx } from "../../../lib/i18n";
 
 const BRANDS = [
   { key: "el3awama_stock", label: "El3awama F&B" },
@@ -22,6 +23,7 @@ const METHODS = [
 // The counter / till screen. El3awama had no way to sell anything at all
 // before this, which is why its revenue always read zero.
 function CounterSalePageInner() {
+  const { t, tCode, isAr } = useT();
   const { can, isAdmin, loading: permsLoading } = usePermissions();
   // Opened from Stock Orders, which passes the stock being viewed, so choosing
   // Dental there does not mean choosing it again here.
@@ -89,7 +91,7 @@ function CounterSalePageInner() {
     try {
       const res = await authed(`/api/counter-sales?brand=${brand}`);
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Could not load the counter.");
+      if (!res.ok) throw new Error(j.error || tx("Could not load the counter."));
       setItems(j.items || []); setStaffList(j.staff || []); setDoctors(j.doctors || []);
       setSelfEmployeeId(j.selfEmployeeId || null);
       setCollectedBy((prev) => prev || j.selfEmployeeId || "");
@@ -139,14 +141,14 @@ function CounterSalePageInner() {
 
   async function submit() {
     setError("");
-    if (lines.length === 0) return setError("Add something to the sale first.");
+    if (lines.length === 0) return setError(tx("Add something to the sale first."));
     if (method === "staff_tab") {
-      if (!employeeId) return setError("Choose which employee this goes on.");
-      if (!chosen?.has_pin) return setError("That employee has no tab PIN set yet. An admin sets it in Settings.");
-      if (tabPin.length !== 4) return setError("Enter the employee's 4-digit PIN.");
+      if (!employeeId) return setError(tx("Choose which employee this goes on."));
+      if (!chosen?.has_pin) return setError(tx("That employee has no tab PIN set yet. An admin sets it in Settings."));
+      if (tabPin.length !== 4) return setError(tx("Enter the employee's 4-digit PIN."));
     }
-    if (method === "postponed" && !customerId) return setError("Choose the customer this is billed to.");
-    if (method === "cash" && !collectedBy) return setError("Choose who is taking the cash.");
+    if (method === "postponed" && !customerId) return setError(tx("Choose the customer this is billed to."));
+    if (method === "cash" && !collectedBy) return setError(tx("Choose who is taking the cash."));
 
     setSaving(true);
     try {
@@ -164,7 +166,7 @@ function CounterSalePageInner() {
         }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Could not record that sale.");
+      if (!res.ok) throw new Error(j.error || tx("Could not record that sale."));
       setDone(j.result);
       setTabPin(""); setCustomerId(""); setEmployeeId("");
       load();
@@ -172,16 +174,16 @@ function CounterSalePageInner() {
     setSaving(false);
   }
 
-  if (permsLoading) return <p style={{ color: theme.gray }}>Loading...</p>;
-  if (!hasAccess) return <p style={{ color: theme.gray }}>You don&apos;t have access to this page.</p>;
+  if (permsLoading) return <p style={{ color: theme.gray }}>{t("Loading...")}</p>;
+  if (!hasAccess) return <p style={{ color: theme.gray }}>{t("You don't have access to this page.")}</p>;
 
   const shown = items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>Cash Management</p>
-      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Counter Sale</h1>
-      <p style={{ color: theme.gray, margin: "0 0 18px" }}>Walk-up sales for El3awama and Dental Supply.</p>
+      <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>{t("Cash Management")}</p>
+      <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>{t("Counter Sale")}</h1>
+      <p style={{ color: theme.gray, margin: "0 0 18px" }}>{t("Walk-up sales for El3awama and Dental Supply.")}</p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {BRANDS.map((b) => (
@@ -190,20 +192,20 @@ function CounterSalePageInner() {
               border: brand === b.key ? "none" : "1px solid #d8dee3",
               background: brand === b.key ? theme.navy : "#fff",
               color: brand === b.key ? "#fff" : theme.gray }}>
-            {b.label}
+            {t(b.label)}
           </button>
         ))}
       </div>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 16, alignItems: "start" }}>
         {/* items */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items..."
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search items...")}
             style={{ ...inp, marginBottom: 12 }} />
-          {loading ? <p style={{ color: theme.gray }}>Loading...</p>
-            : shown.length === 0 ? <p style={{ color: theme.gray }}>Nothing in stock for this business.</p>
+          {loading ? <p style={{ color: theme.gray }}>{t("Loading...")}</p>
+            : shown.length === 0 ? <p style={{ color: theme.gray }}>{t("Nothing in stock for this business.")}</p>
             : (
             <div style={{ display: "grid", gap: 6, maxHeight: 460, overflowY: "auto" }}>
               {shown.map((i) => (
@@ -212,7 +214,7 @@ function CounterSalePageInner() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600, color: theme.navy, fontSize: 13 }}>{i.name}</div>
                     <div style={{ fontSize: 11, color: theme.gray }}>
-                      {formatMoney(i.sale_price)} EGP · {Number(i.qty_remaining)} left
+                      {t("{amount} EGP", { amount: formatMoney(i.sale_price) })} · {t("{n} left", { n: Number(i.qty_remaining) })}
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -228,8 +230,8 @@ function CounterSalePageInner() {
 
         {/* checkout */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>This Sale</h3>
-          {lines.length === 0 ? <p style={{ color: theme.gray, fontSize: 13 }}>Nothing added yet.</p> : (
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("This Sale")}</h3>
+          {lines.length === 0 ? <p style={{ color: theme.gray, fontSize: 13 }}>{t("Nothing added yet.")}</p> : (
             <div style={{ display: "grid", gap: 4, marginBottom: 10 }}>
               {lines.map((l) => (
                 <div key={l.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
@@ -244,18 +246,18 @@ function CounterSalePageInner() {
               recorded nothing about who bought it - and a doctor's paid history
               was invisible. Optional on a paid sale (a genuine walk-in has no
               account) and still required when the money is owed. */}
-          <FieldLabel>Customer</FieldLabel>
+          <FieldLabel>{t("Customer")}</FieldLabel>
           {/* 166 doctors is too many to scroll past at a counter with someone
               waiting, so the list narrows as you type. Name or clinic code -
               staff know some doctors by one and some by the other. */}
           <input
             value={doctorSearch}
             onChange={(e) => setDoctorSearch(e.target.value)}
-            placeholder="Type the clinic number, or the doctor's name"
+            placeholder={t("Type the clinic number, or the doctor's name")}
             style={{ ...inp, marginBottom: 6 }}
           />
           <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={inp} size={doctorSearch ? 6 : undefined}>
-            <option value="">Walk-in (no account)</option>
+            <option value="">{t("Walk-in (no account)")}</option>
             {matchingDoctors.map((d) => (
               <option key={d.id} value={d.id}>
                 {/* Number first. Reception is handed a clinic number, so that
@@ -268,7 +270,7 @@ function CounterSalePageInner() {
           {customerId && (
             <div style={{ marginTop: 10, background: "#faf9fb", borderRadius: 10, padding: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: theme.navy, marginBottom: 6 }}>
-                What this clinic has already taken
+                {t("What this clinic has already taken")}
               </div>
               {/* Said plainly rather than left to be noticed. A quiet marker in
                   a list is not much use to somebody working at a counter with a
@@ -276,12 +278,12 @@ function CounterSalePageInner() {
                   was twelve minutes apart - well inside one shift. */}
               {!recentLoading && recent.some((r) => r.entry_date === new Date().toISOString().slice(0, 10)) && (
                 <div style={{ fontSize: 12, color: "#8a6d00", fontWeight: 700, marginBottom: 6 }}>
-                  This clinic already has a sale recorded today. Check it is not the same one before saving.
+                  {t("This clinic already has a sale recorded today. Check it is not the same one before saving.")}
                 </div>
               )}
-              {recentLoading && <div style={{ fontSize: 12, color: theme.gray }}>Checking...</div>}
+              {recentLoading && <div style={{ fontSize: 12, color: theme.gray }}>{t("Checking...")}</div>}
               {!recentLoading && recent.length === 0 && (
-                <div style={{ fontSize: 12, color: theme.gray }}>Nothing recorded for them yet.</div>
+                <div style={{ fontSize: 12, color: theme.gray }}>{t("Nothing recorded for them yet.")}</div>
               )}
               {!recentLoading && recent.map((r) => {
                 // A sale for the same clinic earlier today is the one worth
@@ -290,11 +292,11 @@ function CounterSalePageInner() {
                 const today = r.entry_date === new Date().toISOString().slice(0, 10);
                 return (
                   <div key={r.id} style={{ fontSize: 12, color: theme.navy, padding: "4px 0", borderTop: "1px solid #eee" }}>
-                    <span style={{ fontWeight: 700 }}>{formatMoney(r.net_amount)} EGP</span>
+                    <span style={{ fontWeight: 700 }}>{t("{amount} EGP", { amount: formatMoney(r.net_amount) })}</span>
                     <span style={{ color: theme.gray }}>
                       {" · "}{r.entry_date}
-                      {today && <span style={{ color: "#8a6d00", fontWeight: 700 }}> · today</span>}
-                      {r.payment_method === "postponed" ? " · on account" : ` · ${r.payment_method}`}
+                      {today && <span style={{ color: "#8a6d00", fontWeight: 700 }}> · {t("today")}</span>}
+                      {r.payment_method === "postponed" ? ` · ${t("on account")}` : ` · ${isAr ? tCode(r.payment_method) : r.payment_method}`}
                     </span>
                     {r.items?.length > 0 && (
                       <div style={{ color: theme.gray, fontSize: 11 }}>
@@ -304,7 +306,7 @@ function CounterSalePageInner() {
                     {r.receipt_no && (
                       <a href={`/dashboard/stock/returns?receipt=${encodeURIComponent(r.receipt_no)}`} target="_blank" rel="noreferrer"
                         style={{ fontSize: 11, color: theme.navy, textDecoration: "underline" }}>
-                        Return items from {r.receipt_no}
+                        {t("Return items from {receipt}", { receipt: r.receipt_no })}
                       </a>
                     )}
                   </div>
@@ -315,18 +317,18 @@ function CounterSalePageInner() {
 
           {doctorSearch && matchingDoctors.length === 0 && (
             <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
-              No doctor matches that. Clear the search to see the full list.
+              {t("No doctor matches that. Clear the search to see the full list.")}
             </p>
           )}
 
-          <FieldLabel>Payment</FieldLabel>
+          <FieldLabel>{t("Payment")}</FieldLabel>
           <select value={method} onChange={(e) => setMethod(e.target.value)} style={inp}>
-            {METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            {METHODS.map((m) => <option key={m.key} value={m.key}>{t(m.label)}</option>)}
           </select>
 
           {method === "cash" && (
             <>
-              <FieldLabel>Who is taking the cash</FieldLabel>
+              <FieldLabel>{t("Who is taking the cash")}</FieldLabel>
               {selfEmployeeId ? (
                 // The person signed in is the person holding the money. It was
                 // a dropdown of every employee, which invited the sale to be
@@ -334,19 +336,18 @@ function CounterSalePageInner() {
                 // and cash attributed to a colleague is exactly what the cash
                 // pages then have to unpick.
                 <div style={{ ...inp, display: "flex", alignItems: "center", background: "#f7f8fa", color: theme.navy, fontWeight: 600 }}>
-                  {staffList.find((s2) => s2.id === selfEmployeeId)?.name || "You"}
+                  {staffList.find((s2) => s2.id === selfEmployeeId)?.name || t("You")}
                 </div>
               ) : (
                 <>
                   <select value={collectedBy} onChange={(e) => setCollectedBy(e.target.value)} style={inp}>
-                    <option value="">Select employee...</option>
+                    <option value="">{t("Select employee...")}</option>
                     {staffList.map((s2) => (
                       <option key={s2.id} value={s2.id}>{s2.name}</option>
                     ))}
                   </select>
                   <p style={{ fontSize: 11, color: theme.gray, margin: "6px 0 0" }}>
-                    Your login isn&apos;t linked to an employee record, so the cash can&apos;t be attributed to you
-                    automatically. Choose whoever is actually taking the money.
+                    {t("Your login isn't linked to an employee record, so the cash can't be attributed to you automatically. Choose whoever is actually taking the money.")}
                   </p>
                 </>
               )}
@@ -355,17 +356,17 @@ function CounterSalePageInner() {
 
           {method === "postponed" && !customerId && (
             <p style={{ fontSize: 12, color: "#ba1a1a", margin: "6px 0 0" }}>
-              A postponed sale is money owed, so it has to be billed to a customer above.
+              {t("A postponed sale is money owed, so it has to be billed to a customer above.")}
             </p>
           )}
 
           {method === "staff_tab" && (
             <>
-              <FieldLabel>Employee</FieldLabel>
+              <FieldLabel>{t("Employee")}</FieldLabel>
               <select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setTabPin(""); }} style={inp}>
-                <option value="">Select employee...</option>
+                <option value="">{t("Select employee...")}</option>
                 {staffList.filter((s) => s.tab_enabled).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} — {formatMoney(s.remaining)} EGP left</option>
+                  <option key={s.id} value={s.id}>{s.name} — {t("{amount} EGP left", { amount: formatMoney(s.remaining) })}</option>
                 ))}
               </select>
               {chosen && (
@@ -373,22 +374,22 @@ function CounterSalePageInner() {
                   background: overCap ? "#fff5f5" : "#f2f8f4", border: `1px solid ${overCap ? "#f0c9c9" : "#cfe6d6"}` }}>
                   <div style={{ fontSize: 12, color: overCap ? "#ba1a1a" : "#1e7a3c", fontWeight: 700 }}>
                     {overCap
-                      ? `Over limit — they can spend ${formatMoney(chosen.remaining)} EGP right now.`
-                      : `Within limit — ${formatMoney(chosen.remaining)} EGP available.`}
+                      ? t("Over limit — they can spend {amount} EGP right now.", { amount: formatMoney(chosen.remaining) })
+                      : t("Within limit — {amount} EGP available.", { amount: formatMoney(chosen.remaining) })}
                   </div>
                   <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
-                    The limit is half of what they have earned so far this month, and grows as they work.
+                    {t("The limit is half of what they have earned so far this month, and grows as they work.")}
                   </div>
                 </div>
               )}
               {chosen && !chosen.has_pin && (
                 <p style={{ fontSize: 12, color: "#ba1a1a", margin: "6px 0 0" }}>
-                  No PIN set for this employee yet. An admin sets it before they can use a tab.
+                  {t("No PIN set for this employee yet. An admin sets it before they can use a tab.")}
                 </p>
               )}
               {chosen?.has_pin && (
                 <>
-                  <FieldLabel>Their 4-digit PIN</FieldLabel>
+                  <FieldLabel>{t("Their 4-digit PIN")}</FieldLabel>
                   <input value={tabPin} onChange={(e) => setTabPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                     inputMode="numeric" placeholder="----" type="password"
                     style={{ ...inp, letterSpacing: 6, textAlign: "center", fontSize: 16 }} />
@@ -400,31 +401,31 @@ function CounterSalePageInner() {
           <div style={{ borderTop: "1px solid #eceff1", marginTop: 14, paddingTop: 12 }}>
             {discount > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.gray }}>
-                <span>Staff discount {discount}%</span>
+                <span>{t("Staff discount {n}%", { n: discount })}</span>
                 <span>-{formatMoney(gross - net)}</span>
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ color: theme.gray, fontSize: 13 }}>Total</span>
-              <span style={{ fontSize: 22, fontWeight: 800, color: theme.navy }}>{formatMoney(net)} EGP</span>
+              <span style={{ color: theme.gray, fontSize: 13 }}>{t("Total")}</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: theme.navy }}>{t("{amount} EGP", { amount: formatMoney(net) })}</span>
             </div>
           </div>
 
           <button onClick={submit} disabled={saving || lines.length === 0 || overCap}
             style={{ ...primaryBtn, width: "100%", marginTop: 12, opacity: saving || lines.length === 0 || overCap ? 0.5 : 1 }}>
-            {saving ? "Recording..." : "Complete Sale"}
+            {saving ? t("Recording...") : t("Complete Sale")}
           </button>
         </div>
       </div>
 
       {done && (
-        <Modal title="Sale Recorded" onClose={() => setDone(null)}>
+        <Modal title={t("Sale Recorded")} onClose={() => setDone(null)}>
           <div style={{ background: "#f4f7f8", borderRadius: 10, padding: 16, marginBottom: 12 }}>
-            <Row k="Receipt No." v={done.receipt_no} strong />
-            <Row k="Total" v={`${formatMoney(done.net)} EGP`} strong />
-            <Row k="Method" v={done.method.replace("_", " ")} />
+            <Row k={t("Receipt No.")} v={done.receipt_no} strong />
+            <Row k={t("Total")} v={t("{amount} EGP", { amount: formatMoney(done.net) })} strong />
+            <Row k={t("Method")} v={isAr ? tCode(done.method) : done.method.replace("_", " ")} />
           </div>
-          <button onClick={() => setDone(null)} style={primaryBtn}>Done</button>
+          <button onClick={() => setDone(null)} style={primaryBtn}>{t("Done")}</button>
         </Modal>
       )}
     </div>

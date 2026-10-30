@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
+import { useT } from "../../lib/i18n";
 
 // Laid out to match Dental Stock Orders, because staff switch between the two
 // tabs and a different shape on each side makes them read twice.
@@ -20,6 +21,7 @@ const PAYMENT_LABEL = {
 };
 
 export default function El3awamaOrdersPanel() {
+  const { t, tCode, isAr } = useT();
   const [sales, setSales] = useState([]);
   const [lines, setLines] = useState([]);
   const [ledger, setLedger] = useState([]);
@@ -87,21 +89,21 @@ export default function El3awamaOrdersPanel() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>El3awama Stock Orders</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("El3awama Stock Orders")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        Sales taken at the El3awama counter &mdash; what was sold, what was collected, and what is still on account.
+        {t("Sales taken at the El3awama counter \u2014 what was sold, what was collected, and what is still on account.")}
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Outstanding", value: `${formatMoney(outstanding)} EGP`, color: outstanding > 0 ? "#ba1a1a" : theme.navy },
-          { label: "Collected", value: `${formatMoney(collected)} EGP`, color: "#1e7a3c" },
-          { label: "Total sold", value: `${formatMoney(sold)} EGP`, color: theme.navy },
+          { label: "Outstanding", value: t("{amount} EGP", { amount: formatMoney(outstanding) }), color: outstanding > 0 ? "#ba1a1a" : theme.navy },
+          { label: "Collected", value: t("{amount} EGP", { amount: formatMoney(collected) }), color: "#1e7a3c" },
+          { label: "Total sold", value: t("{amount} EGP", { amount: formatMoney(sold) }), color: theme.navy },
           { label: "On account", value: onAccount, color: onAccount ? "#a97c00" : theme.navy },
           { label: "Staff tabs", value: staffTabs, color: theme.navy },
         ].map((k) => (
           <div key={k.label} style={card}>
-            <div style={{ fontSize: 10, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{k.label}</div>
+            <div style={{ fontSize: 10, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{t(k.label)}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: k.color }}>{k.value}</div>
           </div>
         ))}
@@ -109,18 +111,18 @@ export default function El3awamaOrdersPanel() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 22 }}>
         <div style={card}>
-          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>Sales still on account</h3>
-          {unpaid.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nobody owes anything.</p>}
+          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>{t("Sales still on account")}</h3>
+          {unpaid.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>{t("Nobody owes anything.")}</p>}
           {unpaid.slice(0, 6).map((x) => (
             <div key={x.id} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f2f2f2", fontSize: 13 }}>
               <span style={{ color: theme.navy, fontWeight: 600 }}>{x.receipt_no || x.entry_date}</span>
-              <span style={{ color: "#ba1a1a", fontWeight: 700 }}>{formatMoney(x.net_amount)} EGP</span>
+              <span style={{ color: "#ba1a1a", fontWeight: 700 }}>{t("{amount} EGP", { amount: formatMoney(x.net_amount) })}</span>
             </div>
           ))}
         </div>
         <div style={card}>
-          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>Most sold items</h3>
-          {topItems.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing sold yet.</p>}
+          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>{t("Most sold items")}</h3>
+          {topItems.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>{t("Nothing sold yet.")}</p>}
           {topItems.map(([name, qty]) => (
             <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f2f2f2", fontSize: 13 }}>
               <span style={{ color: theme.navy }}>{name}</span>
@@ -146,41 +148,41 @@ export default function El3awamaOrdersPanel() {
               color: filter === f.k ? "#fff" : theme.navy, boxShadow: "0 2px 8px rgba(39,33,77,0.06)",
             }}
           >
-            {f.l}
+            {t(f.l)}
           </button>
         ))}
       </div>
 
-      {loading && <p style={{ color: theme.gray, fontSize: 13 }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray, fontSize: 13 }}>{t("Loading...")}</p>}
       {!loading && shown.length === 0 && (
         <p style={{ color: theme.gray, fontSize: 13 }}>
-          {sales.length === 0 ? "No counter sales recorded for El3awama yet." : "Nothing matches this filter."}
+          {sales.length === 0 ? t("No counter sales recorded for El3awama yet.") : t("Nothing matches this filter.")}
         </p>
       )}
       {shown.map((x) => (
         <div key={x.id} style={{ ...card, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ color: theme.navy, fontWeight: 700 }}>
-              {x.receipt_no || "Counter sale"}
+              {x.receipt_no || t("Counter sale")}
               {x.sale_type === "staff_tab" && (
-                <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "#e8eefc", color: theme.navy, fontWeight: 700 }}>
-                  Staff tab
+                <span style={{ marginInlineStart: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "#e8eefc", color: theme.navy, fontWeight: 700 }}>
+                  {t("Staff tab")}
                 </span>
               )}
               {x.payment_method === "postponed" && (
-                <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a", fontWeight: 700 }}>
-                  On account
+                <span style={{ marginInlineStart: 8, fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "#fdecea", color: "#ba1a1a", fontWeight: 700 }}>
+                  {t("On account")}
                 </span>
               )}
             </div>
             <div style={{ color: theme.gray, fontSize: 12, marginTop: 2 }}>
-              {x.entry_date} &middot; {PAYMENT_LABEL[x.payment_method] || x.payment_method}
+              {x.entry_date} &middot; {PAYMENT_LABEL[x.payment_method] ? t(PAYMENT_LABEL[x.payment_method]) : isAr ? tCode(x.payment_method) : x.payment_method}
               <VerifyPill method={x.payment_method} verification={x.payment_verification} paymobId={x.paymob_transaction_id} cardLast4={x.paymob_card_last4} verifiedBy={x.verified_by_name} />
               {x.created_by_name ? ` · ${x.created_by_name}` : ""}
               {x.note ? ` · ${x.note}` : ""}
             </div>
           </div>
-          <div style={{ color: theme.navy, fontWeight: 700, whiteSpace: "nowrap" }}>{formatMoney(x.net_amount)} EGP</div>
+          <div style={{ color: theme.navy, fontWeight: 700, whiteSpace: "nowrap" }}>{t("{amount} EGP", { amount: formatMoney(x.net_amount) })}</div>
         </div>
       ))}
     </div>

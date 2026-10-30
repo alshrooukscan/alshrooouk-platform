@@ -6,6 +6,7 @@ import { theme } from "../../../../lib/theme";
 import { formatMoney } from "../../../../lib/format";
 import { exportToCsv } from "../../../../lib/exportCsv";
 import { usePermissions } from "../../../../lib/usePermissions";
+import { useT, tx, Ltr } from "../../../../lib/i18n";
 
 // Every purchase, payment and return goes through a database function now.
 // This screen used to read the quantity, add to it and write it back from the
@@ -39,6 +40,7 @@ function cairoToday() {
 const qtyText = (n) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 export default function PurchaseOrdersPage() {
+  const { t } = useT();
   const { isAdmin } = usePermissions();
   const [suppliers, setSuppliers] = useState([]);
   const [balances, setBalances] = useState({});
@@ -125,24 +127,24 @@ export default function PurchaseOrdersPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
         <div>
           <p style={{ fontSize: 12, color: theme.gray }}>
-            <Link href="/dashboard/stock/dental" style={{ color: theme.gray }}>Inventory Management</Link> &gt; Purchase Orders
+            <Link href="/dashboard/stock/dental" style={{ color: theme.gray }}>{t("Inventory Management")}</Link> &gt; {t("Purchase Orders")}
           </p>
-          <h1 style={{ color: theme.navy, margin: "4px 0" }}>Purchase Orders</h1>
-          <p style={{ color: theme.gray, margin: 0 }}>A purchase adds the items to stock and to what we owe. A payment or a return reduces what we owe.</p>
+          <h1 style={{ color: theme.navy, margin: "4px 0" }}>{t("Purchase Orders")}</h1>
+          <p style={{ color: theme.gray, margin: 0 }}>{t("A purchase adds the items to stock and to what we owe. A payment or a return reduces what we owe.")}</p>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 12, color: theme.gray }}>TOTAL OWED TO SUPPLIERS</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: totalOwed > 0 ? "#ba1a1a" : theme.navy }}>{formatMoney(totalOwed, { decimals: 2 })} EGP</div>
+        <div style={{ textAlign: "end" }}>
+          <div style={{ fontSize: 12, color: theme.gray }}>{t("TOTAL OWED TO SUPPLIERS")}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: totalOwed > 0 ? "#ba1a1a" : theme.navy }}>{t("{amount} EGP", { amount: formatMoney(totalOwed, { decimals: 2 }) })}</div>
         </div>
       </div>
 
-      <button onClick={() => setModal({ kind: "supplier" })} style={outlineBtn}>+ Add Supplier</button>
+      <button onClick={() => setModal({ kind: "supplier" })} style={outlineBtn}>{t("+ Add Supplier")}</button>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 300px) 1fr", gap: 20, marginTop: 20 }}>
         <div style={card}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>Suppliers</h3>
-          {loading && <p style={muted}>Loading...</p>}
-          {!loading && suppliers.length === 0 && <p style={muted}>No suppliers yet, add one above.</p>}
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Suppliers")}</h3>
+          {loading && <p style={muted}>{t("Loading...")}</p>}
+          {!loading && suppliers.length === 0 && <p style={muted}>{t("No suppliers yet, add one above.")}</p>}
           {suppliers.map((s) => {
             const bal = balances[s.id] || 0;
             return (
@@ -159,45 +161,45 @@ export default function PurchaseOrdersPage() {
         </div>
 
         <div style={{ ...card, minWidth: 0 }}>
-          {!selected && <p style={muted}>Select a supplier to see their purchase orders and payments.</p>}
+          {!selected && <p style={muted}>{t("Select a supplier to see their purchase orders and payments.")}</p>}
           {selected && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
                 <div>
                   <h3 style={{ color: theme.navy, margin: 0 }}>{selected.name}</h3>
                   <div style={{ fontSize: 13, color: theme.gray, marginTop: 2 }}>
-                    Balance: <strong style={{ color: (balances[selected.id] || 0) > 0 ? "#ba1a1a" : "#2e7d32" }}>{formatMoney(balances[selected.id] || 0, { decimals: 2 })} EGP</strong>
-                    {(balances[selected.id] || 0) > 0 ? " owed" : (balances[selected.id] || 0) < 0 ? " in our favour" : ""}
+                    {t("Balance:")} <strong style={{ color: (balances[selected.id] || 0) > 0 ? "#ba1a1a" : "#2e7d32" }}>{t("{amount} EGP", { amount: formatMoney(balances[selected.id] || 0, { decimals: 2 }) })}</strong>
+                    {(balances[selected.id] || 0) > 0 ? ` ${t("owed")}` : (balances[selected.id] || 0) < 0 ? ` ${t("in our favour")}` : ""}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button onClick={exportCsv} style={ghostBtn}>Export CSV</button>
-                  <button onClick={() => setModal({ kind: "payment" })} style={ghostBtn}>+ Record Payment</button>
-                  <button onClick={() => setModal({ kind: "po" })} style={smallPrimary}>+ New Purchase Order</button>
+                  <button onClick={exportCsv} style={ghostBtn}>{t("Export CSV")}</button>
+                  <button onClick={() => setModal({ kind: "payment" })} style={ghostBtn}>{t("+ Record Payment")}</button>
+                  <button onClick={() => setModal({ kind: "po" })} style={smallPrimary}>{t("+ New Purchase Order")}</button>
                 </div>
               </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
                 {[["orders", "Purchase orders"], ["payments", "Payments"], ["returns", "Returns"], ["all", "All entries"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setTab(k)} style={{ ...tabBtn, ...(tab === k ? tabBtnActive : {}) }}>{l}</button>
+                  <button key={k} onClick={() => setTab(k)} style={{ ...tabBtn, ...(tab === k ? tabBtnActive : {}) }}>{t(l)}</button>
                 ))}
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO number or item" style={{ ...inp, marginBottom: 0, width: 200, padding: "6px 10px", fontSize: 12 }} />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search PO number or item")} style={{ ...inp, marginBottom: 0, width: 200, padding: "6px 10px", fontSize: 12 }} />
                 <label style={{ fontSize: 12, color: theme.gray, display: "flex", alignItems: "center", gap: 4 }}>
-                  <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} /> Show cancelled
+                  <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} /> {t("Show cancelled")}
                 </label>
               </div>
 
-              {visible.length === 0 && <p style={muted}>Nothing here yet.</p>}
+              {visible.length === 0 && <p style={muted}>{t("Nothing here yet.")}</p>}
               {visible.length > 0 && (
                 <div style={{ overflowX: "auto" }}>
                   <table style={table}>
                     <thead>
                       <tr>
-                        <th style={th}>Date</th>
-                        <th style={th}>Entry</th>
-                        <th style={th}>Details</th>
-                        <th style={{ ...th, textAlign: "right" }}>Amount (EGP)</th>
-                        <th style={th}>Status</th>
+                        <th style={th}>{t("Date")}</th>
+                        <th style={th}>{t("Entry")}</th>
+                        <th style={th}>{t("Details")}</th>
+                        <th style={{ ...th, textAlign: "end" }}>{t("Amount (EGP)")}</th>
+                        <th style={th}>{t("Status")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -205,36 +207,36 @@ export default function PurchaseOrdersPage() {
                         <Fragment key={e.id}>
                           <tr onClick={() => e.entry_type === "purchase" && setExpanded(expanded === e.id ? null : e.id)}
                             style={{ cursor: e.entry_type === "purchase" ? "pointer" : "default", opacity: e.status === "void" ? 0.55 : 1, background: expanded === e.id ? "#faf7ef" : "transparent" }}>
-                            <td style={td}>{formatDate(e.entry_date)}{e.date_reason && <div title={e.date_reason} style={tiny}>Backdated</div>}</td>
+                            <td style={td}>{formatDate(e.entry_date)}{e.date_reason && <div title={e.date_reason} style={tiny}>{t("Backdated")}</div>}</td>
                             <td style={td}>
                               <strong style={{ color: theme.navy }}>
-                                {e.entry_type === "purchase" ? (e.is_consolidated ? "Consolidated PO" : `PO-${e.po_number ?? "-"}`)
-                                  : e.entry_type === "payment" ? (e.is_consolidated ? "Consolidated Payment" : "Payment") : "Return"}
+                                {e.entry_type === "purchase" ? (e.is_consolidated ? t("Consolidated PO") : `PO-${e.po_number ?? "-"}`)
+                                  : e.entry_type === "payment" ? (e.is_consolidated ? t("Consolidated Payment") : t("Payment")) : t("Return")}
                               </strong>
-                              {e.created_by_name && <div style={tiny}>by {e.created_by_name}</div>}
+                              {e.created_by_name && <div style={tiny}>{t("by {name}", { name: e.created_by_name })}</div>}
                             </td>
                             <td style={{ ...td, maxWidth: 360 }}>
                               {e.entry_type === "purchase" && (lines[e.id]?.length
-                                ? <span>{lines[e.id].length} item{lines[e.id].length > 1 ? "s" : ""} <span style={{ color: theme.gray }}>· {lines[e.id].map((l) => l.item_name).slice(0, 3).join(", ")}{lines[e.id].length > 3 ? "…" : ""}</span></span>
-                                : <span style={{ color: theme.gray }}>{e.description || "No item lines recorded"}</span>)}
+                                ? <span>{lines[e.id].length > 1 ? t("{n} items", { n: lines[e.id].length }) : t("{n} item", { n: lines[e.id].length })} <span style={{ color: theme.gray }}>· {lines[e.id].map((l) => l.item_name).slice(0, 3).join(", ")}{lines[e.id].length > 3 ? "…" : ""}</span></span>
+                                : <span style={{ color: theme.gray }}>{e.description || t("No item lines recorded")}</span>)}
                               {e.entry_type === "payment" && (
                                 <span>
-                                  {e.payment_method ? METHOD_LABEL[e.payment_method] : <span style={{ color: theme.gray }}>Method not recorded</span>}
-                                  {isAdmin && e.paid_by_name && <span style={{ color: theme.gray }}> · paid by {e.paid_by_name}</span>}
+                                  {e.payment_method ? t(METHOD_LABEL[e.payment_method]) : <span style={{ color: theme.gray }}>{t("Method not recorded")}</span>}
+                                  {isAdmin && e.paid_by_name && <span style={{ color: theme.gray }}> · {t("paid by {name}", { name: e.paid_by_name })}</span>}
                                   {e.description && <div style={tiny}>{e.description}</div>}
                                 </span>
                               )}
                               {e.entry_type === "return" && <span style={{ color: theme.gray }}>{e.description}</span>}
                             </td>
-                            <td style={{ ...td, textAlign: "right", fontWeight: 700, color: e.amount > 0 ? "#ba1a1a" : "#2e7d32", whiteSpace: "nowrap" }}>
+                            <td style={{ ...td, textAlign: "end", fontWeight: 700, color: e.amount > 0 ? "#ba1a1a" : "#2e7d32", whiteSpace: "nowrap" }}>
                               {e.amount > 0 ? "+" : ""}{formatMoney(e.amount, { decimals: 2 })}
                             </td>
                             <td style={td}>
                               {e.status === "void"
-                                ? <span title={e.void_reason || ""} style={{ ...badge, background: "#fdecea", color: "#ba1a1a" }}>{e.replaced_by_id ? "Edited" : "Cancelled"}</span>
-                                : <span style={{ ...badge, background: "#e8f5e9", color: "#2e7d32" }}>Active</span>}
+                                ? <span title={e.void_reason || ""} style={{ ...badge, background: "#fdecea", color: "#ba1a1a" }}>{e.replaced_by_id ? t("Edited") : t("Cancelled")}</span>
+                                : <span style={{ ...badge, background: "#e8f5e9", color: "#2e7d32" }}>{t("Active")}</span>}
                               {isAdmin && e.entry_type === "payment" && e.status !== "void" && !e.is_consolidated && (
-                                <button onClick={(ev) => { ev.stopPropagation(); setModal({ kind: "voidPayment", entry: e }); }} style={linkBtn}>Cancel</button>
+                                <button onClick={(ev) => { ev.stopPropagation(); setModal({ kind: "voidPayment", entry: e }); }} style={linkBtn}>{t("Cancel")}</button>
                               )}
                             </td>
                           </tr>
@@ -267,15 +269,15 @@ export default function PurchaseOrdersPage() {
       {modal?.kind === "payment" && selected && <PaymentModal supplier={selected} onClose={() => setModal(null)} onSaved={refresh} />}
       {modal?.kind === "return" && <ReturnModal line={modal.line} po={modal.po} onClose={() => setModal(null)} onSaved={refresh} />}
       {modal?.kind === "voidPo" && (
-        <ReasonModal title={`Cancel PO-${modal.entry.po_number}`} confirmLabel="Cancel purchase order"
-          note="The items come off the shelf and the amount comes off what we owe. It stays in the history as cancelled."
+        <ReasonModal title={t("Cancel PO-{n}", { n: modal.entry.po_number })} confirmLabel={t("Cancel purchase order")}
+          note={t("The items come off the shelf and the amount comes off what we owe. It stays in the history as cancelled.")}
           onClose={() => setModal(null)}
           onConfirm={(reason) => supabase.rpc("void_purchase_order", { p_po_id: modal.entry.id, p_reason: reason })}
           onDone={refresh} />
       )}
       {modal?.kind === "voidPayment" && (
-        <ReasonModal title="Cancel payment" confirmLabel="Cancel payment"
-          note="The amount goes back onto what we owe. If it was paid in cash by an employee, it goes back into their cash in hand."
+        <ReasonModal title={t("Cancel payment")} confirmLabel={t("Cancel payment")}
+          note={t("The amount goes back onto what we owe. If it was paid in cash by an employee, it goes back into their cash in hand.")}
           onClose={() => setModal(null)}
           onConfirm={(reason) => supabase.rpc("void_supplier_payment", { p_payment_id: modal.entry.id, p_reason: reason })}
           onDone={refresh} />
@@ -285,6 +287,7 @@ export default function PurchaseOrdersPage() {
 }
 
 function PoDetail({ po, lines, isAdmin, onReturn, onEdit, onVoid }) {
+  const { t } = useT();
   const total = lines.reduce((s, l) => s + Number(l.line_total || 0), 0);
   return (
     <div>
@@ -292,56 +295,57 @@ function PoDetail({ po, lines, isAdmin, onReturn, onEdit, onVoid }) {
         <table style={{ ...table, background: "#fff", borderRadius: 8, marginTop: 8 }}>
           <thead>
             <tr>
-              <th style={th}>Item</th>
-              <th style={{ ...th, textAlign: "right" }}>Qty</th>
-              <th style={{ ...th, textAlign: "right" }}>Unit price</th>
-              <th style={{ ...th, textAlign: "right" }}>Line total</th>
+              <th style={th}>{t("Item")}</th>
+              <th style={{ ...th, textAlign: "end" }}>{t("Qty")}</th>
+              <th style={{ ...th, textAlign: "end" }}>{t("Unit price")}</th>
+              <th style={{ ...th, textAlign: "end" }}>{t("Line total")}</th>
               <th style={th}></th>
             </tr>
           </thead>
           <tbody>
             {lines.map((l) => (
               <tr key={l.id}>
-                <td style={td}>{l.item_name}{Number(l.qty_returned) > 0 && <div style={tiny}>{qtyText(l.qty_returned)} returned</div>}</td>
-                <td style={{ ...td, textAlign: "right" }}>{qtyText(l.qty)}</td>
-                <td style={{ ...td, textAlign: "right" }}>{formatMoney(l.unit_price, { decimals: 2 })}</td>
-                <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{formatMoney(l.line_total, { decimals: 2 })}</td>
-                <td style={{ ...td, textAlign: "right" }}>
-                  {po.status !== "void" && Number(l.qty) > Number(l.qty_returned) && <button onClick={() => onReturn(l)} style={linkBtn}>Return</button>}
+                <td style={td}>{l.item_name}{Number(l.qty_returned) > 0 && <div style={tiny}>{t("{n} returned", { n: qtyText(l.qty_returned) })}</div>}</td>
+                <td style={{ ...td, textAlign: "end" }}>{qtyText(l.qty)}</td>
+                <td style={{ ...td, textAlign: "end" }}>{formatMoney(l.unit_price, { decimals: 2 })}</td>
+                <td style={{ ...td, textAlign: "end", fontWeight: 600 }}>{formatMoney(l.line_total, { decimals: 2 })}</td>
+                <td style={{ ...td, textAlign: "end" }}>
+                  {po.status !== "void" && Number(l.qty) > Number(l.qty_returned) && <button onClick={() => onReturn(l)} style={linkBtn}>{t("Return")}</button>}
                 </td>
               </tr>
             ))}
             <tr>
-              <td style={{ ...td, fontWeight: 700 }} colSpan={3}>Total</td>
-              <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{formatMoney(total, { decimals: 2 })}</td>
+              <td style={{ ...td, fontWeight: 700 }} colSpan={3}>{t("Total")}</td>
+              <td style={{ ...td, textAlign: "end", fontWeight: 700 }}>{formatMoney(total, { decimals: 2 })}</td>
               <td style={td}></td>
             </tr>
           </tbody>
         </table>
       ) : (
-        <p style={{ ...muted, margin: "8px 0" }}>{po.is_consolidated ? "All purchases before the system went live, combined into one entry." : "This entry was recorded without item lines."}</p>
+        <p style={{ ...muted, margin: "8px 0" }}>{po.is_consolidated ? t("All purchases before the system went live, combined into one entry.") : t("This entry was recorded without item lines.")}</p>
       )}
-      {po.status === "void" && po.void_reason && <p style={{ fontSize: 12, color: "#ba1a1a", margin: "8px 0 0" }}>{po.replaced_by_id ? "Edited" : "Cancelled"} by {po.voided_by_name}: {po.void_reason}</p>}
-      {po.date_reason && <p style={{ fontSize: 12, color: theme.gray, margin: "8px 0 0" }}>Date reason: {po.date_reason}</p>}
+      {po.status === "void" && po.void_reason && <p style={{ fontSize: 12, color: "#ba1a1a", margin: "8px 0 0" }}>{t(po.replaced_by_id ? "Edited by {name}: {reason}" : "Cancelled by {name}: {reason}", { name: po.voided_by_name, reason: po.void_reason })}</p>}
+      {po.date_reason && <p style={{ fontSize: 12, color: theme.gray, margin: "8px 0 0" }}>{t("Date reason: {reason}", { reason: po.date_reason })}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        {lines.length > 0 && <a href={`/dashboard/stock/purchase-orders/${po.id}/invoice`} target="_blank" rel="noreferrer" style={{ ...ghostBtn, textDecoration: "none" }}>Invoice</a>}
-        {isAdmin && po.status !== "void" && !po.is_consolidated && lines.length > 0 && <button onClick={onEdit} style={ghostBtn}>Edit</button>}
-        {isAdmin && po.status !== "void" && !po.is_consolidated && <button onClick={onVoid} style={{ ...ghostBtn, color: "#ba1a1a", borderColor: "#f3c7c3" }}>Cancel PO</button>}
+        {lines.length > 0 && <a href={`/dashboard/stock/purchase-orders/${po.id}/invoice`} target="_blank" rel="noreferrer" style={{ ...ghostBtn, textDecoration: "none" }}>{t("Invoice")}</a>}
+        {isAdmin && po.status !== "void" && !po.is_consolidated && lines.length > 0 && <button onClick={onEdit} style={ghostBtn}>{t("Edit")}</button>}
+        {isAdmin && po.status !== "void" && !po.is_consolidated && <button onClick={onVoid} style={{ ...ghostBtn, color: "#ba1a1a", borderColor: "#f3c7c3" }}>{t("Cancel PO")}</button>}
       </div>
     </div>
   );
 }
 
 function DateField({ date, setDate, reason, setReason }) {
+  const { t } = useT();
   const today = cairoToday();
   return (
     <>
-      <FieldLabel>Date</FieldLabel>
+      <FieldLabel>{t("Date")}</FieldLabel>
       <input type="date" max={today} style={inp} value={date} onChange={(e) => setDate(e.target.value)} />
       {date && date < today && (
         <>
-          <FieldLabel>Reason for the earlier date</FieldLabel>
-          <input style={inp} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. invoice arrived late" />
+          <FieldLabel>{t("Reason for the earlier date")}</FieldLabel>
+          <input style={inp} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("e.g. invoice arrived late")} />
         </>
       )}
     </>
@@ -349,6 +353,7 @@ function DateField({ date, setDate, reason, setReason }) {
 }
 
 function PurchaseOrderModal({ supplier, suppliers, editing, editingLines, onClose, onSaved }) {
+  const { t } = useT();
   const blank = { mode: "existing", itemId: "", newName: "", newCategory: "dental", newSale: "", qty: "", unitPrice: "" };
   const [supplierId, setSupplierId] = useState(editing?.supplier_id || supplier.id);
   const [items, setItems] = useState([]);
@@ -377,17 +382,17 @@ function PurchaseOrderModal({ supplier, suppliers, editing, editingLines, onClos
     for (const r of rows) {
       const filled = r.mode === "existing" ? r.itemId : r.newName.trim();
       if (!filled && !r.qty && !r.unitPrice) continue;
-      if (!filled) return setError("Choose an item on every line, or remove the empty line.");
-      if (!(Number(r.qty) > 0)) return setError("Every line needs a quantity above zero.");
-      if (r.unitPrice === "" || Number(r.unitPrice) < 0) return setError("Every line needs a unit price.");
+      if (!filled) return setError(tx("Choose an item on every line, or remove the empty line."));
+      if (!(Number(r.qty) > 0)) return setError(tx("Every line needs a quantity above zero."));
+      if (r.unitPrice === "" || Number(r.unitPrice) < 0) return setError(tx("Every line needs a unit price."));
       if (r.mode === "existing") payload.push({ stock_item_id: r.itemId, qty: Number(r.qty), unit_price: Number(r.unitPrice) });
       else {
-        if (r.newSale === "") return setError(`Set a sale price for ${r.newName.trim()}.`);
+        if (r.newSale === "") return setError(tx("Set a sale price for {name}.", { name: r.newName.trim() }));
         payload.push({ new_item: { name: r.newName.trim(), category: r.newCategory, sale_price: Number(r.newSale) }, qty: Number(r.qty), unit_price: Number(r.unitPrice) });
       }
     }
-    if (payload.length === 0) return setError("Add at least one item.");
-    if (editing && !editReason.trim()) return setError("Give the reason for the edit.");
+    if (payload.length === 0) return setError(tx("Add at least one item."));
+    if (editing && !editReason.trim()) return setError(tx("Give the reason for the edit."));
     setSaving(true);
     const { data, error: err } = editing
       ? await supabase.rpc("edit_purchase_order", { p_po_id: editing.id, p_supplier_id: supplierId, p_date: date, p_date_reason: dateReason || null,
@@ -402,30 +407,30 @@ function PurchaseOrderModal({ supplier, suppliers, editing, editingLines, onClos
 
   if (done) {
     return (
-      <Modal title={editing ? "Purchase order updated" : "Purchase order created"} onClose={onClose}>
-        <p style={{ fontSize: 14, color: theme.gray }}>The items are on the shelf and the amount is on {supplier.name}&apos;s balance.</p>
-        <div style={{ fontSize: 28, fontWeight: 700, color: theme.navy, textAlign: "center", padding: "16px 0" }}>PO-{done}</div>
-        <button onClick={onClose} style={primaryBtn}>Done</button>
+      <Modal title={editing ? t("Purchase order updated") : t("Purchase order created")} onClose={onClose}>
+        <p style={{ fontSize: 14, color: theme.gray }}>{t("The items are on the shelf and the amount is on {name}'s balance.", { name: supplier.name })}</p>
+        <div style={{ fontSize: 28, fontWeight: 700, color: theme.navy, textAlign: "center", padding: "16px 0" }}><Ltr>PO-{done}</Ltr></div>
+        <button onClick={onClose} style={primaryBtn}>{t("Done")}</button>
       </Modal>
     );
   }
 
   return (
-    <Modal title={editing ? `Edit PO-${editing.po_number}` : `New purchase order`} onClose={onClose} wide>
+    <Modal title={editing ? t("Edit PO-{n}", { n: editing.po_number }) : t("New purchase order")} onClose={onClose} wide>
       {editing && <p style={{ fontSize: 12, color: theme.navy, background: "#f6efdd", padding: "10px 12px", borderRadius: 8, marginTop: 0 }}>
-        Saving replaces this order with the corrected one under the same number. Stock moves by the difference, and the original stays in the history as edited.</p>}
-      <FieldLabel>Supplier</FieldLabel>
+        {t("Saving replaces this order with the corrected one under the same number. Stock moves by the difference, and the original stays in the history as edited.")}</p>}
+      <FieldLabel>{t("Supplier")}</FieldLabel>
       <select style={inp} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
         {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
       </select>
 
-      <FieldLabel>Items</FieldLabel>
+      <FieldLabel>{t("Items")}</FieldLabel>
       {rows.map((r, i) => (
         <div key={i} style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, marginBottom: 10 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-            <button type="button" onClick={() => update(i, { mode: "existing" })} style={{ ...miniToggle, ...(r.mode === "existing" ? miniToggleActive : {}) }}>Existing item</button>
-            {!editing && <button type="button" onClick={() => update(i, { mode: "new" })} style={{ ...miniToggle, ...(r.mode === "new" ? miniToggleActive : {}) }}>New item</button>}
-            {rows.length > 1 && <button type="button" onClick={() => setRows((p) => p.filter((_, j) => j !== i))} style={{ ...miniToggle, marginLeft: "auto", color: "#ba1a1a" }}>Remove</button>}
+            <button type="button" onClick={() => update(i, { mode: "existing" })} style={{ ...miniToggle, ...(r.mode === "existing" ? miniToggleActive : {}) }}>{t("Existing item")}</button>
+            {!editing && <button type="button" onClick={() => update(i, { mode: "new" })} style={{ ...miniToggle, ...(r.mode === "new" ? miniToggleActive : {}) }}>{t("New item")}</button>}
+            {rows.length > 1 && <button type="button" onClick={() => setRows((p) => p.filter((_, j) => j !== i))} style={{ ...miniToggle, marginInlineStart: "auto", color: "#ba1a1a" }}>{t("Remove")}</button>}
           </div>
           {r.mode === "existing" ? (
             <ItemPicker items={items} value={r.itemId} onChange={(id) => {
@@ -434,40 +439,41 @@ function PurchaseOrderModal({ supplier, suppliers, editing, editingLines, onClos
             }} />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 8 }}>
-              <input style={inp} placeholder="Item name" value={r.newName} onChange={(e) => update(i, { newName: e.target.value })} />
+              <input style={inp} placeholder={t("Item name")} value={r.newName} onChange={(e) => update(i, { newName: e.target.value })} />
               <select style={inp} value={r.newCategory} onChange={(e) => update(i, { newCategory: e.target.value })}>
-                <option value="dental">Dental</option>
-                <option value="el3awama">El3awama</option>
+                <option value="dental">{t("Dental")}</option>
+                <option value="el3awama">{t("El3awama")}</option>
               </select>
             </div>
           )}
           <div style={{ display: "grid", gridTemplateColumns: r.mode === "new" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 8 }}>
-            <input style={inp} type="number" min="0" placeholder="Qty" value={r.qty} onChange={(e) => update(i, { qty: e.target.value })} />
-            <input style={inp} type="number" min="0" placeholder="Unit price (EGP)" value={r.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} />
-            {r.mode === "new" && <input style={inp} type="number" min="0" placeholder="Sale price" value={r.newSale} onChange={(e) => update(i, { newSale: e.target.value })} />}
+            <input style={inp} type="number" min="0" placeholder={t("Qty")} value={r.qty} onChange={(e) => update(i, { qty: e.target.value })} />
+            <input style={inp} type="number" min="0" placeholder={t("Unit price (EGP)")} value={r.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} />
+            {r.mode === "new" && <input style={inp} type="number" min="0" placeholder={t("Sale price")} value={r.newSale} onChange={(e) => update(i, { newSale: e.target.value })} />}
           </div>
           {Number(r.qty) > 0 && r.unitPrice !== "" && (
-            <div style={{ fontSize: 12, color: theme.gray, textAlign: "right", marginTop: -8 }}>Line total: <strong>{formatMoney(Number(r.qty) * Number(r.unitPrice), { decimals: 2 })} EGP</strong></div>
+            <div style={{ fontSize: 12, color: theme.gray, textAlign: "end", marginTop: -8 }}>{t("Line total:")} <strong>{t("{amount} EGP", { amount: formatMoney(Number(r.qty) * Number(r.unitPrice), { decimals: 2 }) })}</strong></div>
           )}
         </div>
       ))}
-      <button type="button" onClick={() => setRows((p) => [...p, blank])} style={{ ...outlineBtn, marginBottom: 12 }}>+ Add another item</button>
+      <button type="button" onClick={() => setRows((p) => [...p, blank])} style={{ ...outlineBtn, marginBottom: 12 }}>{t("+ Add another item")}</button>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", background: "#f7f7f8", borderRadius: 8, marginBottom: 16 }}>
-        <span style={{ fontWeight: 600, color: theme.navy }}>Order total</span>
-        <span style={{ fontWeight: 700, color: theme.navy }}>{formatMoney(total, { decimals: 2 })} EGP</span>
+        <span style={{ fontWeight: 600, color: theme.navy }}>{t("Order total")}</span>
+        <span style={{ fontWeight: 700, color: theme.navy }}>{t("{amount} EGP", { amount: formatMoney(total, { decimals: 2 }) })}</span>
       </div>
 
-      <FieldLabel>Note (optional)</FieldLabel>
-      <input style={inp} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. supplier invoice number" />
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
+      <input style={inp} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("e.g. supplier invoice number")} />
       <DateField date={date} setDate={setDate} reason={dateReason} setReason={setDateReason} />
-      {editing && (<><FieldLabel>Reason for the edit</FieldLabel><input style={inp} value={editReason} onChange={(e) => setEditReason(e.target.value)} /></>)}
-      {error && <p style={errText}>{error}</p>}
-      <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : editing ? "Save changes" : "Create purchase order"}</button>
+      {editing && (<><FieldLabel>{t("Reason for the edit")}</FieldLabel><input style={inp} value={editReason} onChange={(e) => setEditReason(e.target.value)} /></>)}
+      {error && <p style={errText}>{t(error)}</p>}
+      <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : editing ? t("Save changes") : t("Create purchase order")}</button>
     </Modal>
   );
 }
 
 function ItemPicker({ items, value, onChange }) {
+  const { t } = useT();
   const [q, setQ] = useState("");
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -475,13 +481,13 @@ function ItemPicker({ items, value, onChange }) {
   }, [items, q, value]);
   return (
     <>
-      <input style={{ ...inp, marginBottom: 6 }} placeholder="Search item by name or code" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input style={{ ...inp, marginBottom: 6 }} placeholder={t("Search item by name or code")} value={q} onChange={(e) => setQ(e.target.value)} />
       <select style={inp} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Select item...</option>
+        <option value="">{t("Select item...")}</option>
         {["dental", "el3awama"].map((cat) => (
-          <optgroup key={cat} label={cat === "dental" ? "Dental" : "El3awama"}>
+          <optgroup key={cat} label={cat === "dental" ? t("Dental") : t("El3awama")}>
             {shown.filter((it) => it.category === cat).map((it) => (
-              <option key={it.id} value={it.id}>{it.item_code ? `${it.item_code} · ` : ""}{it.name} (in stock: {qtyText(it.qty_remaining || 0)})</option>
+              <option key={it.id} value={it.id}>{it.item_code ? `${it.item_code} · ` : ""}{it.name} {t("(in stock: {n})", { n: qtyText(it.qty_remaining || 0) })}</option>
             ))}
           </optgroup>
         ))}
@@ -491,6 +497,7 @@ function ItemPicker({ items, value, onChange }) {
 }
 
 function PaymentModal({ supplier, onClose, onSaved }) {
+  const { t } = useT();
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [payers, setPayers] = useState([]);
@@ -512,7 +519,7 @@ function PaymentModal({ supplier, onClose, onSaved }) {
       ]);
       setPayers([
         ...(emps || []).map((e) => ({ value: `emp:${e.id}`, label: e.name })),
-        ...(admins || []).map((a) => ({ value: `admin:${a.name}`, label: `${a.name} (admin)` })),
+        ...(admins || []).map((a) => ({ value: `admin:${a.name}`, label: tx("{name} (admin)", { name: a.name }) })),
       ]);
       const h = {};
       (custody || []).forEach((c) => (h[c.employee_id] = { scan: Number(c.scan_cash), dental_stock: Number(c.material_cash), el3awama_stock: Number(c.fnb_cash) }));
@@ -526,8 +533,8 @@ function PaymentModal({ supplier, onClose, onSaved }) {
 
   async function save() {
     setError("");
-    if (!(Number(amount) > 0)) return setError("Enter the amount paid.");
-    if (!payer) return setError("Choose who paid.");
+    if (!(Number(amount) > 0)) return setError(tx("Enter the amount paid."));
+    if (!payer) return setError(tx("Choose who paid."));
     setSaving(true);
     const { error: err } = await supabase.rpc("record_supplier_payment", {
       p_supplier_id: supplier.id, p_amount: Number(amount), p_date: date, p_date_reason: dateReason || null, p_method: method,
@@ -540,41 +547,42 @@ function PaymentModal({ supplier, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`Record payment to ${supplier.name}`} onClose={onClose}>
-      <FieldLabel>Amount (EGP)</FieldLabel>
+    <Modal title={t("Record payment to {name}", { name: supplier.name })} onClose={onClose}>
+      <FieldLabel>{t("Amount (EGP)")}</FieldLabel>
       <input style={inp} type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
-      <FieldLabel>Paid by</FieldLabel>
+      <FieldLabel>{t("Paid by")}</FieldLabel>
       <select style={inp} value={payer} onChange={(e) => setPayer(e.target.value)}>
-        <option value="">Choose...</option>
+        <option value="">{t("Choose...")}</option>
         {payers.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
       </select>
-      <FieldLabel>Payment method</FieldLabel>
+      <FieldLabel>{t("Payment method")}</FieldLabel>
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
         {METHODS.map((m) => (
-          <button key={m.key} type="button" onClick={() => setMethod(m.key)} style={{ ...miniToggle, padding: "8px 14px", fontSize: 13, ...(method === m.key ? miniToggleActive : {}) }}>{m.label}</button>
+          <button key={m.key} type="button" onClick={() => setMethod(m.key)} style={{ ...miniToggle, padding: "8px 14px", fontSize: 13, ...(method === m.key ? miniToggleActive : {}) }}>{t(m.label)}</button>
         ))}
       </div>
       {fromCustody && (
         <>
-          <FieldLabel>Taken from</FieldLabel>
+          <FieldLabel>{t("Taken from")}</FieldLabel>
           <select style={inp} value={cashBox} onChange={(e) => setCashBox(e.target.value)}>
-            {CASH_BOXES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            {CASH_BOXES.map((c) => <option key={c.key} value={c.key}>{t(c.label)}</option>)}
           </select>
           <p style={{ fontSize: 12, color: Number(amount) > holding ? "#ba1a1a" : theme.gray, marginTop: -8 }}>
-            Holding {formatMoney(holding, { decimals: 2 })} EGP in this cash. The payment comes out of it.
+            {t("Holding {amount} EGP in this cash. The payment comes out of it.", { amount: formatMoney(holding, { decimals: 2 }) })}
           </p>
         </>
       )}
-      <FieldLabel>Note (optional)</FieldLabel>
+      <FieldLabel>{t("Note (optional)")}</FieldLabel>
       <input style={inp} value={note} onChange={(e) => setNote(e.target.value)} />
       <DateField date={date} setDate={setDate} reason={dateReason} setReason={setDateReason} />
-      {error && <p style={errText}>{error}</p>}
-      <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Record payment"}</button>
+      {error && <p style={errText}>{t(error)}</p>}
+      <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : t("Record payment")}</button>
     </Modal>
   );
 }
 
 function ReturnModal({ line, po, onClose, onSaved }) {
+  const { t } = useT();
   const [batch, setBatch] = useState(null);
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
@@ -588,8 +596,8 @@ function ReturnModal({ line, po, onClose, onSaved }) {
   async function save() {
     setError("");
     const q = Number(qty);
-    if (!(q > 0)) return setError("Enter how many units are going back.");
-    if (q > max) return setError(`Only ${qtyText(max)} left from this delivery.`);
+    if (!(q > 0)) return setError(tx("Enter how many units are going back."));
+    if (q > max) return setError(tx("Only {n} left from this delivery.", { n: qtyText(max) }));
     setSaving(true);
     const { error: err } = await supabase.rpc("return_to_supplier", { p_batch_id: line.batch_id, p_qty: q, p_reason: reason || null, p_date: null, p_date_reason: null });
     setSaving(false);
@@ -599,27 +607,28 @@ function ReturnModal({ line, po, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Return to supplier" onClose={onClose}>
-      <p style={{ fontSize: 13, color: theme.gray, marginTop: 0 }}>{line.item_name} · PO-{po.po_number} · {batch ? `${qtyText(max)} can go back` : "Loading..."}</p>
-      <FieldLabel>How many go back</FieldLabel>
+    <Modal title={t("Return to supplier")} onClose={onClose}>
+      <p style={{ fontSize: 13, color: theme.gray, marginTop: 0 }}>{line.item_name} · PO-{po.po_number} · {batch ? t("{n} can go back", { n: qtyText(max) }) : t("Loading...")}</p>
+      <FieldLabel>{t("How many go back")}</FieldLabel>
       <input type="number" min="1" max={max} style={inp} value={qty} onChange={(e) => setQty(e.target.value)} />
-      <FieldLabel>Reason</FieldLabel>
-      <input style={inp} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. damaged, expired, wrong item" />
+      <FieldLabel>{t("Reason")}</FieldLabel>
+      <input style={inp} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("e.g. damaged, expired, wrong item")} />
       <p style={{ fontSize: 12, color: theme.navy, background: "#f6efdd", padding: "10px 12px", borderRadius: 8 }}>
-        The units leave stock and {formatMoney((Number(qty) || 0) * Number(line.unit_price), { decimals: 2 })} EGP comes off what we owe, at the price on this order.
+        {t("The units leave stock and {amount} EGP comes off what we owe, at the price on this order.", { amount: formatMoney((Number(qty) || 0) * Number(line.unit_price), { decimals: 2 }) })}
       </p>
-      {error && <p style={errText}>{error}</p>}
-      <button onClick={save} disabled={saving || !batch} style={primaryBtn}>{saving ? "Saving..." : "Record return"}</button>
+      {error && <p style={errText}>{t(error)}</p>}
+      <button onClick={save} disabled={saving || !batch} style={primaryBtn}>{saving ? t("Saving...") : t("Record return")}</button>
     </Modal>
   );
 }
 
 function ReasonModal({ title, note, confirmLabel, onClose, onConfirm, onDone }) {
+  const { t } = useT();
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   async function go() {
-    if (!reason.trim()) return setError("Give the reason.");
+    if (!reason.trim()) return setError(tx("Give the reason."));
     setSaving(true);
     const { error: err } = await onConfirm(reason.trim());
     setSaving(false);
@@ -630,36 +639,37 @@ function ReasonModal({ title, note, confirmLabel, onClose, onConfirm, onDone }) 
   return (
     <Modal title={title} onClose={onClose}>
       <p style={{ fontSize: 13, color: theme.gray, marginTop: 0 }}>{note}</p>
-      <FieldLabel>Reason</FieldLabel>
+      <FieldLabel>{t("Reason")}</FieldLabel>
       <input style={inp} value={reason} onChange={(e) => setReason(e.target.value)} />
-      {error && <p style={errText}>{error}</p>}
-      <button onClick={go} disabled={saving} style={{ ...primaryBtn, background: "#ba1a1a" }}>{saving ? "Saving..." : confirmLabel}</button>
+      {error && <p style={errText}>{t(error)}</p>}
+      <button onClick={go} disabled={saving} style={{ ...primaryBtn, background: "#ba1a1a" }}>{saving ? t("Saving...") : confirmLabel}</button>
     </Modal>
   );
 }
 
 function AddSupplierModal({ onClose, onSaved }) {
+  const { t } = useT();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   async function save() {
-    if (!name.trim()) return setError("Enter the supplier name.");
+    if (!name.trim()) return setError(tx("Enter the supplier name."));
     setSaving(true);
     const { error: err } = await supabase.from("suppliers").insert({ name: name.trim(), phone: phone || null });
     setSaving(false);
-    if (err) return setError(err.message.includes("duplicate") ? "A supplier with that name already exists." : err.message);
+    if (err) return setError(err.message.includes("duplicate") ? tx("A supplier with that name already exists.") : err.message);
     onSaved();
     onClose();
   }
   return (
-    <Modal title="Add Supplier" onClose={onClose}>
-      <FieldLabel>Supplier Name</FieldLabel>
+    <Modal title={t("Add Supplier")} onClose={onClose}>
+      <FieldLabel>{t("Supplier Name")}</FieldLabel>
       <input style={inp} value={name} onChange={(e) => setName(e.target.value)} />
-      <FieldLabel>Phone (optional)</FieldLabel>
+      <FieldLabel>{t("Phone (optional)")}</FieldLabel>
       <input style={inp} value={phone} onChange={(e) => setPhone(e.target.value)} />
-      {error && <p style={errText}>{error}</p>}
-      <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Add Supplier"}</button>
+      {error && <p style={errText}>{t(error)}</p>}
+      <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : t("Add Supplier")}</button>
     </Modal>
   );
 }
@@ -686,7 +696,7 @@ const muted = { color: theme.gray, fontSize: 13 };
 const tiny = { fontSize: 11, color: theme.gray, marginTop: 2 };
 const errText = { fontSize: 12, color: "#b42318", margin: "0 0 12px" };
 const table = { width: "100%", borderCollapse: "collapse", fontSize: 13 };
-const th = { textAlign: "left", padding: "8px 10px", fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
+const th = { textAlign: "start", padding: "8px 10px", fontSize: 11, color: theme.gray, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
 const td = { padding: "10px", borderBottom: "1px solid #f3f3f3", verticalAlign: "top", color: theme.navy };
 const badge = { fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, display: "inline-block" };
 const inp = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box", marginBottom: 16 };
@@ -694,7 +704,7 @@ const primaryBtn = { width: "100%", padding: "12px 0", borderRadius: 8, border: 
 const outlineBtn = { padding: "10px 20px", borderRadius: 8, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const ghostBtn = { padding: "6px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, fontSize: 12, cursor: "pointer", display: "inline-block" };
 const smallPrimary = { padding: "6px 14px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 12 };
-const linkBtn = { border: "none", background: "none", color: theme.navy, textDecoration: "underline", cursor: "pointer", fontSize: 12, padding: "0 0 0 8px" };
+const linkBtn = { border: "none", background: "none", color: theme.navy, textDecoration: "underline", cursor: "pointer", fontSize: 12, padding: 0, paddingInlineStart: 8 };
 const tabBtn = { padding: "6px 12px", borderRadius: 999, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 12, cursor: "pointer" };
 const tabBtnActive = { border: `1px solid ${theme.gold}`, background: theme.goldLight, fontWeight: 700 };
 const miniToggle = { padding: "4px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontSize: 11, cursor: "pointer" };

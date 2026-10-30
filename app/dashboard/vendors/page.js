@@ -7,6 +7,7 @@ import { logActivity } from "../../../lib/activityLog";
 import { vendorWhatsAppLink } from "../../../lib/whatsapp";
 import { formatPhone } from "../../../lib/formatPhone";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
+import { useT, tx, Ltr } from "../../../lib/i18n";
 
 const STATUS_LABEL = { assigned: "Assigned", in_progress: "In Progress", done: "Done" };
 const STATUS_COLOR = {
@@ -16,6 +17,7 @@ const STATUS_COLOR = {
 };
 
 export default function VendorsPage() {
+  const { t } = useT();
   const { profile } = usePermissions();
   useAutoRefresh(["vendors", "dental_orders"], () => { load(); });
   const [requests, setRequests] = useState([]);
@@ -75,7 +77,7 @@ export default function VendorsPage() {
       });
       window.open(link, "_blank");
     } else if (newStatus === "done" && !request.vendors?.mobile) {
-      alert("This vendor has no mobile number on file, no WhatsApp message could be opened.");
+      alert(tx("This vendor has no mobile number on file, no WhatsApp message could be opened."));
     }
   }
 
@@ -83,15 +85,15 @@ export default function VendorsPage() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>EXTERNAL VENDOR REQUESTS</p>
-          <h1 style={{ color: theme.navy, margin: "4px 0" }}>External Reports</h1>
-          <p style={{ color: theme.gray, margin: 0 }}>Incoming vendor requests, assigned internally, reported back on completion.</p>
+          <p style={{ color: theme.gold, fontSize: 12, fontWeight: 700, letterSpacing: 1, margin: 0 }}>{t("EXTERNAL VENDOR REQUESTS")}</p>
+          <h1 style={{ color: theme.navy, margin: "4px 0" }}>{t("External Reports")}</h1>
+          <p style={{ color: theme.gray, margin: 0 }}>{t("Incoming vendor requests, assigned internally, reported back on completion.")}</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           style={{ padding: "10px 20px", borderRadius: 8, background: `linear-gradient(135deg, ${theme.gold}, ${theme.goldLight})`, color: theme.navy, fontWeight: 700, border: "none", cursor: "pointer", fontSize: 14 }}
         >
-          + Log Vendor Request
+          {t("+ Log Vendor Request")}
         </button>
       </div>
 
@@ -102,14 +104,14 @@ export default function VendorsPage() {
             onClick={() => setStatusFilter(s)}
             style={{ padding: "6px 14px", borderRadius: 999, border: `1px solid ${statusFilter === s ? theme.gold : "#ddd"}`, background: statusFilter === s ? theme.goldLight : "#fff", color: theme.navy, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
           >
-            {s === "" ? "All" : STATUS_LABEL[s]}
+            {s === "" ? t("All") : t(STATUS_LABEL[s])}
           </button>
         ))}
       </div>
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
       {!loading && filtered.length === 0 && (
-        <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: theme.gray }}>No requests yet.</div>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: theme.gray }}>{t("No requests yet.")}</div>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
@@ -118,25 +120,25 @@ export default function VendorsPage() {
           return (
             <div key={r.id} style={{ background: "#fff", borderRadius: 12, padding: 16, display: "flex", alignItems: "center", gap: 16, boxShadow: "0 2px 10px rgba(39,33,77,0.05)" }}>
               <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: c.bg, color: c.fg, minWidth: 90, textAlign: "center" }}>
-                {STATUS_LABEL[r.status]}
+                {t(STATUS_LABEL[r.status])}
               </span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: theme.navy, fontSize: 14 }}>
-                  {r.vendors?.name || "Unknown vendor"}
-                  {r.vendors?.mobile && <span style={{ fontWeight: 400, color: theme.gray, fontSize: 12 }}> · {formatPhone(r.vendors.mobile)}</span>}
+                  {r.vendors?.name || t("Unknown vendor")}
+                  {r.vendors?.mobile && <span style={{ fontWeight: 400, color: theme.gray, fontSize: 12 }}> · <Ltr>{formatPhone(r.vendors.mobile)}</Ltr></span>}
                 </div>
                 <div style={{ fontSize: 13, color: theme.gray }}>{r.description}</div>
                 <div style={{ fontSize: 11, color: theme.gray, marginTop: 2 }}>
-                  {r.requested_date} &middot; Assigned to {r.employees?.name || "Unassigned"}
+                  {r.requested_date} &middot; {t("Assigned to {name}", { name: r.employees?.name || t("Unassigned") })}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {r.status === "assigned" && (
-                  <button onClick={() => updateStatus(r, "in_progress")} disabled={busyId === r.id} style={smallBtn}>Start</button>
+                  <button onClick={() => updateStatus(r, "in_progress")} disabled={busyId === r.id} style={smallBtn}>{t("Start")}</button>
                 )}
                 {r.status !== "done" && (
                   <button onClick={() => updateStatus(r, "done")} disabled={busyId === r.id} style={{ ...smallBtn, background: "#2e7d32", color: "#fff", border: "none" }}>
-                    Mark Done &amp; WhatsApp
+                    {t("Mark Done & WhatsApp")}
                   </button>
                 )}
                 {r.status === "done" && r.vendors?.mobile && (
@@ -144,7 +146,7 @@ export default function VendorsPage() {
                     onClick={() => window.open(vendorWhatsAppLink({ mobile: r.vendors.mobile, vendorName: r.vendors.name, description: r.description, completedDate: new Date(r.completed_at).toLocaleDateString() }), "_blank")}
                     style={smallBtn}
                   >
-                    Resend WhatsApp
+                    {t("Resend WhatsApp")}
                   </button>
                 )}
               </div>
@@ -170,6 +172,7 @@ export default function VendorsPage() {
 }
 
 function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
+  const { t } = useT();
   const [mode, setMode] = useState("existing");
   const [vendorId, setVendorId] = useState("");
   const [newVendorName, setNewVendorName] = useState("");
@@ -184,7 +187,7 @@ function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
     e.preventDefault();
     setError("");
     if (!description) {
-      setError("Describe the request");
+      setError(tx("Describe the request"));
       return;
     }
     setSaving(true);
@@ -192,7 +195,7 @@ function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
     let finalVendorId = vendorId;
     if (mode === "new") {
       if (!newVendorName) {
-        setError("Vendor name is required");
+        setError(tx("Vendor name is required"));
         setSaving(false);
         return;
       }
@@ -205,7 +208,7 @@ function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
       finalVendorId = newVendor.id;
     }
     if (!finalVendorId) {
-      setError("Pick or create a vendor");
+      setError(tx("Pick or create a vendor"));
       setSaving(false);
       return;
     }
@@ -243,22 +246,22 @@ function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(18,11,56,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
       <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 16, padding: 28, width: 440, maxWidth: "90vw", maxHeight: "88vh", overflowY: "auto" }}>
-        <h3 style={{ color: theme.navy, marginTop: 0 }}>Log Vendor Request</h3>
+        <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Log Vendor Request")}</h3>
 
         <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
           <label style={{ fontSize: 13, color: theme.navy, display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="radio" checked={mode === "existing"} onChange={() => setMode("existing")} /> Existing vendor
+            <input type="radio" checked={mode === "existing"} onChange={() => setMode("existing")} /> {t("Existing vendor")}
           </label>
           <label style={{ fontSize: 13, color: theme.navy, display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="radio" checked={mode === "new"} onChange={() => setMode("new")} /> New vendor
+            <input type="radio" checked={mode === "new"} onChange={() => setMode("new")} /> {t("New vendor")}
           </label>
         </div>
 
         {mode === "existing" ? (
           <>
-            <FieldLabel>Vendor</FieldLabel>
+            <FieldLabel>{t("Vendor")}</FieldLabel>
             <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} style={inp}>
-              <option value="">Select vendor...</option>
+              <option value="">{t("Select vendor...")}</option>
               {vendors.map((v) => (
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
@@ -266,35 +269,35 @@ function RequestForm({ vendors, employees, profile, onClose, onSaved }) {
           </>
         ) : (
           <>
-            <FieldLabel>Vendor Name</FieldLabel>
+            <FieldLabel>{t("Vendor Name")}</FieldLabel>
             <input value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)} style={inp} />
-            <FieldLabel>Mobile Number</FieldLabel>
+            <FieldLabel>{t("Mobile Number")}</FieldLabel>
             <input value={newVendorMobile} onChange={(e) => setNewVendorMobile(e.target.value)} style={inp} placeholder="+20..." />
           </>
         )}
 
-        <FieldLabel>What did they request?</FieldLabel>
+        <FieldLabel>{t("What did they request?")}</FieldLabel>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inp, minHeight: 70, resize: "vertical" }} />
 
-        <FieldLabel>Assign to</FieldLabel>
+        <FieldLabel>{t("Assign to")}</FieldLabel>
         <select value={assignedEmployeeId} onChange={(e) => setAssignedEmployeeId(e.target.value)} style={inp}>
-          <option value="">Unassigned</option>
+          <option value="">{t("Unassigned")}</option>
           {employees.map((emp) => (
             <option key={emp.id} value={emp.id}>{emp.name}</option>
           ))}
         </select>
 
-        <FieldLabel>Date requested</FieldLabel>
+        <FieldLabel>{t("Date requested")}</FieldLabel>
         <input type="date" value={requestedDate} onChange={(e) => setRequestedDate(e.target.value)} style={inp} />
 
-        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
           <button type="button" onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", color: theme.navy, fontWeight: 600, cursor: "pointer" }}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" disabled={saving} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 700, cursor: "pointer" }}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("Saving...") : t("Save")}
           </button>
         </div>
       </form>

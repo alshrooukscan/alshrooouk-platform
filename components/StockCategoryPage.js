@@ -6,12 +6,14 @@ import { theme } from "../lib/theme";
 import { formatMoney } from "../lib/format";
 import { exportToCsv } from "../lib/exportCsv";
 import { usePermissions } from "../lib/usePermissions";
+import { useT, tx, Ltr } from "../lib/i18n";
 
 // One dedicated page per stock category (Dental, El3awama) - no in-page toggle,
 // each is its own real route matching its own sidebar entry.
 const LABEL = { qty_remaining: "quantity", purchase_price: "purchase price", sale_price: "sale price" };
 
 export default function StockCategoryPage({ category, title }) {
+  const { t } = useT();
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -54,11 +56,11 @@ export default function StockCategoryPage({ category, title }) {
     let value = numeric ? (raw === "" ? null : Number(raw)) : String(raw).trim();
 
     if (numeric && value !== null && (!Number.isFinite(value) || value < 0)) {
-      setCellError("That needs to be a number, and not negative.");
+      setCellError(tx("That needs to be a number, and not negative."));
       return false;
     }
     if (field === "name" && !value) {
-      setCellError("An item needs a name.");
+      setCellError(tx("An item needs a name."));
       return false;
     }
     // Physical stock cannot drop below what is already promised to placed
@@ -66,7 +68,7 @@ export default function StockCategoryPage({ category, title }) {
     // them. Releasing them means cancelling the order, not editing this number.
     if (field === "qty_remaining" && value !== null && value < Number(item.qty_reserved || 0)) {
       setCellError(
-        `${item.name} has ${item.qty_reserved} unit(s) reserved for orders already placed, so the count cannot go below that.`
+        tx("{name} has {n} unit(s) reserved for orders already placed, so the count cannot go below that.", { name: item.name, n: item.qty_reserved })
       );
       return false;
     }
@@ -111,7 +113,7 @@ export default function StockCategoryPage({ category, title }) {
         return true;
       }
       setCellError(
-        `Sent for approval: ${item.name} ${LABEL[field]} ${item[field] ?? "-"} to ${value}. It changes once an admin approves it.`
+        tx("Sent for approval: {name} {field} {from} to {to}. It changes once an admin approves it.", { name: item.name, field: tx(LABEL[field]), from: item[field] ?? "-", to: value })
       );
       // The old value stays on screen deliberately, because that is still what
       // the item is worth until somebody decides otherwise.
@@ -197,17 +199,17 @@ export default function StockCategoryPage({ category, title }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 4px" }}>
-            <Link href="/dashboard/stock/dental" style={{ color: theme.gray }}>Inventory Management</Link> &gt; {title}
+            <Link href="/dashboard/stock/dental" style={{ color: theme.gray }}>{t("Inventory Management")}</Link> &gt; {t(title)}
           </p>
-          <h1 style={{ color: theme.navy, margin: 0 }}>{title}</h1>
+          <h1 style={{ color: theme.navy, margin: 0 }}>{t(title)}</h1>
         </div>
-        <div style={{ display: "flex", gap: 24, textAlign: "right" }}>
+        <div style={{ display: "flex", gap: 24, textAlign: "end" }}>
           <div>
-            <div style={{ fontSize: 11, color: theme.gray }}>TOTAL VALUE</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy }}>{formatMoney(totalValue)} EGP</div>
+            <div style={{ fontSize: 11, color: theme.gray }}>{t("TOTAL VALUE")}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: theme.navy }}>{t("{amount} EGP", { amount: formatMoney(totalValue) })}</div>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: theme.gray }}>5 OR FEWER LEFT</div>
+            <div style={{ fontSize: 11, color: theme.gray }}>{t("5 OR FEWER LEFT")}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: lowStockCount > 0 ? "#ba1a1a" : theme.navy }}>{lowStockCount}</div>
           </div>
         </div>
@@ -217,66 +219,66 @@ export default function StockCategoryPage({ category, title }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search item name or code..."
+          placeholder={t("Search item name or code...")}
           style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14 }}
         />
         <button
           onClick={() => exportToCsv(`stock-${category}.csv`, filtered.map((i) => ({ Item: i.name, Code: i.item_code, "Qty Remaining": i.qty_remaining ?? 0, "Purchase Price": i.purchase_price ?? "", "Sale Price": i.sale_price ?? "" })))}
           style={outlineBtn}
         >
-          Export CSV
+          {t("Export CSV")}
         </button>
         <select
           value={stockFilter}
           onChange={(e) => setStockFilter(e.target.value)}
           style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, color: theme.navy }}
         >
-          <option value="in">In stock</option>
-          <option value="out">Sold out</option>
-          <option value="all">All items</option>
+          <option value="in">{t("In stock")}</option>
+          <option value="out">{t("Sold out")}</option>
+          <option value="all">{t("All items")}</option>
         </select>
-        <button onClick={() => setShowAddItem(true)} style={outlineBtn}>+ Add Item</button>
-        <Link href="/dashboard/stock/purchase-orders" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>Purchase Orders</Link>
+        <button onClick={() => setShowAddItem(true)} style={outlineBtn}>{t("+ Add Item")}</button>
+        <Link href="/dashboard/stock/purchase-orders" style={{ ...outlineBtn, textDecoration: "none", display: "flex", alignItems: "center" }}>{t("Purchase Orders")}</Link>
       </div>
 
       {cellError && (
         <p style={{ background: "#fdecea", color: "#8c1d18", fontSize: 12.5, padding: "10px 12px", borderRadius: 8, marginBottom: 12 }}>
-          {cellError}
+          {t(cellError)}
         </p>
       )}
       {/* 249 items is too many to read straight through, so the list can be
           narrowed to the questions people actually ask of it: what is running
           out, and what has no cost price and so shows a false margin. */}
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => setLowOnly(!lowOnly)} style={chip(lowOnly)}>Low stock (5 or fewer)</button>
-        <button onClick={() => setNoPriceOnly(!noPriceOnly)} style={chip(noPriceOnly)}>Missing purchase price</button>
+        <button onClick={() => setLowOnly(!lowOnly)} style={chip(lowOnly)}>{t("Low stock (5 or fewer)")}</button>
+        <button onClick={() => setNoPriceOnly(!noPriceOnly)} style={chip(noPriceOnly)}>{t("Missing purchase price")}</button>
         {(lowOnly || noPriceOnly || stockFilter !== "in" || query) && (
           <button
             onClick={() => { setLowOnly(false); setNoPriceOnly(false); setStockFilter("in"); setQuery(""); }}
             style={{ ...chip(false), border: "none", color: theme.gray, textDecoration: "underline" }}
           >
-            Clear filters
+            {t("Clear filters")}
           </button>
         )}
-        <span style={{ marginLeft: "auto", fontSize: 12, color: theme.gray }}>
-          Showing {sorted.length} of {items.length} items
+        <span style={{ marginInlineStart: "auto", fontSize: 12, color: theme.gray }}>
+          {t("Showing {n} of {total} items", { n: sorted.length, total: items.length })}
         </span>
       </div>
       <p style={{ fontSize: 12, color: theme.gray, margin: "0 0 10px" }}>
-        Click any column heading to sort. Click any name, code, quantity or price to edit it &mdash; Enter saves, Escape cancels.
+        {t("Click any column heading to sort. Click any name, code, quantity or price to edit it \u2014 Enter saves, Escape cancels.")}
       </p>
       <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ background: "#faf9fb", textAlign: "left" }}>
-              {category === "dental" && <Th>Image</Th>}
+            <tr style={{ background: "#faf9fb", textAlign: "start" }}>
+              {category === "dental" && <Th>{t("Image")}</Th>}
               <SortTh col="name" label="Item" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
               <SortTh col="item_code" label="Code" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
               <SortTh col="qty_remaining" label="Qty Remaining" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
               <SortTh col="purchase_price" label="Purchase Price" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
               <SortTh col="sale_price" label="Sale Price" sortBy={sortBy} sortDir={sortDir} onSort={sortOn} />
-              <Th>Profit</Th>
-              <Th>Variance</Th>
+              <Th>{t("Profit")}</Th>
+              <Th>{t("Variance")}</Th>
               <Th></Th>
             </tr>
           </thead>
@@ -292,12 +294,12 @@ export default function StockCategoryPage({ category, title }) {
                       <div
                         onClick={() => setEditingImageId(item.id)}
                         style={{ width: 40, height: 40, borderRadius: 6, background: "#f0f0f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
-                        title="Click to change image"
+                        title={t("Click to change image")}
                       >
                         {item.image_url ? (
                           <img src={item.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
-                          <span style={{ fontSize: 9, color: "#bbb" }}>+ Add</span>
+                          <span style={{ fontSize: 9, color: "#bbb" }}>{t("+ Add")}</span>
                         )}
                       </div>
                     </Td>
@@ -314,7 +316,7 @@ export default function StockCategoryPage({ category, title }) {
                         <span style={{ fontWeight: 700, color: (Number(v) || 0) <= 5 ? "#ba1a1a" : theme.navy }}>
                           {v ?? 0}
                           {Number(item.qty_reserved) > 0 && (
-                            <span style={{ fontWeight: 400, fontSize: 11, color: theme.gray }}> ({item.qty_reserved} reserved)</span>
+                            <span style={{ fontWeight: 400, fontSize: 11, color: theme.gray }}> {t("({n} reserved)", { n: item.qty_reserved })}</span>
                           )}
                         </span>
                       )}
@@ -346,7 +348,7 @@ export default function StockCategoryPage({ category, title }) {
                           moves through orders, counter sales and counts, and
                           quantities are editable in place. A second, silent way
                           to move stock only made the numbers harder to trust. */}
-                      <button onClick={() => setShowCount(item)} style={smallBtn}>Count</button>
+                      <button onClick={() => setShowCount(item)} style={smallBtn}>{t("Count", { _ctx: "stock" })}</button>
                       {/* Cost differs per delivery - the same gloves bought at
                           145 in May and 155 in July are two different margins -
                           so the deliveries behind an item are worth opening. */}
@@ -354,7 +356,7 @@ export default function StockCategoryPage({ category, title }) {
                         onClick={() => setOpenBatches(openBatches === item.id ? null : item.id)}
                         style={smallBtn}
                       >
-                        {openBatches === item.id ? "Hide" : "Deliveries"}
+                        {openBatches === item.id ? t("Hide") : t("Deliveries")}
                       </button>
                     </div>
                   </Td>
@@ -372,7 +374,7 @@ export default function StockCategoryPage({ category, title }) {
           />
         )}
         {!loading && sorted.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>No items yet in {title}.</div>
+          <div style={{ padding: 24, textAlign: "center", color: theme.gray }}>{t("No items yet in {title}.", { title: t(title) })}</div>
         )}
       </div>
 
@@ -381,7 +383,7 @@ export default function StockCategoryPage({ category, title }) {
         style={{
           position: "fixed",
           bottom: 32,
-          right: 32,
+          insetInlineEnd: 32,
           padding: "14px 24px",
           borderRadius: 999,
           border: "none",
@@ -392,7 +394,7 @@ export default function StockCategoryPage({ category, title }) {
           boxShadow: "0 8px 24px rgba(169,139,77,0.4)",
         }}
       >
-        + Add Item
+        {t("+ Add Item")}
       </button>
 
       {returnFor && (
@@ -416,6 +418,7 @@ export default function StockCategoryPage({ category, title }) {
 }
 
 function ImageUploadModal({ item, onClose, onSaved }) {
+  const { t } = useT();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -440,21 +443,22 @@ function ImageUploadModal({ item, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`Image – ${item.name}`} onClose={onClose}>
+    <Modal title={t("Image \u2013 {name}", { name: item.name })} onClose={onClose}>
       {item.image_url && (
         <img src={item.image_url} alt="" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 8, marginBottom: 12 }} />
       )}
       <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFile} disabled={uploading} />
-      {uploading && <p style={{ fontSize: 12, color: theme.gray }}>Uploading...</p>}
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {uploading && <p style={{ fontSize: 12, color: theme.gray }}>{t("Uploading...")}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
       <p style={{ fontSize: 11, color: theme.gray, marginTop: 10 }}>
-        Shown both here and on the card doctors see when browsing Dental Stock in their portal.
+        {t("Shown both here and on the card doctors see when browsing Dental Stock in their portal.")}
       </p>
     </Modal>
   );
 }
 
 function AddItemModal({ category, title, onClose, onSaved }) {
+  const { t } = useT();
   const [form, setForm] = useState({
     name: "", qty_remaining: "", purchase_price: "", sale_price: "",
   });
@@ -483,9 +487,9 @@ function AddItemModal({ category, title, onClose, onSaved }) {
   const num = (v) => (v === "" ? null : Number(v));
 
   async function handleSave() {
-    if (!form.name.trim()) return setError("The item needs a name.");
+    if (!form.name.trim()) return setError(tx("The item needs a name."));
     if (form.sale_price !== "" && form.purchase_price !== "" && Number(form.sale_price) < Number(form.purchase_price)) {
-      return setError("The sale price is below the purchase price. Correct it, or leave the sale price blank for now.");
+      return setError(tx("The sale price is below the purchase price. Correct it, or leave the sale price blank for now."));
     }
     setSaving(true);
     setError("");
@@ -524,7 +528,7 @@ function AddItemModal({ category, title, onClose, onSaved }) {
       } else {
         setSaving(false);
         onSaved();
-        return setError(`Item saved, but the image did not upload: ${upErr.message}. Add it from the table.`);
+        return setError(tx("Item saved, but the image did not upload: {error}. Add it from the table.", { error: upErr.message }));
       }
     }
 
@@ -537,11 +541,11 @@ function AddItemModal({ category, title, onClose, onSaved }) {
   const halfCol = { flex: 1, minWidth: 0 };
 
   return (
-    <Modal title={`Add ${title} Item`} onClose={onClose}>
-      <FieldLabel>Item Name</FieldLabel>
-      <input style={inp} value={form.name} onChange={set("name")} placeholder="e.g., Lidocaine HCL 2%" />
+    <Modal title={t("Add {title} Item", { title: t(title) })} onClose={onClose}>
+      <FieldLabel>{t("Item Name")}</FieldLabel>
+      <input style={inp} value={form.name} onChange={set("name")} placeholder={t("e.g., Lidocaine HCL 2%")} />
 
-      <FieldLabel>Item Code</FieldLabel>
+      <FieldLabel>{t("Item Code")}</FieldLabel>
       {/* Filled in and not editable. Codes are a single running sequence per
           stock and a typed one would either duplicate an existing line or
           leave a hole; the number is the platform's to keep, not a decision
@@ -553,24 +557,24 @@ function AddItemModal({ category, title, onClose, onSaved }) {
         disabled
       />
       <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-        Next code in {title} stock, assigned automatically.
+        {t("Next code in {title} stock, assigned automatically.", { title: t(title) })}
       </p>
 
-      <FieldLabel>Opening Quantity</FieldLabel>
+      <FieldLabel>{t("Opening Quantity")}</FieldLabel>
       <input style={inp} type="number" min="0" value={form.qty_remaining} onChange={set("qty_remaining")} placeholder="0" />
 
       <div style={half}>
         <div style={halfCol}>
-          <FieldLabel>Purchase Price</FieldLabel>
-          <input style={inp} type="number" min="0" step="0.01" value={form.purchase_price} onChange={set("purchase_price")} placeholder="EGP" />
+          <FieldLabel>{t("Purchase Price")}</FieldLabel>
+          <input style={inp} type="number" min="0" step="0.01" value={form.purchase_price} onChange={set("purchase_price")} placeholder={t("EGP")} />
         </div>
         <div style={halfCol}>
-          <FieldLabel>Sale Price</FieldLabel>
-          <input style={inp} type="number" min="0" step="0.01" value={form.sale_price} onChange={set("sale_price")} placeholder="EGP" />
+          <FieldLabel>{t("Sale Price")}</FieldLabel>
+          <input style={inp} type="number" min="0" step="0.01" value={form.sale_price} onChange={set("sale_price")} placeholder={t("EGP")} />
         </div>
       </div>
 
-      <FieldLabel>Image</FieldLabel>
+      <FieldLabel>{t("Image")}</FieldLabel>
       {/* The same upload the table rows use, into the same bucket with the same
           naming, so a picture added here sits alongside every other item's
           rather than depending on someone having a URL to hand. */}
@@ -588,21 +592,21 @@ function AddItemModal({ category, title, onClose, onSaved }) {
         style={{ fontSize: 13 }}
       />
       <p style={{ fontSize: 11, color: theme.gray, margin: "4px 0 0" }}>
-        Optional. Shown here and on the card doctors see when browsing {title} stock in their portal.
+        {t("Optional. Shown here and on the card doctors see when browsing {title} stock in their portal.", { title: t(title) })}
       </p>
 
       {/* An opening quantity is a real movement: it opens a batch so the
           purchase ledger and the shelf count start life agreeing. */}
       {Number(form.qty_remaining) > 0 && !form.purchase_price && (
         <p style={{ fontSize: 11, color: "#8a6d00", margin: "8px 0 0" }}>
-          With no purchase price, this opening stock is recorded at zero cost and the item will show no value.
+          {t("With no purchase price, this opening stock is recorded at zero cost and the item will show no value.")}
         </p>
       )}
 
-      {error && <p style={{ fontSize: 12, color: "#b42318", margin: "8px 0 0" }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: "#b42318", margin: "8px 0 0" }}>{t(error)}</p>}
 
       <button onClick={handleSave} disabled={saving} style={{ ...primaryBtn, marginTop: 12 }}>
-        {saving ? "Saving..." : "Save Item"}
+        {saving ? t("Saving...") : t("Save Item")}
       </button>
     </Modal>
   );
@@ -610,6 +614,7 @@ function AddItemModal({ category, title, onClose, onSaved }) {
 
 // TransactionModal removed with the manual stock-movement action above.
 function CountModal({ item, onClose, onSaved }) {
+  const { t } = useT();
   const [physicalQty, setPhysicalQty] = useState("");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
@@ -626,16 +631,16 @@ function CountModal({ item, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`Physical Count \u2014 ${item.name}`} onClose={onClose}>
-      <p style={{ fontSize: 13, color: theme.gray }}>System expects: <strong>{item.qty_remaining ?? 0}</strong></p>
-      <FieldLabel>Physical Count</FieldLabel>
+    <Modal title={t("Physical Count \u2014 {name}", { name: item.name })} onClose={onClose}>
+      <p style={{ fontSize: 13, color: theme.gray }}>{t("System expects:")} <strong>{item.qty_remaining ?? 0}</strong></p>
+      <FieldLabel>{t("Physical Count")}</FieldLabel>
       <input style={inp} value={physicalQty} onChange={(e) => setPhysicalQty(e.target.value)} placeholder="0" />
       {result && (
         <p style={{ fontSize: 13, color: result.variance === 0 ? "#2e7d32" : "#ba1a1a" }}>
-          Variance: {result.variance > 0 ? "+" : ""}{result.variance} {result.variance === 0 ? "(matches)" : "(flagged)"}
+          {t("Variance:")} <Ltr>{result.variance > 0 ? "+" : ""}{result.variance}</Ltr> {result.variance === 0 ? t("(matches)") : t("(flagged)")}
         </p>
       )}
-      <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? "Saving..." : "Record Count"}</button>
+      <button onClick={handleSave} disabled={saving} style={primaryBtn}>{saving ? t("Saving...") : t("Record Count")}</button>
     </Modal>
   );
 }
@@ -662,6 +667,7 @@ function Th({ children }) {
 // on Escape. No edit mode to enter and no Save button to hunt for, because the
 // common case is correcting a single number.
 function EditableCell({ item, field, numeric, onSave, render, placeholder }) {
+  const { t } = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -717,7 +723,7 @@ function EditableCell({ item, field, numeric, onSave, render, placeholder }) {
           begin();
         }
       }}
-      title="Click to edit"
+      title={t("Click to edit")}
       style={{
         display: "inline-block", minWidth: 28, padding: "3px 6px", margin: "-3px -6px",
         borderRadius: 6, cursor: "text", borderBottom: "1px dashed #d8d8e0",
@@ -745,6 +751,7 @@ const smallBtn = { padding: "5px 10px", borderRadius: 6, border: "1px solid #ddd
 // blended purchase price on the row above hides where the margin actually
 // comes from - and which delivery a return should go back to.
 function BatchPanel({ item, onClose, onReturn }) {
+  const { t } = useT();
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -770,26 +777,26 @@ function BatchPanel({ item, onClose, onReturn }) {
     <div style={{ borderTop: "1px solid #eceaf1", background: "#fafafd", padding: "14px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <div>
-          <div style={{ fontWeight: 700, color: theme.navy }}>{item.name} &mdash; deliveries</div>
+          <div style={{ fontWeight: 700, color: theme.navy }}>{item.name} &mdash; {t("deliveries")}</div>
           <div style={{ fontSize: 12, color: theme.gray }}>
-            {batches.length} deliveries &middot; {sold} sold &middot; {left} still on hand.
-            Sales come out of the oldest delivery first.
+            {t("{n} deliveries \u00b7 {sold} sold \u00b7 {left} still on hand.", { n: batches.length, sold, left })}{" "}
+            {t("Sales come out of the oldest delivery first.")}
           </div>
         </div>
-        <button onClick={onClose} style={smallBtn}>Close</button>
+        <button onClick={onClose} style={smallBtn}>{t("Close")}</button>
       </div>
 
-      {loading && <p style={{ fontSize: 13, color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ fontSize: 13, color: theme.gray }}>{t("Loading...")}</p>}
       {!loading && batches.length === 0 && (
-        <p style={{ fontSize: 13, color: theme.gray }}>No deliveries recorded for this item yet.</p>
+        <p style={{ fontSize: 13, color: theme.gray }}>{t("No deliveries recorded for this item yet.")}</p>
       )}
       {!loading && batches.length > 0 && (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ color: theme.gray, fontSize: 11, textAlign: "left" }}>
-              <th style={bth}>PO</th><th style={bth}>Supplier</th><th style={bth}>Received</th>
-              <th style={bth}>Bought</th><th style={bth}>Sold</th><th style={bth}>Left</th>
-              <th style={bth}>Buy</th><th style={bth}>Sell</th><th style={bth}>Profit made</th><th style={bth}></th>
+            <tr style={{ color: theme.gray, fontSize: 11, textAlign: "start" }}>
+              <th style={bth}>{t("PO")}</th><th style={bth}>{t("Supplier")}</th><th style={bth}>{t("Received")}</th>
+              <th style={bth}>{t("Bought")}</th><th style={bth}>{t("Sold")}</th><th style={bth}>{t("Left")}</th>
+              <th style={bth}>{t("Buy")}</th><th style={bth}>{t("Sell")}</th><th style={bth}>{t("Profit made")}</th><th style={bth}></th>
             </tr>
           </thead>
           <tbody>
@@ -813,7 +820,7 @@ function BatchPanel({ item, onClose, onReturn }) {
                   </td>
                   <td style={btd}>
                     {Number(b.qty_remaining) > 0 && (
-                      <button onClick={() => onReturn({ ...b, item })} style={smallBtn}>Return</button>
+                      <button onClick={() => onReturn({ ...b, item })} style={smallBtn}>{t("Return")}</button>
                     )}
                   </td>
                 </tr>
@@ -830,6 +837,7 @@ function BatchPanel({ item, onClose, onReturn }) {
 // came from, at the price that delivery was bought at, and their value comes
 // off what is owed to that supplier.
 function ReturnModal({ batch, onClose, onSaved }) {
+  const { t } = useT();
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -856,9 +864,9 @@ function ReturnModal({ batch, onClose, onSaved }) {
   async function handleSave() {
     setError("");
     const q = Number(qty);
-    if (!q || q <= 0) return setError("Enter how many units are going back.");
-    if (q > max) return setError(`Only ${max} left in this delivery. You cannot return more than that.`);
-    if (!fromPo && !supplierId) return setError("Choose which supplier these are going back to.");
+    if (!q || q <= 0) return setError(tx("Enter how many units are going back."));
+    if (q > max) return setError(tx("Only {n} left in this delivery. You cannot return more than that.", { n: max }));
+    if (!fromPo && !supplierId) return setError(tx("Choose which supplier these are going back to."));
     setSaving(true);
     // One database step: the units leave the shelf and this delivery once, and
     // the value comes off what is owed to the supplier. This used to take the
@@ -874,33 +882,35 @@ function ReturnModal({ batch, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Return to supplier" onClose={onClose}>
+    <Modal title={t("Return to supplier")} onClose={onClose}>
       <p style={{ fontSize: 13, color: theme.gray, marginTop: 0 }}>
-        {batch.item.name} &middot; {batch.po_number || "no PO"} &middot; {max} left in this delivery.
+        {batch.item.name} &middot; {batch.po_number || t("no PO")} &middot; {t("{n} left in this delivery.", { n: max })}
       </p>
-      <FieldLabel>How many go back</FieldLabel>
+      <FieldLabel>{t("How many go back")}</FieldLabel>
       <input type="number" min="1" max={max} value={qty} onChange={(e) => setQty(e.target.value)} style={inp} />
       {!fromPo && (
         <>
-          <FieldLabel>Going back to which supplier</FieldLabel>
+          <FieldLabel>{t("Going back to which supplier")}</FieldLabel>
           <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={inp}>
-            <option value="">Choose...</option>
+            <option value="">{t("Choose...")}</option>
             {suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
         </>
       )}
-      <FieldLabel>Reason (optional)</FieldLabel>
+      <FieldLabel>{t("Reason (optional)")}</FieldLabel>
       <input value={reason} onChange={(e) => setReason(e.target.value)} style={inp} />
       <p style={{ fontSize: 12, color: theme.navy, background: "#f6efdd", padding: "10px 12px", borderRadius: 8, marginTop: 12 }}>
-        {fromPo ? "The supplier on this purchase order" : supplier || "The supplier you choose"} will have{" "}
-        <strong>{formatMoney(value)} EGP</strong> taken off what we owe them: {qty || 0} at{" "}
-        {formatMoney(batch.purchase_price)} each, the price this delivery was bought at.
+        {t("{supplier} will have {amount} taken off what we owe them: {qty} at {price} each, the price this delivery was bought at.", {
+          supplier: fromPo ? t("The supplier on this purchase order") : supplier || t("The supplier you choose"),
+          qty: qty || 0,
+          price: formatMoney(batch.purchase_price),
+        }).split("{amount}").map((part, i) => (i === 0 ? part : <span key={i}><strong><Ltr>{formatMoney(value)}</Ltr> {t("EGP")}</strong>{part}</span>))}
       </p>
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={onClose} style={cancelBtn}>Cancel</button>
+        <button onClick={onClose} style={cancelBtn}>{t("Cancel")}</button>
         <button onClick={handleSave} disabled={saving} style={{ ...primaryBtn, flex: 1, width: "auto" }}>
-          {saving ? "Saving..." : "Record Return"}
+          {saving ? t("Saving...") : t("Record Return")}
         </button>
       </div>
     </Modal>
@@ -911,18 +921,19 @@ const bth = { padding: "6px 8px", fontWeight: 600 };
 const btd = { padding: "7px 8px", color: theme.navy };
 
 function SortTh({ col, label, sortBy, sortDir, onSort }) {
+  const { t } = useT();
   const on = sortBy === col;
   return (
     <th
       onClick={() => onSort(col)}
       style={{
-        padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 700,
+        padding: "12px 16px", textAlign: "start", fontSize: 11, fontWeight: 700,
         color: on ? theme.navy : theme.gray, textTransform: "uppercase",
         letterSpacing: "0.04em", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap",
       }}
     >
-      {label}
-      <span style={{ marginLeft: 6, color: on ? theme.gold : "#ccc" }}>
+      {t(label)}
+      <span style={{ marginInlineStart: 6, color: on ? theme.gold : "#ccc" }}>
         {on ? (sortDir === "asc" ? "\u25B2" : "\u25BC") : "\u25B4"}
       </span>
     </th>

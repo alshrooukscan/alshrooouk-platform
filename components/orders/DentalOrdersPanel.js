@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
+import { useT, tx } from "../../lib/i18n";
 
 // vodafone_cash is the retired key for the same thing; both render as Wallet
 const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", wallet: "Wallet", vodafone_cash: "Wallet" };
@@ -47,6 +48,7 @@ const PAYSTATUS = {
 };
 
 export default function DentalOrdersPanel() {
+  const { t, tCode, isAr } = useT();
   const [orders, setOrders] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -91,7 +93,7 @@ export default function DentalOrdersPanel() {
     const res = await fetch("/api/admin/dental-orders", { headers: { Authorization: `Bearer ${await token()}` } });
     const j = await res.json();
     if (res.ok) setOrders(j.orders || []);
-    else setError(j.error || "Could not load orders");
+    else setError(j.error || tx("Could not load orders"));
 
     const { data: reqs } = await supabase
       .from("stock_item_requests")
@@ -149,7 +151,7 @@ export default function DentalOrdersPanel() {
     });
     const j = await res.json();
     setBusy(null);
-    if (!res.ok) return setError(j.error || "Could not update that order.");
+    if (!res.ok) return setError(j.error || tx("Could not update that order."));
     // A13: the code goes to the customer over WhatsApp. Showing it here is
     // what lets the delivery person read it out or paste it into the chat.
     if (action === "assign" && j.result?.otp) setIssuedCode({ orderId, otp: j.result.otp, source: j.result.source });
@@ -171,7 +173,7 @@ export default function DentalOrdersPanel() {
   for (const o of live) {
     const owed = owedOn(o);
     if (owed <= 0) continue;
-    const k = o.doctors?.name || "Unknown doctor";
+    const k = o.doctors?.name || tx("Unknown doctor");
     byDoctor[k] = (byDoctor[k] || 0) + owed;
   }
   const debtors = Object.entries(byDoctor).sort((a, b) => b[1] - a[1]);
@@ -195,24 +197,23 @@ export default function DentalOrdersPanel() {
 
   return (
     <div>
-      <h1 style={{ color: theme.navy, marginBottom: 4 }}>Dental Stock Orders</h1>
+      <h1 style={{ color: theme.navy, marginBottom: 4 }}>{t("Dental Stock Orders")}</h1>
       <p style={{ color: theme.gray, marginBottom: 20 }}>
-        Orders doctors placed from their own portal — review, deliver, and record what was actually collected.
-        Sales recorded at the desk are listed underneath.
+        {t("Orders doctors placed from their own portal — review, deliver, and record what was actually collected. Sales recorded at the desk are listed underneath.")}
       </p>
 
-      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Outstanding", value: `${formatMoney(outstanding)} EGP`, color: outstanding > 0 ? "#ba1a1a" : theme.navy },
-          { label: "Collected", value: `${formatMoney(collected)} EGP`, color: "#1e7a3c" },
-          { label: "Total ordered", value: `${formatMoney(ordered)} EGP`, color: theme.navy },
+          { label: "Outstanding", value: t("{amount} EGP", { amount: formatMoney(outstanding) }), color: outstanding > 0 ? "#ba1a1a" : theme.navy },
+          { label: "Collected", value: t("{amount} EGP", { amount: formatMoney(collected) }), color: "#1e7a3c" },
+          { label: "Total ordered", value: t("{amount} EGP", { amount: formatMoney(ordered) }), color: theme.navy },
           { label: "Awaiting review", value: awaitingReview, color: awaitingReview ? "#a97c00" : theme.navy },
           { label: "Ready to deliver", value: awaitingDelivery, color: theme.navy },
         ].map((k) => (
           <div key={k.label} style={card}>
-            <div style={{ fontSize: 10, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{k.label}</div>
+            <div style={{ fontSize: 10, color: theme.gray, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{t(k.label)}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: k.color }}>{k.value}</div>
           </div>
         ))}
@@ -220,18 +221,18 @@ export default function DentalOrdersPanel() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 22 }}>
         <div style={card}>
-          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>Doctors with an unpaid balance</h3>
-          {debtors.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nobody owes anything.</p>}
+          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>{t("Doctors with an unpaid balance")}</h3>
+          {debtors.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>{t("Nobody owes anything.")}</p>}
           {debtors.map(([name, amt]) => (
             <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f2f2f2", fontSize: 13 }}>
               <span style={{ color: theme.navy, fontWeight: 600 }}>{name}</span>
-              <span style={{ color: "#ba1a1a", fontWeight: 700 }}>{formatMoney(amt)} EGP</span>
+              <span style={{ color: "#ba1a1a", fontWeight: 700 }}>{t("{amount} EGP", { amount: formatMoney(amt) })}</span>
             </div>
           ))}
         </div>
         <div style={card}>
-          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>Most ordered items</h3>
-          {items.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>Nothing ordered yet.</p>}
+          <h3 style={{ margin: "0 0 10px", color: theme.navy, fontSize: 15 }}>{t("Most ordered items")}</h3>
+          {items.length === 0 && <p style={{ color: theme.gray, fontSize: 13, margin: 0 }}>{t("Nothing ordered yet.")}</p>}
           {items.map(([name, qty]) => (
             <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f2f2f2", fontSize: 13 }}>
               <span style={{ color: theme.navy }}>{name}</span>
@@ -253,17 +254,17 @@ export default function DentalOrdersPanel() {
             style={{ padding: "7px 16px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
               background: filter === f.k ? theme.navy : "#fff", color: filter === f.k ? "#fff" : theme.navy,
               boxShadow: "0 2px 8px rgba(39,33,77,0.06)" }}>
-            {f.l}
+            {t(f.l)}
           </button>
         ))}
       </div>
 
-      {loading && <p style={{ color: theme.gray }}>Loading...</p>}
+      {loading && <p style={{ color: theme.gray }}>{t("Loading...")}</p>}
       {itemRequests.length > 0 && (
-        <div style={{ ...card, marginBottom: 16, borderLeft: "4px solid #f0d58c" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0, fontSize: 15 }}>Items Doctors Have Asked For</h3>
+        <div style={{ ...card, marginBottom: 16, borderInlineStart: "4px solid #f0d58c" }}>
+          <h3 style={{ color: theme.navy, marginTop: 0, fontSize: 15 }}>{t("Items Doctors Have Asked For")}</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -6, marginBottom: 12 }}>
-            Things we don&apos;t stock. Nothing is ordered or reserved &mdash; decide whether to carry them.
+            {t("Things we don't stock. Nothing is ordered or reserved \u2014 decide whether to carry them.")}
           </p>
           {itemRequests.map((r) => (
             <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
@@ -272,21 +273,21 @@ export default function DentalOrdersPanel() {
                   {r.item_name}{r.quantity ? ` \u00b7 ${r.quantity}` : ""}
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {r.doctors?.name || "Unknown doctor"}
+                  {r.doctors?.name || t("Unknown doctor")}
                   {" \u00b7 "}{new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 </div>
                 {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic" }}>{r.note}</div>}
               </div>
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => reviewItemRequest(r, "sourcing")} style={btn(theme.navy, "#fff")}>Will source</button>
-                <button onClick={() => reviewItemRequest(r, "declined")} style={btn("#fff", theme.navy)}>Decline</button>
+                <button onClick={() => reviewItemRequest(r, "sourcing")} style={btn(theme.navy, "#fff")}>{t("Will source")}</button>
+                <button onClick={() => reviewItemRequest(r, "declined")} style={btn("#fff", theme.navy)}>{t("Decline")}</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {!loading && shown.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>Nothing here.</p>}
+      {!loading && shown.length === 0 && <p style={{ color: theme.gray, fontSize: 13 }}>{t("Nothing here.")}</p>}
 
       {shown.map((o) => {
         const st = STATUS[o.status] || STATUS.placed;
@@ -303,28 +304,28 @@ export default function DentalOrdersPanel() {
                       scan a list for - and with a debt on the line, knowing
                       which clinic owes it is the whole point. */}
                   {o.doctors?.clinic_code && (
-                    <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, marginRight: 8 }}>
+                    <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, marginInlineEnd: 8 }}>
                       {o.doctors.clinic_code}
                     </span>
                   )}
-                  {o.doctors?.name || "Unknown doctor"}
+                  {o.doctors?.name || t("Unknown doctor")}
                   {isBackorder && (
                     // Nothing is reserved for this one - there was no stock to
                     // hold. It cannot be delivered until the items arrive.
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00", marginLeft: 8 }}>
-                      Awaiting stock
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#fff8e1", color: "#8a6d00", marginInlineStart: 8 }}>
+                      {t("Awaiting stock")}
                     </span>
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
                   {new Date(o.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  {o.pay_later && <span style={{ color: "#a97c00", fontWeight: 700 }}> · asked to pay later</span>}
+                  {o.pay_later && <span style={{ color: "#a97c00", fontWeight: 700 }}> · {t("asked to pay later")}</span>}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg }}>{st.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: ps.bg, color: ps.fg }}>{ps.label}</span>
-                <span style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>{formatMoney(o.total_amount)} EGP</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg }}>{t(st.label)}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: ps.bg, color: ps.fg }}>{t(ps.label)}</span>
+                <span style={{ fontWeight: 800, color: theme.navy, fontSize: 15 }}>{t("{amount} EGP", { amount: formatMoney(o.total_amount) })}</span>
               </div>
             </div>
 
@@ -335,12 +336,12 @@ export default function DentalOrdersPanel() {
                 nothing owed. It now says so. */}
             {owed > 0 ? (
               <div style={{ fontSize: 12, color: "#ba1a1a", fontWeight: 700, marginTop: 6 }}>
-                Clinic {o.doctors?.clinic_code || "not recorded"} owes {formatMoney(owed)} EGP
-                {Number(o.amount_paid) > 0 && <span style={{ color: theme.gray, fontWeight: 400 }}> (paid {formatMoney(o.amount_paid)})</span>}
+                {t("Clinic {code} owes {amount} EGP", { code: o.doctors?.clinic_code || t("not recorded"), amount: formatMoney(owed) })}
+                {Number(o.amount_paid) > 0 && <span style={{ color: theme.gray, fontWeight: 400 }}> {t("(paid {amount})", { amount: formatMoney(o.amount_paid) })}</span>}
               </div>
             ) : (
               <div style={{ fontSize: 12, color: "#1e7a3c", fontWeight: 700, marginTop: 6 }}>
-                Settled{o.doctors?.clinic_code ? ` · clinic ${o.doctors.clinic_code}` : ""}
+                {t("Settled")}{o.doctors?.clinic_code ? ` · ${t("clinic {code}", { code: o.doctors.clinic_code })}` : ""}
               </div>
             )}
 
@@ -359,14 +360,14 @@ export default function DentalOrdersPanel() {
                   color: o.fulfillment === "backorder" && o.status !== "delivered" ? "#8a6d00" : theme.navy,
                 }}
               >
-                <span style={{ fontWeight: 700 }}>Next:</span>
-                <span>{nextStep(o)}</span>
+                <span style={{ fontWeight: 700 }}>{t("Next:")}</span>
+                <span>{t(nextStep(o))}</span>
               </div>
             )}
 
             <button onClick={() => setExpanded(expanded === o.id ? null : o.id)}
               style={{ marginTop: 8, background: "none", border: "none", color: theme.gold, fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0 }}>
-              {expanded === o.id ? "Hide items" : `Show ${(o.dental_order_items || []).length} items`}
+              {expanded === o.id ? t("Hide items") : t("Show {n} items", { n: (o.dental_order_items || []).length })}
             </button>
 
             {expanded === o.id && (
@@ -374,7 +375,7 @@ export default function DentalOrdersPanel() {
                 {(o.dental_order_items || []).map((it) => (
                   <div key={it.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0" }}>
                     <span style={{ color: theme.navy }}>{it.item_name} × {it.quantity}</span>
-                    <span style={{ color: theme.gray }}>{formatMoney(it.line_total)} EGP</span>
+                    <span style={{ color: theme.gray }}>{t("{amount} EGP", { amount: formatMoney(it.line_total) })}</span>
                   </div>
                 ))}
               </div>
@@ -383,19 +384,19 @@ export default function DentalOrdersPanel() {
             {issuedCode?.orderId === o.id && (
               <div style={{ marginTop: 10, padding: 12, borderRadius: 8, background: "#eef4f6", border: "1px solid #cfe0e6" }}>
                 <div style={{ fontSize: 11, color: "#48464E", fontWeight: 700 }}>
-                  Delivery code for the customer{issuedCode.source === "manual" ? "" : ` \u00b7 auto-assigned (${issuedCode.source})`}
+                  {t("Delivery code for the customer")}{issuedCode.source === "manual" ? "" : ` \u00b7 ${t("auto-assigned ({source})", { source: issuedCode.source })}`}
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 6, color: theme.navy }}>{issuedCode.otp}</div>
                 <div style={{ fontSize: 11, color: "#48464E" }}>
-                  Send this to the customer on WhatsApp. They read it back on delivery.
+                  {t("Send this to the customer on WhatsApp. They read it back on delivery.")}
                 </div>
-                <button onClick={() => setIssuedCode(null)} style={{ ...btn("#fff", theme.gray), marginTop: 6 }}>Hide</button>
+                <button onClick={() => setIssuedCode(null)} style={{ ...btn("#fff", theme.gray), marginTop: 6 }}>{t("Hide")}</button>
               </div>
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
               {["placed", "confirmed"].includes(o.status) && (
-                <button onClick={() => act(o.id, "review")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>Mark Reviewed</button>
+                <button onClick={() => act(o.id, "review")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>{t("Mark Reviewed")}</button>
               )}
               {/* An order whose items are not in stock cannot be sent out, so
                   the button that sends someone to deliver it is not offered.
@@ -403,52 +404,52 @@ export default function DentalOrdersPanel() {
                   pushed through the flow it had no business entering. */}
               {["placed", "confirmed", "reviewed"].includes(o.status) && o.fulfillment !== "backorder" && (
                 <button onClick={() => act(o.id, "assign")} disabled={busy === o.id} style={btn(theme.navy, "#fff")}>
-                  Assign &amp; Send Code
+                  {t("Assign & Send Code")}
                 </button>
               )}
               {["placed", "confirmed", "reviewed"].includes(o.status) && o.fulfillment === "backorder" && (
                 <span style={{ fontSize: 12, color: "#8a6d00", alignSelf: "center" }}>
-                  Waiting for stock before it can go out.
+                  {t("Waiting for stock before it can go out.")}
                 </span>
               )}
               {o.status === "in_transit" && (
                 <>
                   <button onClick={() => setVerifyFor(verifyFor === o.id ? null : o.id)} disabled={busy === o.id} style={btn("#1e7a3c", "#fff")}>
-                    Enter Customer Code
+                    {t("Enter Customer Code")}
                   </button>
                   <button
                     onClick={() => {
-                      const reason = prompt("Closing without the customer's code. Why? (recorded and flagged for review)");
+                      const reason = prompt(tx("Closing without the customer's code. Why? (recorded and flagged for review)"));
                       if (reason && reason.trim().length >= 5) act(o.id, "override", { reason });
-                      else if (reason !== null) alert("Please give a fuller reason.");
+                      else if (reason !== null) alert(tx("Please give a fuller reason."));
                     }}
                     disabled={busy === o.id}
                     style={{ ...btn("#fff", "#8a6d00"), border: "1px solid #e6d08a" }}
                   >
-                    Manager Override
+                    {t("Manager Override")}
                   </button>
                 </>
               )}
               {o.status !== "cancelled" && owed > 0 && (o.status === "delivered" || o.is_on_behalf) && (
                 <button
                   onClick={() => { setPayFor(payFor === o.id ? null : o.id); setPay({ amount: String(owed), method: o.payment_method || "cash" }); }}
-                  disabled={busy === o.id} style={btn(theme.gold, theme.navy)}>Record Payment</button>
+                  disabled={busy === o.id} style={btn(theme.gold, theme.navy)}>{t("Record Payment")}</button>
               )}
               {o.status === "in_transit" && owed > 0 && (
                 <span style={{ fontSize: 11, color: "#8a6d00", alignSelf: "center" }}>
-                  Payment unlocks once the delivery is verified.
+                  {t("Payment unlocks once the delivery is verified.")}
                 </span>
               )}
               {o.status !== "delivered" && o.status !== "cancelled" && Number(o.amount_paid) === 0 && (
-                <button onClick={() => { if (confirm("Cancel this order? The items go back into stock.")) act(o.id, "cancel"); }}
-                  disabled={busy === o.id} style={{ ...btn("#fff", "#ba1a1a"), border: "1px solid #f0c9c9" }}>Cancel</button>
+                <button onClick={() => { if (confirm(tx("Cancel this order? The items go back into stock."))) act(o.id, "cancel"); }}
+                  disabled={busy === o.id} style={{ ...btn("#fff", "#ba1a1a"), border: "1px solid #f0c9c9" }}>{t("Cancel")}</button>
               )}
             </div>
 
             {verifyFor === o.id && (
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, background: "#f2f8f4", padding: 12, borderRadius: 8, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>4-digit code from the customer</div>
+                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>{t("4-digit code from the customer")}</div>
                   <input
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
@@ -462,32 +463,32 @@ export default function DentalOrdersPanel() {
                   disabled={busy === o.id || code.length !== 4}
                   style={btn("#1e7a3c", "#fff")}
                 >
-                  Verify Delivery
+                  {t("Verify Delivery")}
                 </button>
-                <button onClick={() => { setVerifyFor(null); setCode(""); }} style={btn("#fff", theme.gray)}>Cancel</button>
+                <button onClick={() => { setVerifyFor(null); setCode(""); }} style={btn("#fff", theme.gray)}>{t("Cancel")}</button>
               </div>
             )}
 
             {payFor === o.id && (
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, background: "#faf9fb", padding: 12, borderRadius: 8, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>Amount collected</div>
+                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>{t("Amount collected")}</div>
                   <input value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })}
                     style={{ width: 110, padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>Method</div>
+                  <div style={{ fontSize: 10, color: "#48464E", fontWeight: 700, marginBottom: 3 }}>{t("Method")}</div>
                   <select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}
                     style={{ padding: "7px 8px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13 }}>
-                    {METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABEL[m]}</option>)}
+                    {METHODS.map((m) => <option key={m} value={m}>{t(PAYMENT_LABEL[m])}</option>)}
                   </select>
                 </div>
                 <button onClick={() => act(o.id, "pay", { amount: Number(pay.amount), paymentMethod: pay.method })}
                   disabled={busy === o.id} style={btn(theme.navy, "#fff")}>
-                  {busy === o.id ? "Saving..." : "Confirm"}
+                  {busy === o.id ? t("Saving...") : t("Confirm")}
                 </button>
                 <span style={{ fontSize: 11, color: theme.gray, width: "100%" }}>
-                  Cash is added to your own Cash In Hand. Card, InstaPay and Wallet are recorded but never enter anyone&apos;s hand.
+                  {t("Cash is added to your own Cash In Hand. Card, InstaPay and Wallet are recorded but never enter anyone's hand.")}
                 </span>
               </div>
             )}
@@ -498,13 +499,13 @@ export default function DentalOrdersPanel() {
       {/* Recorded at the desk rather than through a doctor's portal. Same
           money, same stock, so it belongs on the same page - a sale that
           appears nowhere is one nobody can check or correct. */}
-      <h2 style={{ color: theme.navy, fontSize: 16, margin: "28px 0 4px" }}>Sales recorded at the desk</h2>
+      <h2 style={{ color: theme.navy, fontSize: 16, margin: "28px 0 4px" }}>{t("Sales recorded at the desk")}</h2>
       <p style={{ color: theme.gray, fontSize: 12, marginBottom: 12 }}>
-        Taken over the counter by staff. Stock comes off straight away, and anything on account is added to the clinic.
+        {t("Taken over the counter by staff. Stock comes off straight away, and anything on account is added to the clinic.")}
       </p>
 
       {counterSales.length === 0 && (
-        <p style={{ color: theme.gray, fontSize: 13 }}>No counter sales yet.</p>
+        <p style={{ color: theme.gray, fontSize: 13 }}>{t("No counter sales yet.")}</p>
       )}
 
       {counterSales.map((cs) => {
@@ -518,20 +519,20 @@ export default function DentalOrdersPanel() {
                     and the amount but no customer, which left the same question
                     Doaa is asking: which clinic is this? */}
                 {saleClinic[cs.id]?.clinic_code && (
-                  <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, marginRight: 8 }}>
+                  <span style={{ color: theme.navy, background: theme.goldLight, fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, marginInlineEnd: 8 }}>
                     {saleClinic[cs.id].clinic_code}
                   </span>
                 )}
                 <span style={{ fontWeight: 800, color: theme.navy }}>{cs.receipt_no}</span>
                 <span style={{ color: theme.gray, fontSize: 12 }}>
                   {saleClinic[cs.id]?.name ? ` · ${saleClinic[cs.id].name}` : ""}
-                  {" · "}{cs.entry_date}{cs.created_by_name ? ` · by ${cs.created_by_name}` : ""}
+                  {" · "}{cs.entry_date}{cs.created_by_name ? ` · ${t("by {name}", { name: cs.created_by_name })}` : ""}
                 </span>
               </div>
               <div style={{ fontWeight: 800, color: onAccount ? "#a97c00" : "#1e7a3c" }}>
-                {formatMoney(cs.net_amount)} EGP
-                <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6 }}>
-                  {onAccount ? "on account" : cs.payment_method}
+                {t("{amount} EGP", { amount: formatMoney(cs.net_amount) })}
+                <span style={{ fontSize: 11, fontWeight: 700, marginInlineStart: 6 }}>
+                  {onAccount ? t("on account") : isAr ? tCode(cs.payment_method) : cs.payment_method}
                 </span>
                 {!onAccount && <VerifyPill method={cs.payment_method} verification={cs.payment_verification} paymobId={cs.paymob_transaction_id} cardLast4={cs.paymob_card_last4} verifiedBy={cs.verified_by_name} />}
               </div>

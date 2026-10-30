@@ -3,6 +3,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import StockCategoryPage from "../../../components/StockCategoryPage";
 import { theme } from "../../../lib/theme";
+import { useT } from "../../../lib/i18n";
 
 // Dental and El3awama used to be two sidebar entries and two routes. They are
 // the same screen against a different set of items, so they are now one page
@@ -15,6 +16,7 @@ const STOCKS = [
 ];
 
 function StockDetailsInner() {
+  const { t } = useT();
   const params = useSearchParams();
   const router = useRouter();
   const fromUrl = params.get("stock");
@@ -43,7 +45,7 @@ function StockDetailsInner() {
               cursor: "pointer",
             }}
           >
-            {s.label}
+            {t(s.label)}
           </button>
         ))}
       </div>
