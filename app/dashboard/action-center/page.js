@@ -54,6 +54,7 @@ export default function ActionCenterPage() {
   const [branchMap, setBranchMap] = useState({});
   const [doctorMap, setDoctorMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState({ done: 0, total: 1, label: "Starting", finishedAt: null, failed: [] });
   const [busyId, setBusyId] = useState(null);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [swaps, setSwaps] = useState([]);
@@ -149,137 +150,143 @@ export default function ActionCenterPage() {
     load();
   }
 
+  // Loading bar (30 Oct 2026): every section reports in as it arrives, so it
+  // is obvious when everything is retrieved rather than guessing whether an
+  // empty list means "nothing pending" or "not loaded yet".
   async function load() {
     setLoading(true);
-    const promises = [
-      supabase.from("tasks").select("*").eq("assigned_to_id", profile.id).order("created_at", { ascending: false }),
-    ];
-    if (isAdmin) {
-      promises.push(
-        // Approvals only. This filtered on status alone, so Confirmed returned
-        // every confirmed money row in the system - 408 of them, 392 being
-        // visit collections the payment trigger writes automatically and
-        // already confirmed. They never needed approving: a patient handing
-        // over 480 EGP is not a request anybody grants. They buried the ten
-        // rows a person actually did approve, and they belong in Brands Cash,
-        // which is where cash movements are meant to be read.
-        //
-        // Counter sales go with them: all six carry no reviewer at all, because
-        // nobody ever reviewed one. Both are money arriving, recorded as it
-        // arrives.
-        //
-        // Safe to exclude: neither type ever exists in pending status, so
-        // nothing awaiting a decision is hidden by this.
-        supabase
-          .from("expense_transactions")
-          .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
-          .eq("status", approvalFilter)
-          .is("source_payment_id", null)
-          .not("type", "in", "(visit_collection,stock_sale)")
-          .order("created_at", { ascending: false })
-      );
-      promises.push(supabase.from("staff_profiles").select("id, name").order("name"));
-      promises.push(
-        supabase
-          .from("excuse_submissions")
-          .select("*, employees(name), excuse_rules(name)")
-          .eq("status", "pending")
-          .order("created_at", { ascending: false })
-      );
-      promises.push(
-        supabase
-          .from("visit_edit_requests")
-          .select("*, visits(patient_id, patients(name))")
-          .eq("status", visitEditFilter)
-          .order("created_at", { ascending: false })
-      );
-      promises.push(supabase.from("branches").select("id, name"));
-      promises.push(supabase.from("doctors").select("id, name, clinic_name"));
-    }
-    const results = await Promise.all(promises);
-    setMyTasks(results[0].data || []);
+    const sections = isAdmin ? 9 : 2;
+    let done = 0;
+    setProgress({ done: 0, total: sections, label: "Starting", finishedAt: null, failed: [] });
+    const failed = [];
+    const track = async (label, fn) => {
+      try { await fn(); } catch (e) { failed.push(label); }
+      done += 1;
+      setProgress((p) => ({ ...p, done, label: `${label} loaded`, failed: [...failed] }));
+    };
+    const { data: sess } = await supabase.auth.getSession();
+    const auth = { headers: { Authorization: `Bearer ${sess.session?.access_token}` } };
+
+    const jobs = [];
+    jobs.push(track(isAdmin ? "Tasks, approvals, excuses and visit edits" : "Your tasks", async () => {
+      const promises = [
+        supabase.from("tasks").select("*").eq("assigned_to_id", profile.id).order("created_at", { ascending: false }),
+      ];
+      if (isAdmin) {
+        // Approvals only: visit collections and counter sales are money
+        // arriving, recorded as it arrives, and never wait for a decision.
+        promises.push(
+          supabase
+            .from("expense_transactions")
+            .select("*, from_employee:from_employee_id(name), to_employee:to_employee_id(name)")
+            .eq("status", approvalFilter)
+            .is("source_payment_id", null)
+            .not("type", "in", "(visit_collection,stock_sale)")
+            .order("created_at", { ascending: false })
+        );
+        promises.push(supabase.from("staff_profiles").select("id, name").order("name"));
+        promises.push(
+          supabase
+            .from("excuse_submissions")
+            .select("*, employees(name), excuse_rules(name)")
+            .eq("status", "pending")
+            .order("created_at", { ascending: false })
+        );
+        promises.push(
+          supabase
+            .from("visit_edit_requests")
+            .select("*, visits(patient_id, patients(name))")
+            .eq("status", visitEditFilter)
+            .order("created_at", { ascending: false })
+        );
+        promises.push(supabase.from("branches").select("id, name"));
+        promises.push(supabase.from("doctors").select("id, name, clinic_name"));
+      }
+      const results = await Promise.all(promises);
+      setMyTasks(results[0].data || []);
+      if (isAdmin) {
+        // Unpacked by position in the order the promises were pushed above.
+        const [, approvalsRes, staffRes, excusesRes, visitEditsRes, branchesRes, doctorsRes] = results;
+        setApprovals(approvalsRes.data || []);
+        setStaffList(staffRes.data || []);
+        setExcuses(excusesRes.data || []);
+        setVisitEdits(visitEditsRes.data || []);
+        setBranchMap(Object.fromEntries((branchesRes.data || []).map((b) => [b.id, b.name])));
+        setDoctorMap(Object.fromEntries((doctorsRes.data || []).map((d) => [d.id, `${d.name} - ${d.clinic_name}`])));
+      }
+    }));
 
     // The cash ledger is keyed on employees while the login is a staff profile;
-    // staff_account_email is the link between the two, the same join the visit
-    // payment trigger uses.
-    if (profile?.email) {
-      const { data: meEmp } = await supabase
-        .from("employees")
-        .select("id")
-        .ilike("staff_account_email", profile.email)
-        .maybeSingle();
-      if (meEmp?.id) {
-        const { data: incoming } = await supabase
-          .from("expense_transactions")
-          .select("*, from_employee:from_employee_id(name)")
-          .eq("type", "cash_transfer")
-          .eq("to_employee_id", meEmp.id)
-          .eq("status", "pending")
-          .order("created_at", { ascending: false });
-        setMyTransfers(incoming || []);
-      } else {
-        setMyTransfers([]);
-      }
-    }
+    // staff_account_email is the link between the two.
+    jobs.push(track("Cash transfers to you", async () => {
+      if (!profile?.email) return;
+      const { data: meEmp } = await supabase.from("employees").select("id").ilike("staff_account_email", profile.email).maybeSingle();
+      if (!meEmp?.id) { setMyTransfers([]); return; }
+      const { data: incoming } = await supabase
+        .from("expense_transactions")
+        .select("*, from_employee:from_employee_id(name)")
+        .eq("type", "cash_transfer")
+        .eq("to_employee_id", meEmp.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      setMyTransfers(incoming || []);
+    }));
+
     if (isAdmin) {
-      const { data: sess } = await supabase.auth.getSession();
-      const swapRes = await fetch("/api/admin/shift-swaps", {
-        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
-      });
-      if (swapRes.ok) setSwaps((await swapRes.json()).requests || []);
+      jobs.push(track("Shift swaps", async () => {
+        const r = await fetch("/api/admin/shift-swaps", auth);
+        if (!r.ok) throw new Error("swaps");
+        setSwaps((await r.json()).requests || []);
+      }));
       // Things nobody is told about unless they go looking for them.
-      const [{ data: stock }, { data: rep }] = await Promise.all([
-        supabase.from("stock_items").select("qty_remaining, reorder_level"),
-        supabase.from("reports").select("date_required, status").eq("status", "pending"),
-      ]);
-      const todayStr = new Date().toISOString().slice(0, 10);
-      setAlerts({
-        stockZero: (stock || []).filter((i) => Number(i.qty_remaining || 0) <= 0).length,
-        stockLow: (stock || []).filter((i) => Number(i.qty_remaining || 0) > 0 && Number(i.qty_remaining || 0) <= Number(i.reorder_level ?? 3)).length,
-        overdueReports: (rep || []).filter((r) => r.date_required && r.date_required < todayStr).length,
-      });
-      const excRes = await fetch("/api/hr/payroll?exceptions=1", {
-        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
-      });
-      if (excRes.ok) setAttExceptions((await excRes.json()).exceptions || []);
-      const fixRes = await fetch("/api/admin/timeclock-corrections", {
-        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
-      });
-      if (fixRes.ok) setClockFixes((await fixRes.json()).requests || []);
-      const cardRes = await fetch("/api/paymob/reviews?status=pending", {
-        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
-      });
-      if (cardRes.ok) setCardReviews((await cardRes.json()).reviews || []);
-
-      // Proposed changes to what stock is worth. These numbers set what a
-      // clinic is charged and what a missing item costs an employee, so a
-      // change to one waits for a decision rather than taking effect.
-      const { data: sc } = await supabase
-        .from("stock_change_requests")
-        .select("*, stock_items(name, item_code, category, qty_remaining)")
-        .eq("status", "pending")
-        .order("requested_at", { ascending: false });
-      setStockChanges(sc || []);
-
-      const { data: sr } = await supabase
-        .from("sale_returns")
-        .select("*, sale_return_lines(item_name, qty, unit_price)")
-        .eq("status", "pending")
-        .order("requested_at", { ascending: false });
-      setSaleReturns(sr || []);
+      jobs.push(track("Stock and report alerts", async () => {
+        const [{ data: stock }, { data: rep }] = await Promise.all([
+          supabase.from("stock_items").select("qty_remaining, reorder_level"),
+          supabase.from("reports").select("date_required, status").eq("status", "pending"),
+        ]);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        setAlerts({
+          stockZero: (stock || []).filter((i) => Number(i.qty_remaining || 0) <= 0).length,
+          stockLow: (stock || []).filter((i) => Number(i.qty_remaining || 0) > 0 && Number(i.qty_remaining || 0) <= Number(i.reorder_level ?? 3)).length,
+          overdueReports: (rep || []).filter((r) => r.date_required && r.date_required < todayStr).length,
+        });
+      }));
+      jobs.push(track("Attendance exceptions", async () => {
+        const r = await fetch("/api/hr/payroll?exceptions=1", auth);
+        if (!r.ok) throw new Error("exceptions");
+        setAttExceptions((await r.json()).exceptions || []);
+      }));
+      jobs.push(track("Clock corrections", async () => {
+        const r = await fetch("/api/admin/timeclock-corrections", auth);
+        if (!r.ok) throw new Error("fixes");
+        setClockFixes((await r.json()).requests || []);
+      }));
+      jobs.push(track("Card payments to review", async () => {
+        const r = await fetch("/api/paymob/reviews?status=pending", auth);
+        if (!r.ok) throw new Error("cards");
+        setCardReviews((await r.json()).reviews || []);
+      }));
+      // Proposed changes to what stock is worth wait for a decision.
+      jobs.push(track("Stock price changes", async () => {
+        const { data: sc } = await supabase
+          .from("stock_change_requests")
+          .select("*, stock_items(name, item_code, category, qty_remaining)")
+          .eq("status", "pending")
+          .order("requested_at", { ascending: false });
+        setStockChanges(sc || []);
+      }));
+      jobs.push(track("Sale returns", async () => {
+        const { data: sr } = await supabase
+          .from("sale_returns")
+          .select("*, sale_return_lines(item_name, qty, unit_price)")
+          .eq("status", "pending")
+          .order("requested_at", { ascending: false });
+        setSaleReturns(sr || []);
+      }));
     }
-    if (isAdmin) {
-      // Unpacked by position in the order the promises were pushed above.
-      // Adding one in the middle previously silently shifted every setter
-      // after it onto the wrong query, so keep this list next to that one.
-      const [, approvalsRes, staffRes, excusesRes, visitEditsRes, branchesRes, doctorsRes] = results;
-      setApprovals(approvalsRes.data || []);
-      setStaffList(staffRes.data || []);
-      setExcuses(excusesRes.data || []);
-      setVisitEdits(visitEditsRes.data || []);
-      setBranchMap(Object.fromEntries((branchesRes.data || []).map((b) => [b.id, b.name])));
-      setDoctorMap(Object.fromEntries((doctorsRes.data || []).map((d) => [d.id, `${d.name} - ${d.clinic_name}`])));
-    }
+
+    await Promise.all(jobs);
+    setProgress((p) => ({ ...p, done: sections, label: "Everything loaded", finishedAt: new Date() }));
     setLoading(false);
   }
 
@@ -449,7 +456,40 @@ export default function ActionCenterPage() {
   return (
     <div>
       <h1 style={{ color: theme.navy, margin: "0 0 4px" }}>Action Center</h1>
-      <p style={{ color: theme.gray, margin: "0 0 20px" }}>Your assigned tasks{isAdmin ? ", and every pending approval platform-wide" : ""}.</p>
+      <p style={{ color: theme.gray, margin: "0 0 14px" }}>Your assigned tasks{isAdmin ? ", and every pending approval platform-wide" : ""}.</p>
+
+      {/* Loading bar: fills as each section arrives and says when all of
+          them are in, so an empty list is never mistaken for a finished one. */}
+      {(() => {
+        const pct = Math.round((progress.done / Math.max(progress.total, 1)) * 100);
+        const finished = !loading && progress.finishedAt;
+        const bad = progress.failed.length > 0;
+        const color = finished ? (bad ? "#ba1a1a" : "#1e7a3c") : theme.gold;
+        return (
+          <div style={{ position: "sticky", top: 0, zIndex: 5, background: "#fff", borderRadius: 12, padding: "10px 14px", marginBottom: 18, boxShadow: "0 2px 12px rgba(39,33,77,0.06)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12.5, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 700, color: finished ? color : theme.navy }}>
+                {finished
+                  ? bad
+                    ? `Loaded with problems: ${progress.failed.join(", ")} did not load. Refresh to try again.`
+                    : `✓ Everything loaded · all ${progress.total} sections`
+                  : `Loading ${progress.done} of ${progress.total} sections · ${progress.label}...`}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 10, color: theme.gray }}>
+                {finished && progress.finishedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {finished && (
+                  <button onClick={load} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                    Refresh
+                  </button>
+                )}
+              </span>
+            </div>
+            <div style={{ height: 6, borderRadius: 999, background: "#eeedf3", overflow: "hidden" }}>
+              <div style={{ width: `${finished ? 100 : pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.35s ease" }} />
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
