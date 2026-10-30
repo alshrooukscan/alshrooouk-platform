@@ -99,6 +99,18 @@ export async function GET(req) {
 
   XLSX.utils.book_append_sheet(wb, ws, report.label.slice(0, 30));
 
+  // Reports with more than one view of the same data add their own sheets.
+  if (report.extraSheets) {
+    for (const sh of await report.extraSheets({ from, to, period })) {
+      if (!sh.rows?.length) continue;
+      const xs = XLSX.utils.json_to_sheet(sh.rows);
+      const keys = Object.keys(sh.rows[0]);
+      xs["!cols"] = keys.map((c) => ({ wch: Math.min(Math.max(sh.rows.reduce((m, r) => Math.max(m, String(r[c] ?? "").length), c.length) + 2, 10), 60) }));
+      xs["!autofilter"] = { ref: xs["!ref"] };
+      XLSX.utils.book_append_sheet(wb, xs, sh.name.slice(0, 30));
+    }
+  }
+
   // A second sheet records what this file is and who pulled it, so a
   // spreadsheet found later can still be traced and dated.
   const meta = [
