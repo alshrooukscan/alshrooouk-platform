@@ -5,7 +5,7 @@ import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
 import { fetchAll, fetchStockCashIn, cairoToday } from "../../lib/dashboardData";
-import { useT } from "../../lib/i18n";
+import { useT, dateLocale } from "../../lib/i18n";
 import { MONTHS_AR } from "./PeriodFilterBar";
 
 // Direction, not a snapshot. Every other panel answers "what did this period
@@ -89,7 +89,7 @@ export default function TrendsAnalytics() {
       // Display only; the month key above stays "YYYY-MM".
       label: isAr
         ? `${MONTHS_AR[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`
-        : new Date(m + "-01T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+        : new Date(m + "-01T00:00:00").toLocaleDateString(dateLocale(), { month: "short", year: "2-digit" }),
       visits: b.visits,
       revenue: b.revenue,
       scanRevenue: b.scanRevenue,

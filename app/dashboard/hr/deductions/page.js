@@ -263,7 +263,7 @@ export default function DeductionsAndExcusesPage() {
                 {list.map((r) => (
                   <div key={r.id} style={{ ...row, opacity: r.is_active === false ? 0.5 : 1 }}>
                     <div style={{ minWidth: 0 }}>
-                      <span style={{ color: theme.navy, fontWeight: 600 }}>{r.name}</span>
+                      <span style={{ color: theme.navy, fontWeight: 600 }}>{t(r.name)}</span>
                       <span style={{ fontSize: 11, color: theme.gray, marginInlineStart: 8 }}>
                         {r.rule_type === "fixed" && t("{value} EGP", { value: r.value })}
                         {r.rule_type === "day_multiplier" && (Number(r.value) === 1 ? t("{value} day of pay", { value: r.value }) : t("{value} days of pay", { value: r.value }))}
@@ -321,7 +321,7 @@ export default function DeductionsAndExcusesPage() {
           </p>
           {excuseRules.map((r) => (
             <div key={r.id} style={row}>
-              <span style={{ color: theme.navy, fontWeight: 600 }}>{r.name}</span>
+              <span style={{ color: theme.navy, fontWeight: 600 }}>{t(r.name)}</span>
             </div>
           ))}
           {excuseRules.length === 0 && <p style={{ fontSize: 13, color: theme.gray }}>{t("No excuse rules yet.")}</p>}

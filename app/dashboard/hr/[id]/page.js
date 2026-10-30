@@ -367,7 +367,7 @@ export default function EmployeeProfilePage() {
     if (skill.held && skill.is_cash_keeper) {
       const holding = skillCash.map((b) => `${b.brand}: ${formatMoney(b.balance)} ${tx("EGP")}`).join(tx(", "));
       const ok = window.confirm(
-        tx("Remove \"{skill}\"?", { skill: skill.label }) + "\n\n" + tx("Payroll will start sweeping this person's cash for that business at the end of the month.") +
+        tx("Remove \"{skill}\"?", { skill: tx(skill.label) }) + "\n\n" + tx("Payroll will start sweeping this person's cash for that business at the end of the month.") +
         (holding ? "\n\n" + tx("They are currently holding {holding}.", { holding }) : "")
       );
       if (!ok) return;
@@ -395,7 +395,7 @@ export default function EmployeeProfilePage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h1 style={{ color: theme.navy, margin: 0 }}>{employee.name}</h1>
-              <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role} &middot; {employee.hr_id}</p>
+              <p style={{ color: theme.gray, margin: "4px 0" }}>{employee.role ? t(employee.role) : ""} &middot; <Ltr>{employee.hr_id}</Ltr></p>
               <p style={{ color: theme.gray, margin: 0, fontSize: 13 }}>
                 <Ltr>{formatPhone(employee.phone)}</Ltr> {employee.national_id ? <>· {t("National ID")} <Ltr>{employee.national_id}</Ltr></> : ""}
               </p>
@@ -720,7 +720,7 @@ export default function EmployeeProfilePage() {
                 opacity: skillBusy === sk.id ? 0.5 : 1,
               }}
             >
-              {sk.held ? "\u2713 " : "+ "}{sk.label}
+              {sk.held ? "\u2713 " : "+ "}{t(sk.label)}
             </button>
           ))}
         </div>

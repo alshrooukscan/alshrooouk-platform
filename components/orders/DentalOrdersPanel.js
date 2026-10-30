@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
-import { useT, tx } from "../../lib/i18n";
+import { useT, tx, dateLocale } from "../../lib/i18n";
 
 // vodafone_cash is the retired key for the same thing; both render as Wallet
 const PAYMENT_LABEL = { cash: "Cash", visa: "Visa", instapay: "InstaPay", wallet: "Wallet", vodafone_cash: "Wallet" };
@@ -274,7 +274,7 @@ export default function DentalOrdersPanel() {
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
                   {r.doctors?.name || t("Unknown doctor")}
-                  {" \u00b7 "}{new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  {" \u00b7 "}{new Date(r.created_at).toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" })}
                 </div>
                 {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic" }}>{r.note}</div>}
               </div>
@@ -318,7 +318,7 @@ export default function DentalOrdersPanel() {
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {new Date(o.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {new Date(o.created_at).toLocaleString(dateLocale(), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                   {o.pay_later && <span style={{ color: "#a97c00", fontWeight: 700 }}> · {t("asked to pay later")}</span>}
                 </div>
               </div>

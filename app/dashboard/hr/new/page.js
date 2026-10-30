@@ -243,7 +243,7 @@ export default function NewEmployeePage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {deductionRules.map((r) => (
               <RuleChip key={r.id} active={selectedDeductions.includes(r.id)} onClick={() => toggle(selectedDeductions, setSelectedDeductions, r.id)}>
-                {r.name} ({r.value})
+                {t(r.name)} ({r.value})
               </RuleChip>
             ))}
           </div>
@@ -254,7 +254,7 @@ export default function NewEmployeePage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {excuseRules.map((r) => (
               <RuleChip key={r.id} active={selectedExcuses.includes(r.id)} onClick={() => toggle(selectedExcuses, setSelectedExcuses, r.id)}>
-                {r.name}
+                {t(r.name)}
               </RuleChip>
             ))}
           </div>

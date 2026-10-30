@@ -4,7 +4,7 @@ import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
 import { uploadFileToDrive } from "../../../lib/uploadToDrive";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
-import { useT, tx } from "../../../lib/i18n";
+import { useT, tx, dateLocale } from "../../../lib/i18n";
 
 const ERROR_TYPES = [
   { key: "application_error", label: "Application error / page crashed" },
@@ -252,7 +252,7 @@ export default function BugReportsPage() {
               </span>
             </div>
             <div style={{ fontSize: 11, color: theme.gray, marginBottom: 8 }}>
-              {r.reporter_name || t("Unknown")} &middot; {new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              {r.reporter_name || t("Unknown")} &middot; {new Date(r.created_at).toLocaleString(dateLocale(), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               {r.page_url && <> &middot; {r.page_url.length > 60 ? r.page_url.slice(0, 60) + "..." : r.page_url}</>}
             </div>
             <div style={{ fontSize: 13, color: theme.navy, whiteSpace: "pre-wrap", marginBottom: 8 }}>{r.description}</div>

@@ -6,7 +6,7 @@ import { theme } from "../../../lib/theme";
 import { formatVisitDate, doctorLabel } from "../../../lib/format";
 import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
-import { useT, Ltr } from "../../../lib/i18n";
+import { useT, Ltr, dateLocale } from "../../../lib/i18n";
 import LanguageToggle from "../../../lib/i18n/LanguageToggle";
 
 // Mirrors the staff dental orders screen so both sides describe an order the
@@ -235,7 +235,7 @@ export default function DoctorPortalPage() {
                     <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.fg }}>{t(st.label)}</span>
                   </div>
                   <div style={{ fontSize: 12, color: theme.gray, margin: "4px 0 6px" }}>
-                    {new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    {new Date(o.created_at).toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" })}
                     {" \u00b7 "}{o.items.length === 1 ? t("1 item") : t("{n} items", { n: o.items.length })}
                     {" \u00b7 "}{o.payment_status === "paid" ? t("Paid") : t("Unpaid")}
                   </div>
@@ -295,7 +295,7 @@ export default function DoctorPortalPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: theme.gray, margin: "3px 0 6px" }}>
-                  {new Date(x.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  {new Date(x.date + "T00:00:00").toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" })}
                   {x.receipt_no ? ` \u00b7 ${x.receipt_no}` : ""}{x.discount_percent > 0 ? ` \u00b7 ${t("{pct}% discount", { pct: x.discount_percent })}` : ""}
                 </div>
                 {x.items.map((l, i) => (

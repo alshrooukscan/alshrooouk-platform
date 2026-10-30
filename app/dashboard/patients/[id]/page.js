@@ -29,7 +29,7 @@ import DeleteEntityButton from "../../../../components/DeleteEntityButton";
 import { resolveUniqueUsername, resolvePatientUsername } from "../../../../lib/uniqueUsername";
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 import { APP_URL } from "../../../../lib/appUrl";
-import { useT, tx, Ltr } from "../../../../lib/i18n";
+import { useT, tx, Ltr, dateLocale } from "../../../../lib/i18n";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -1009,8 +1009,8 @@ export default function PatientProfilePage() {
           <div>
             <h1 style={{ color: theme.navy, margin: 0 }}>{patient.name}</h1>
             <p style={{ color: theme.gray, margin: "4px 0" }}>
-              {formatPhone(patient.mobile)}
-              {patient.dob && ` · ${new Date(patient.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+              <Ltr>{formatPhone(patient.mobile)}</Ltr>
+              {patient.dob && <> · <bdi>{new Date(patient.dob).toLocaleDateString(dateLocale(), { day: "numeric", month: "long", year: "numeric" })}</bdi></>}
               {patient.email && ` · ${patient.email}`}
             </p>
           </div>
@@ -2528,7 +2528,7 @@ function EditVisitModal({ visit, isAdmin, onClose, onSaved }) {
                         {t("{amount} EGP", { amount: Number(p.amount).toLocaleString() })} &middot; {t(p.payment_method)}
                       </span>
                       <span style={{ color: theme.gray }}>
-                        {new Date(p.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        {new Date(p.paid_at).toLocaleDateString(dateLocale(), { day: "numeric", month: "short" })}
                         {p.created_by_name ? ` \u00b7 ${p.created_by_name}` : ""}
                       </span>
                     </div>
@@ -2718,7 +2718,7 @@ function StageTable({ rows }) {
               </td>
               <td style={{ ...cell, color: r.active && r.timestamp ? "#27214D" : "#bbb", whiteSpace: "nowrap" }}>
                 {r.active && r.timestamp
-                  ? new Date(r.timestamp).toLocaleString("en-GB", {
+                  ? new Date(r.timestamp).toLocaleString(dateLocale(), {
                       day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
                     })
                   : "\u2014"}
@@ -2780,7 +2780,7 @@ function gatewayRows(v, log) {
 
 function StageChip({ label, active, onClick, timestamp, byName }) {
   const { t } = useT();
-  const when = timestamp ? new Date(timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  const when = timestamp ? new Date(timestamp).toLocaleString(dateLocale(), { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   const tooltip = active && timestamp
     ? byName
       ? t("{label} on {date} by {name}", { label: t(label), date: when, name: byName })

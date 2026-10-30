@@ -138,7 +138,7 @@ export default function WorkflowBoardPage() {
                 <div>
                   <PatientLink row={r} />
                   <span style={{ color: theme.gray, fontSize: 12, marginInlineStart: 8 }}>
-                    {r.exam_date} · {r.step_name}
+                    {r.exam_date} · {t(r.step_name)}
                     {r.records !== r.step_name ? ` ${t("(records: {name})", { name: r.records })}` : ""}
                   </span>
                 </div>

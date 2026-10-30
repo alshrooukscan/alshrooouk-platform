@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { usePermissions } from "../../lib/usePermissions";
-import { useT, tx, Ltr } from "../../lib/i18n";
+import { useT, tx, Ltr, dateLocale } from "../../lib/i18n";
 // Every tab was being downloaded before the first one could render - eight
 // analytics bundles plus recharts, for a page where only one tab is ever on
 // screen. Each now loads when its tab is opened. Same components, same
@@ -65,7 +65,7 @@ function LiveBadge() {
     const t = setInterval(() => tick((n) => n + 1), 15000);
     return () => clearInterval(t);
   }, []);
-  const time = lastUpdated ? lastUpdated.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Africa/Cairo" }) : "";
+  const time = lastUpdated ? lastUpdated.toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Africa/Cairo" }) : "";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, background: "#fff", boxShadow: "0 2px 8px rgba(39,33,77,0.06)", fontSize: 12, color: theme.navy, marginTop: 6 }}>
       <span style={{ width: 8, height: 8, borderRadius: 999, background: connected ? "#2e7d32" : "#c9a86a", display: "inline-block", boxShadow: connected ? "0 0 0 3px rgba(46,125,50,0.15)" : "none" }} />

@@ -127,7 +127,7 @@ export default function HRPage() {
                   </Link>
                 </td>
                 <td style={td}>{e.hr_id}</td>
-                <td style={td}>{e.role || "—"}</td>
+                <td style={td}>{e.role ? t(e.role) : "—"}</td>
                 <td style={td}>
                   <span
                     style={{

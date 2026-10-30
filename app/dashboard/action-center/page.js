@@ -10,7 +10,7 @@ import { logActivity } from "../../../lib/activityLog";
 import { syncPatientLastVisitDate } from "../../../lib/syncPatientLastVisitDate";
 import { useAutoRefresh } from "../../../lib/useAutoRefresh";
 import VerifyPill from "../../../components/VerifyPill";
-import { useT, tx, Ltr } from "../../../lib/i18n";
+import { useT, tx, Ltr, dateLocale } from "../../../lib/i18n";
 
 const BRAND_LABEL = { scan: "Scan", dental_stock: "Dental Stock", el3awama_stock: "El3awama Stock" };
 const TYPE_LABEL = {
@@ -478,7 +478,7 @@ export default function ActionCenterPage() {
 
   function formatFieldValue(field, value) {
     if (value === null || value === undefined || value === "") return "—";
-    if (field === "exam_date") return new Date(value + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    if (field === "exam_date") return new Date(value + "T00:00:00").toLocaleDateString(dateLocale(), { day: "numeric", month: "long", year: "numeric" });
     if (field === "doctor_id") return doctorMap[value] || tx("Walk-in");
     if (field === "branch_id") return branchMap[value] || value;
     if (field === "scan_types") return Array.isArray(value) ? value.join(", ") : value;
@@ -520,7 +520,7 @@ export default function ActionCenterPage() {
                   : t("Loading {done} of {total} sections · {label}...", { done: progress.done, total: progress.total, label: progress.label.endsWith(" loaded") ? t("{section} loaded", { section: t(progress.label.slice(0, -7)) }) : t(progress.label) })}
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 10, color: theme.gray }}>
-                {finished && progress.finishedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {finished && progress.finishedAt.toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                 {finished && (
                   <button onClick={load} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.navy}`, background: "#fff", color: theme.navy, fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
                     {t("Refresh")}
@@ -600,7 +600,7 @@ export default function ActionCenterPage() {
                     <Ltr>{formatMoney(p.amount)} {t("EGP")}</Ltr> <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>{t("from {name}", { name: p.payer })}{p.kind === "card" ? ` · ${t("Visa")}` : ""}</span>
                   </div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
-                    {p.detail} · {new Date(p.recorded_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · {t("recorded by {name}", { name: p.recorded_by || t("unknown") })}
+                    {p.detail} · {new Date(p.recorded_at).toLocaleString(dateLocale(), { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · {t("recorded by {name}", { name: p.recorded_by || t("unknown") })}
                   </div>
                   {p.kind === "card" && (
                     <div style={{ fontSize: 12, color: p.hint ? "#8a6d00" : "#ba1a1a", marginTop: 2 }}>
@@ -799,7 +799,7 @@ export default function ActionCenterPage() {
                 </div>
               )}
               <div style={{ fontSize: 11, color: theme.gray, marginBottom: 8 }}>
-                {t("Submitted {date}", { date: new Date(x.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) })}
+                {t("Submitted {date}", { date: new Date(x.created_at).toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" }) })}
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => reviewExcuse(x, "approved")} disabled={busyId === x.id} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
@@ -825,7 +825,7 @@ export default function ActionCenterPage() {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: theme.navy }}>{x.employees?.name}</div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {new Date(x.work_date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} &middot; {x.reason}
+                  {new Date(x.work_date + "T00:00:00").toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" })} &middot; {x.reason}
                   {x.employees?.hourly_rate ? ` · ${t("paid hourly")}` : ` · ${t("monthly salary")}`}
                 </div>
               </div>
@@ -969,7 +969,7 @@ export default function ActionCenterPage() {
                     <Ltr>{formatMoney(p.amount)} {t("EGP")}</Ltr> <span style={{ fontWeight: 600, color: theme.gray, fontSize: 13 }}>{t("from {name}", { name: p.payer })}{p.kind === "card" ? ` · ${t("Visa")}` : ""}</span>
                   </div>
                   <div style={{ fontSize: 12, color: theme.gray }}>
-                    {p.detail} · {new Date(p.recorded_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · {t("recorded by {name}", { name: p.recorded_by || t("unknown") })}
+                    {p.detail} · {new Date(p.recorded_at).toLocaleString(dateLocale(), { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · {t("recorded by {name}", { name: p.recorded_by || t("unknown") })}
                   </div>
                   {p.kind === "card" && (
                     <div style={{ fontSize: 12, color: p.hint ? "#8a6d00" : "#ba1a1a", marginTop: 2 }}>
@@ -1014,7 +1014,7 @@ export default function ActionCenterPage() {
                   {(r.scan_types || []).join(", ") || t("Visit")}
                   {r.doctor_name ? ` · ${t("referred by {name}", { name: r.doctor_name })}` : ""}
                   {" · "}{t("visit {date}", { date: r.exam_date ? formatVisitDateTime(r.exam_date, r.exam_time) : t("date not recorded") })}
-                  {" · "}{t("captured {date}", { date: new Date(r.paid_at).toLocaleString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) })}
+                  {" · "}{t("captured {date}", { date: new Date(r.paid_at).toLocaleString(dateLocale(), { timeZone: "Africa/Cairo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) })}
                   {r.visit_amount_due != null && Number(r.amount) !== Number(r.visit_amount_due) &&
                     ` · ${t("part of {amount} EGP", { amount: formatMoney(r.visit_amount_due) })}`}
                   {r.patient_mobile ? <> · <Ltr>{r.patient_mobile}</Ltr></> : ""}
@@ -1055,14 +1055,14 @@ export default function ActionCenterPage() {
               {r.timeclock_events && (
                 <div style={{ fontSize: 12, color: theme.gray }}>
                   {t("Recorded:")} {r.timeclock_events.event_type === "login" ? t("Sign in") : t("Sign out")}{" "}
-                  {new Date(r.timeclock_events.event_time).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {new Date(r.timeclock_events.event_time).toLocaleString(dateLocale(), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                   {r.timeclock_events.distance_from_clinic_meters != null && ` · ${t("{m} m from clinic", { m: Math.round(r.timeclock_events.distance_from_clinic_meters) })}`}
                   {r.timeclock_events.face_match_status && ` · ${t("face: {status}", { status: isAr ? tCode(r.timeclock_events.face_match_status) : String(r.timeclock_events.face_match_status).replace(/_/g, " ") })}`}
                 </div>
               )}
               {r.proposed_event_time && (
                 <div style={{ fontSize: 12, color: "#1e7a3c", fontWeight: 600 }}>
-                  {t("Should be:")} {new Date(r.proposed_event_time).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {t("Should be:")} {new Date(r.proposed_event_time).toLocaleString(dateLocale(), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                 </div>
               )}
               <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", margin: "6px 0 8px" }}>&ldquo;{r.reason}&rdquo;</div>

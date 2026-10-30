@@ -111,7 +111,7 @@ export default function CashMonitorPage() {
                       <td style={td}>
                         <div style={{ fontWeight: 600, color: theme.navy }}>{r.name}</div>
                         <div style={{ fontSize: 11, color: theme.gray }}>
-                          {isAr ? tCode(r.role) : r.role}{r.is_cash_keeper ? ` · ${t("cash keeper")}` : ""}
+                          {t(r.role)}{r.is_cash_keeper ? ` · ${t("cash keeper")}` : ""}
                         </div>
                       </td>
                       <td style={tdR}>{formatMoney(r.scan_cash)}</td>
