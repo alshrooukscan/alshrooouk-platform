@@ -1,4 +1,5 @@
 "use client";
+import VerifyPill from "../VerifyPill";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
@@ -32,7 +33,7 @@ export default function El3awamaOrdersPanel() {
     const [{ data: s }, { data: l }] = await Promise.all([
       supabase
         .from("counter_sales")
-        .select("id, receipt_no, net_amount, gross_amount, payment_method, sale_type, entry_date, created_by_name, note, customer_type, customer_id")
+        .select("id, receipt_no, net_amount, gross_amount, payment_method, sale_type, entry_date, created_by_name, note, customer_type, customer_id, payment_verification, paymob_transaction_id, paymob_card_last4, verified_by_name")
         .eq("brand", "el3awama_stock")
         .order("entry_date", { ascending: false })
         .limit(300),
@@ -174,6 +175,7 @@ export default function El3awamaOrdersPanel() {
             </div>
             <div style={{ color: theme.gray, fontSize: 12, marginTop: 2 }}>
               {x.entry_date} &middot; {PAYMENT_LABEL[x.payment_method] || x.payment_method}
+              <VerifyPill method={x.payment_method} verification={x.payment_verification} paymobId={x.paymob_transaction_id} cardLast4={x.paymob_card_last4} verifiedBy={x.verified_by_name} />
               {x.created_by_name ? ` · ${x.created_by_name}` : ""}
               {x.note ? ` · ${x.note}` : ""}
             </div>

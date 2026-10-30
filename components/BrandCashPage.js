@@ -1,4 +1,5 @@
 "use client";
+import VerifyPill from "./VerifyPill";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { theme } from "../lib/theme";
@@ -181,6 +182,10 @@ export default function BrandCashPage({ brand, brandLabel, permissionKey }) {
                 {tx.from_employee?.name && ` from ${tx.from_employee.name}`}
                 {tx.to_employee?.name && ` to ${tx.to_employee.name}`}
                 {tx.type === "cash_collection" && !tx.to_employee?.name && " to Owner"}
+                {tx.type === "cash_conversion" && tx.payment_method !== "cash" && (
+                  <VerifyPill method={tx.payment_method} paymobId={tx.paymob_transaction_id}
+                    verification={tx.payment_method === "instapay" ? (tx.status === "confirmed" ? "verified_instapay" : tx.status === "rejected" ? "rejected_instapay" : null) : null} />
+                )}
                 <span style={{ color: theme.gray }}> · {tx.entry_date}</span>
               </div>
             </div>

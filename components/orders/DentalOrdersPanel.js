@@ -1,4 +1,5 @@
 "use client";
+import VerifyPill from "../VerifyPill";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
@@ -110,7 +111,7 @@ export default function DentalOrdersPanel() {
     // one never did.
     const { data: cs } = await supabase
       .from("counter_sales")
-      .select("id, receipt_no, net_amount, payment_method, entry_date, created_by_name, customer_type, customer_id, created_at")
+      .select("id, receipt_no, net_amount, payment_method, entry_date, created_by_name, customer_type, customer_id, created_at, payment_verification, paymob_transaction_id, paymob_card_last4, verified_by_name")
       .eq("brand", "dental_stock")
       .order("created_at", { ascending: false })
       .limit(200);
@@ -532,6 +533,7 @@ export default function DentalOrdersPanel() {
                 <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6 }}>
                   {onAccount ? "on account" : cs.payment_method}
                 </span>
+                {!onAccount && <VerifyPill method={cs.payment_method} verification={cs.payment_verification} paymobId={cs.paymob_transaction_id} cardLast4={cs.paymob_card_last4} verifiedBy={cs.verified_by_name} />}
               </div>
             </div>
             {lines.length > 0 && (

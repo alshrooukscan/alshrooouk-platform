@@ -1,4 +1,5 @@
 "use client";
+import VerifyPill from "../../../components/VerifyPill";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { theme } from "../../../lib/theme";
@@ -295,6 +296,7 @@ export default function DebtCollectionPage() {
                     </div>
                     <div style={{ fontSize: 12, color: theme.gray }}>
                       {r.date} · {BRAND_LABEL[r.brand] || r.brand} · {r.receipt_no || "no receipt no."} · {r.method}
+                      <VerifyPill method={r.method} verification={r.verification} paymobId={r.paymob_id} cardLast4={r.card_last4} verifiedBy={r.verified_by} />
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

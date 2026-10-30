@@ -128,6 +128,15 @@ async function run(lookbackDays) {
     else report.stored = rows.length;
   }
 
+  // 1b. Card payments on clinic / client accounts and counter sales (0126):
+  //     matched in the database, same rule as a cash conversion. Runs first
+  //     so a patient payment of the same amount cannot take their charge.
+  {
+    const { data: n, error } = await supabaseAdmin.rpc("match_pending_sale_cards");
+    if (error) report.errors.push(`sale cards: ${error.message}`);
+    else report.saleCardsMatched = n || 0;
+  }
+
   // 2. Candidate payments: card-style methods, still without proof, recent,
   //    and after launch. Pre-launch rows were settled in the one-off pass and
   //    must not be touched again.
@@ -159,6 +168,8 @@ async function run(lookbackDays) {
     .eq("is_voided", false)
     .is("matched_payment_id", null)
     .is("matched_expense_id", null) // tied to a cash conversion (0125)
+    .is("matched_ar_id", null) // tied to an account payment (0126)
+    .is("matched_counter_sale_id", null) // tied to a counter sale (0126)
     .gte("created_at_paymob", `${since}T00:00:00`)
     .order("created_at_paymob", { ascending: false });
   if (txErr) {

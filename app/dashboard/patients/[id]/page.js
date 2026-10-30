@@ -1,5 +1,6 @@
 "use client";
 
+import VerifyPill from "../../../../components/VerifyPill";
 import { uploadFileToDrive } from "../../../../lib/uploadToDrive";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -374,7 +375,7 @@ export default function PatientProfilePage() {
       supabase.from("patients").select("*").eq("id", id).single(),
       supabase
       .from("visits")
-      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, dicom_worklist_status, dicom_study_uid, dicom_accession_number, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at, payment_verification, paymob_transaction_id, paymob_card_brand, paymob_card_last4, paymob_fees)")
+      .select("id, created_at, scan_types, exam_type_ids, exam_date, exam_time, payment_status, branch_id, doctor_id, amount_due, amount_paid, scanned, raw_data_uploaded, report_done, paid_at, scanned_at, raw_data_uploaded_at, report_done_at, scanned_by_name, raw_data_uploaded_by_name, report_done_by_name, assigned_employee_id, assigned_at, dicom_worklist_status, dicom_study_uid, dicom_accession_number, doctors(id, name, phone, phone_2, email, clinic_code, username), branches(name), invoices(id, created_at, created_by_name), employees!visits_assigned_employee_id_fkey(name), visit_payments(id, amount, payment_method, created_by_name, created_at, payment_verification, paymob_transaction_id, paymob_card_brand, paymob_card_last4, paymob_fees, verified_by_name)")
       .eq("patient_id", id)
         // Latest first, and within the same day the later time first.
         .order("exam_date", { ascending: false })
@@ -2913,6 +2914,10 @@ function CorrectPaymentMethod({ payments, profile, onClose, onSaved }) {
 // while, because Paymob publishes the charge a little after the tap.
 function PaymentProof({ payment, onRecheck, recheckState }) {
   const v = payment?.payment_verification;
+  // InstaPay has no gateway: an admin confirms it in the Action Center (0126).
+  if (payment?.payment_method === "InstaPay") {
+    return <VerifyPill method="instapay" verification={v} verifiedBy={payment.verified_by_name} />;
+  }
   if (!v && !["Visa", "Wallet"].includes(payment?.payment_method)) return null;
 
   const pill = {
@@ -2934,7 +2939,7 @@ function PaymentProof({ payment, onRecheck, recheckState }) {
         style={{ ...pill, background: "#f6faf7", border: "1px solid #dbe7de", color: "#1e7a3c" }}
         title={`Paymob transaction ${payment.paymob_transaction_id}${payment.paymob_fees != null ? ` · fee ${Number(payment.paymob_fees).toFixed(2)} EGP` : ""}`}
       >
-        Card confirmed{card ? ` · ${card}` : ""}
+        ✓ Verified{card ? ` · ${card}` : ""}
         {v === "verified_paymob_group" ? " · shared swipe" : ""}
       </span>
     );

@@ -217,7 +217,7 @@ export async function GET(req) {
   const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
   const { data: pays } = await supabaseAdmin
     .from("customer_ar_ledger")
-    .select("id, customer_id, customer_type, brand, amount, payment_method, receipt_no, entry_date, created_at")
+    .select("id, customer_id, customer_type, brand, amount, payment_method, receipt_no, entry_date, created_at, payment_verification, paymob_transaction_id, paymob_card_last4, verified_by_name")
     .eq("direction", "payment")
     .gte("entry_date", since)
     .order("created_at", { ascending: false })
@@ -231,6 +231,10 @@ export async function GET(req) {
       brand: x.brand,
       amount: Number(x.amount),
       method: x.payment_method,
+      verification: x.payment_verification,
+      paymob_id: x.paymob_transaction_id,
+      card_last4: x.paymob_card_last4,
+      verified_by: x.verified_by_name,
       receipt_no: x.receipt_no,
       date: x.entry_date,
       name: c.name || "Unknown",
