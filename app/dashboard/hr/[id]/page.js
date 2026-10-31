@@ -348,6 +348,29 @@ export default function EmployeeProfilePage() {
     setPayNote("");
   }
 
+  // Undo a generated payslip (31 Oct 2026): everything it took (advance,
+  // tab, cash) goes back, and the month can be generated again.
+  const [voiding, setVoiding] = useState(false);
+  async function voidPayslip() {
+    if (!payslip?.id) return;
+    const reason = prompt(isAr
+      ? "سبب إلغاء القسيمة؟ (اختياري)\nهيرجع كل اللي اتخصم بسببها (السلفة والتاب والكاش)، وتقدر تطلعها تاني."
+      : "Why undo this payslip? (optional)\nEverything it took (advance, staff tab, cash) goes back, and you can generate it again.");
+    if (reason === null) return;
+    setVoiding(true);
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+      body: JSON.stringify({ action: "void_payslip", runId: payslip.id, reason: reason || null }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setVoiding(false);
+    if (!res.ok) { alert(j.error || (isAr ? "تعذر إلغاء القسيمة." : "Could not undo the payslip.")); return; }
+    setPayslip(null);
+    alert(isAr ? "اتلغت القسيمة. تقدر تعدل وتطلعها تاني." : "Payslip undone. Fix what you need and generate it again.");
+  }
+
   async function loadSkills() {
     const { data: session } = await supabase.auth.getSession();
     const res = await fetch(`/api/hr/skills?employeeId=${id}`, {
@@ -657,6 +680,11 @@ export default function EmployeeProfilePage() {
                     <button onClick={confirmPayment} disabled={paying}
                       style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                       {paying ? t("Saving...") : (isAr ? "تأكيد الصرف" : "Confirm payment · تأكيد الصرف")}
+                    </button>
+                    <button onClick={voidPayslip} disabled={voiding}
+                      title={isAr ? "يلغي القسيمة ويرجع السلفة والتاب والكاش" : "Removes the payslip and gives back the advance, tab and cash it took"}
+                      style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #ba1a1a", background: "#fff", color: "#ba1a1a", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      {voiding ? t("Saving...") : (isAr ? "إلغاء القسيمة" : "Undo payslip · إلغاء القسيمة")}
                     </button>
                   </div>
                 </div>

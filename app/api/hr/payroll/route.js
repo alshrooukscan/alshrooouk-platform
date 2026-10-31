@@ -307,6 +307,25 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, payslip: updated });
   }
 
+  // Undo a generated payslip (31 Oct 2026). Removes it and reverses what
+  // generating it changed (advances, staff tab, cash sweep, one-off rules,
+  // cap carry-over) in the database function void_payslip (0131), so the
+  // month can be fixed and generated again. Admin only; refused once paid.
+  if (action === "void_payslip") {
+    if (staff.role !== "admin") {
+      return NextResponse.json({ error: "Only an admin can undo a payslip." }, { status: 403 });
+    }
+    const { runId, reason } = body;
+    if (!runId) return NextResponse.json({ error: "Payslip is required." }, { status: 400 });
+    const { data, error } = await supabaseAdmin.rpc("void_payslip", {
+      p_run_id: runId,
+      p_by_name: staff.name || staff.email || "Admin",
+      p_reason: reason || null,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true, undone: data });
+  }
+
   // Approve or reject a proposed plus or minus (perfect attendance, an item
   // HR entered). Nothing proposed reaches a payslip until an admin decides it.
   if (action === "decide_adjustment") {
