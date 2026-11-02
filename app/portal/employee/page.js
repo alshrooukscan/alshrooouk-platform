@@ -446,6 +446,11 @@ export default function EmployeePortalPage() {
                     <div style={{ color: theme.navy, fontSize: 14, fontWeight: 600 }}>
                       {money(data.accrued.gross, { decimals: 2 })}
                     </div>
+                    {Number(data.accrued.expected_gross) > Number(data.accrued.gross) && (
+                      <div style={{ color: theme.gray, fontSize: 10 }}>
+                        {t("of {amount} for the full month", { amount: money(data.accrued.expected_gross, { decimals: 0 }) })}
+                      </div>
+                    )}
                   </div>
                   {Number(data.accrued.report_bonus) > 0 && (
                     <div>

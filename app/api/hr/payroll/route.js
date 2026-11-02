@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { applyEarnedToDate } from "../../../../lib/earnedToDate";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { requireStaff } from "../../../../lib/requireStaff";
 import { buildPayslip, resolveRuleAmount, hoursBetween, normalizePeriod } from "../../../../lib/payroll";
@@ -41,16 +42,18 @@ export async function GET(req) {
     // be checked against the manual payroll without settling it.
     if (url.searchParams.get("trial")) {
       const trialPeriod = normalizePeriod(url.searchParams.get("trial"));
-      const [{ data: rows, error }, { data: settings }] = await Promise.all([
+      const [{ data: rows, error }, { data: settings }, { data: month }] = await Promise.all([
         // The employee page asks for its own person only (0123).
         supabaseAdmin.rpc("payroll_trial_run", { p_period: trialPeriod, p_employee_id: empId }),
         supabaseAdmin.from("payroll_settings").select("trial_period").maybeSingle(),
+        supabaseAdmin.rpc("payroll_month", { p_employee_id: empId, p_period: trialPeriod }),
       ]);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({
         period: trialPeriod,
         is_locked_trial: settings?.trial_period === trialPeriod,
-        rows: rows || [],
+        // Earned so far grows day by day (2 Nov 2026), see lib/earnedToDate.js.
+        rows: (rows || []).map((r) => (r.employee_id === empId ? applyEarnedToDate(r, month) : r)),
       });
     }
 

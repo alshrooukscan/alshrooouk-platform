@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { applyEarnedToDate } from "../../../../../lib/earnedToDate";
 import { cookies } from "next/headers";
 import { verifyEmployeeSession } from "../../../../../lib/session";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
@@ -115,7 +116,8 @@ export async function GET() {
   // that field never carries. Scoped to the signed-in employee: the trial run
   // returns every employee, so their row is picked out here and the rest is
   // never sent to the browser.
-  const accrued = (trialRes.data || []).find((r) => r.employee_id === session.id) || null;
+  // Earned so far grows day by day (2 Nov 2026), see lib/earnedToDate.js.
+  const accrued = applyEarnedToDate((trialRes.data || []).find((r) => r.employee_id === session.id) || null, monthRes.data);
 
   // This month's payslip as it stands, with only what an admin has approved:
   // each bonus and deduction by name. Mohamed Said (30 Oct 2026): an employee

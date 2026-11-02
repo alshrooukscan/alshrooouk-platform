@@ -612,6 +612,11 @@ export default function EmployeeProfilePage() {
                 <Row label={t("Overtime (not yet decided)")} value={t("{n} hrs", { n: formatMoney(accrued.overtime_hours, { decimals: 2 }) })} />
               )}
               <Row label={t("Gross")} value={`${formatMoney(accrued.gross, { decimals: 2 })} ${t("EGP")}`} />
+              {Number(accrued.expected_gross) > Number(accrued.gross) && (
+                <div style={{ fontSize: 11, color: theme.gray, margin: "-4px 0 6px", textAlign: "end" }}>
+                  {t("of {amount} for the full month", { amount: `${formatMoney(accrued.expected_gross, { decimals: 0 })} ${t("EGP")}` })}
+                </div>
+              )}
               {Number(accrued.scan_commission) > 0 && <Row label={t("Scan commission")} value={`${formatMoney(accrued.scan_commission, { decimals: 2 })} ${t("EGP")}`} />}
               {Number(accrued.report_bonus) > 0 && <Row label={t("Report bonus")} value={`${formatMoney(accrued.report_bonus, { decimals: 2 })} ${t("EGP")}`} />}
               {Number(accrued.bonuses) > 0 && <Row label={t("Bonuses")} value={`${formatMoney(accrued.bonuses, { decimals: 2 })} ${t("EGP")}`} />}
