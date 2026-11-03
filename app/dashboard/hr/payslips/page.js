@@ -156,6 +156,32 @@ export default function PayslipsPage() {
   }
 
 
+  // Generate the payslip for the month picked above (Mohamed Said, 3 Nov
+  // 2026). The employee page always generates the current month, so paying
+  // October on 3 November had no way in.
+  const [genBusy, setGenBusy] = useState(false);
+  async function generateForPeriod() {
+    const emp = employees.find((e) => e.id === selected);
+    if (!emp) return;
+    if (!confirm(isAr
+      ? `طلّع قسيمة ${emp.name} لشهر ${period}؟ بعد كده بتظهر في صفحة الموظف وتقدر تأكد صرفها.`
+      : `Generate ${emp.name}'s payslip for ${period}? It then shows on the employee page, ready to confirm as paid.`)) return;
+    setGenBusy(true);
+    const res = await fetch("/api/hr/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ action: "generate", employeeId: selected, period }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setGenBusy(false);
+    if (!res.ok) { alert(tx(j.error || "Could not generate that payslip.")); return; }
+    if (confirm(isAr
+      ? `اتطلعت القسيمة. الصافي ${formatMoney(j.payslip?.net_total, { decimals: 2 })} جنيه. تفتح صفحة الموظف تأكد الصرف؟`
+      : `Payslip generated. Net ${formatMoney(j.payslip?.net_total, { decimals: 2 })} EGP. Open the employee page to confirm payment?`)) {
+      window.location.href = `/dashboard/hr/${selected}`;
+    }
+  }
+
   async function runTrial() {
     setTrialBusy(true);
     const res = await fetch(`/api/hr/payroll?trial=${period}`, {
@@ -194,6 +220,10 @@ export default function PayslipsPage() {
           {employees.map((e) => <option key={e.id} value={e.id}>{e.name}{e.hr_id ? ` (${e.hr_id})` : ""}</option>)}
         </select>
         <input type="month" style={inp} value={period} onChange={(e) => setPeriod(e.target.value)} />
+        <button onClick={generateForPeriod} disabled={genBusy || !selected}
+          style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: theme.gold, color: theme.navy, fontWeight: 800, cursor: "pointer", opacity: genBusy ? 0.5 : 1 }}>
+          {genBusy ? t("Saving...") : (isAr ? `طلّع قسيمة ${period}` : `Generate payslip for ${period}`)}
+        </button>
       </div>
 
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
