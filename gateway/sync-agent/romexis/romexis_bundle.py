@@ -51,12 +51,39 @@ def load_slices(folder):
                 out.append(d)
     if not out:
         raise SystemExit("no single-frame slices found")
-    series = {d.SeriesInstanceUID for d in out}
-    if len(series) > 1:  # keep the largest series (the volume)
-        biggest = max(series, key=lambda s: sum(1 for d in out if d.SeriesInstanceUID == s))
-        out = [d for d in out if d.SeriesInstanceUID == biggest]
+    # One study can hold more than one volume under the same series UID
+    # (Olga Danat, 4 Nov 2026: Romexis' own send, a 368-slice cube at origin
+    # 0,0, plus a 316-slice volume at origin -40,-40 from a second send).
+    # Merging them interleaved two volumes into one broken file. Slices are
+    # grouped by volume (series, in-plane origin, orientation, matrix) and
+    # only one volume is ever used.
+    def key(d):
+        p = d.ImagePositionPatient
+        o = tuple(round(float(x), 3) for x in getattr(d, "ImageOrientationPatient", [1, 0, 0, 0, 1, 0]))
+        return (d.SeriesInstanceUID, round(float(p[0]), 1), round(float(p[1]), 1), o, int(d.Rows), int(d.Columns))
+    groups = {}
+    for d in out:
+        groups.setdefault(key(d), []).append(d)
+    vols = sorted(groups.values(), key=len, reverse=True)
+    if len(vols) > 1:
+        # Romexis pads what it sends to a cube; the real volume is the
+        # shorter one, as long as it is a genuine volume, not a stray few
+        # slices (at least half the size of the largest).
+        real = [v for v in vols if len(v) >= len(vols[0]) / 2]
+        out = min(real, key=len)
+        print(f"note: {len(vols)} volumes in this study ({', '.join(str(len(v)) for v in vols)} slices); using the {len(out)}-slice one", file=sys.stderr)
+    else:
+        out = vols[0]
     # Romexis orders frames from the top slice down
     out.sort(key=lambda d: float(d.ImagePositionPatient[2]), reverse=True)
+    # Refuse anything that is not one clean, evenly spaced stack, so the
+    # caller uploads the original archive instead of a broken volume.
+    zs = [round(float(d.ImagePositionPatient[2]), 3) for d in out]
+    if len(set(zs)) != len(zs):
+        raise SystemExit("duplicate slice positions in the chosen volume; not converting")
+    steps = [round(zs[i] - zs[i + 1], 3) for i in range(len(zs) - 1)]
+    if steps and (max(steps) - min(steps)) > 0.02:
+        raise SystemExit(f"uneven slice spacing ({min(steps)} to {max(steps)} mm); not converting")
     return out
 
 
