@@ -4,7 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { theme } from "../../lib/theme";
 import { formatMoney } from "../../lib/format";
 import { useAutoRefresh } from "../../lib/useAutoRefresh";
-import { fetchAll, fetchStockCashIn, cairoToday } from "../../lib/dashboardData";
+import { fetchAll, fetchStockProfit, cairoToday } from "../../lib/dashboardData";
 import { useT, dateLocale } from "../../lib/i18n";
 import { MONTHS_AR } from "./PeriodFilterBar";
 
@@ -30,7 +30,7 @@ export default function TrendsAnalytics() {
       const [rows, ex, stock] = await Promise.all([
         fetchAll(() => supabase.from("visits").select("id, exam_date, amount_due, amount_paid, scan_types, doctor_id, patient_id").not("exam_date", "is", null)),
         fetchAll(() => supabase.from("expense_transactions").select("id, entry_date, type, brand, amount, category").eq("status", "confirmed").in("type", ["cash_out", "stock_purchase", "purchase"])),
-        fetchStockCashIn(),
+        fetchStockProfit(),
       ]);
       setVisits(rows);
       setExpenses(ex);
@@ -62,7 +62,8 @@ export default function TrendsAnalytics() {
     if (v.patient_id) byMonth[m].patients.add(v.patient_id);
     if (v.doctor_id) byMonth[m].doctors.add(v.doctor_id);
   }
-  // Dental stock money in: paid at the counter plus collected on account.
+  // Stock profit, not stock money in (Mohamed Said, 4 Nov 2026): what each
+  // item sold for minus what it was bought for (lib/dashboardData.js).
   for (const r of stockIn) {
     const m = key(r.entry_date);
     if (!byMonth[m]) continue;
@@ -77,8 +78,9 @@ export default function TrendsAnalytics() {
     // cash-out. They are a debt being settled, not a new cost, so they stay out
     // of this line the way they always have.
     if (e.category === "supplier_payment") continue;
-    // Cash returned to a customer reduces stock revenue; it is not a cost.
-    if (e.category === "customer_refund") { byMonth[m].revenue -= Number(e.amount || 0); byMonth[m].stockRevenue -= Number(e.amount || 0); continue; }
+    // Cash returned to a customer: the return already takes its margin off
+    // stock profit, so it is neither a cost nor counted twice.
+    if (e.category === "customer_refund") continue;
     if (["cash_out", "stock_purchase", "purchase"].includes(e.type)) byMonth[m].cashOut += Number(e.amount || 0);
   }
 
@@ -159,7 +161,7 @@ export default function TrendsAnalytics() {
                 {r.revenue > 0 ? formatMoney(Math.round(r.revenue / 1000)) + "k" : ""}
               </div>
               <div
-                title={t("{month}: {amount} EGP (scans {scans} from {visits} visits, stock {stock})", { month: r.label, amount: formatMoney(r.revenue), scans: formatMoney(r.scanRevenue), visits: r.visits, stock: formatMoney(r.stockRevenue) })}
+                title={t("{month}: {amount} EGP (scans {scans} from {visits} visits, stock profit {stock})", { month: r.label, amount: formatMoney(r.revenue), scans: formatMoney(r.scanRevenue), visits: r.visits, stock: formatMoney(r.stockRevenue) })}
                 style={{
                   width: "100%",
                   height: `${Math.max((r.revenue / maxRev) * 100, 1)}%`,
@@ -195,7 +197,7 @@ export default function TrendsAnalytics() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#faf9fb" }}>
-                {["Month", "Visits", "Patients", "Doctors", "Scan revenue", "Stock revenue", "Total revenue", "Avg / visit", "Cash out"].map((h) => (
+                {["Month", "Visits", "Patients", "Doctors", "Scan revenue", "Stock profit", "Total revenue", "Avg / visit", "Cash out"].map((h) => (
                   <th key={h} style={{ textAlign: h === "Month" ? "start" : "end", padding: "8px 10px", color: theme.navy, fontWeight: 700 }}>{t(h)}</th>
                 ))}
               </tr>

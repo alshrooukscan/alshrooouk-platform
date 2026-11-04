@@ -28,7 +28,7 @@ import DrillDownModal from "../../components/analytics/DrillDownModal";
 import PeriodFilterBar, { getDateRange } from "../../components/analytics/PeriodFilterBar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Cell as PieCell, Legend } from "recharts";
 import { useAutoRefresh, useLiveStatus } from "../../lib/useAutoRefresh";
-import { fetchAll, cairoDate, fetchStockCashIn, brandStream } from "../../lib/dashboardData";
+import { fetchAll, cairoDate, fetchStockCashIn, fetchStockProfit, brandStream } from "../../lib/dashboardData";
 
 const PAYMENT_COLORS = ["#27214D", "#A98B4D", "#6D5A3A", "#8a7ba0", "#c9a86a", "#48464E", "#3d3564"];
 
@@ -166,7 +166,7 @@ function Overview() {
   // the live flows actually write, dated on the day the money moved (Cairo).
   async function load() {
     try {
-      const [payments, stockIn, expenses, poPayments, items, payslips] = await Promise.all([
+      const [payments, stockIn, expenses, poPayments, items, payslips, stockProfit] = await Promise.all([
         fetchAll(() => supabase.from("visit_payments").select("id, payment_method, amount, paid_at, visits(exam_date, patients(name))")),
         fetchStockCashIn(),
         fetchAll(() =>
@@ -181,20 +181,26 @@ function Overview() {
         fetchAll(() => supabase.from("stock_items").select("id, category, qty_remaining")),
         // Salaries: every issued payslip (30 Oct 2026, actual net profit).
         fetchAll(() => supabase.from("payroll_runs").select("id, period, net_total, deductions, generated_at, employees(name)")),
+        fetchStockProfit(),
       ]);
 
       const rows = [];
       for (const p of payments) {
         rows.push({ source_stream: "scans", direction: "in", amount: Number(p.amount || 0), entry_date: cairoDate(p.paid_at), method: p.payment_method, who: p.visits?.patients?.name || "", kind: "Visit payment" });
       }
-      for (const r of stockIn) {
-        rows.push({ source_stream: brandStream(r.brand), direction: "in", amount: r.amount, entry_date: r.entry_date, method: r.method, who: r.ref || "", kind: r.kind });
+      // Stock counts as PROFIT, not money taken in (Mohamed Said, 4 Nov
+      // 2026): sale price minus purchase price on every item sold. So stock
+      // bought from suppliers is not deducted below either; it reaches the
+      // P&L as the cost inside that profit when the item is sold.
+      for (const r of stockProfit) {
+        rows.push({ source_stream: brandStream(r.brand), direction: "in", amount: r.amount, entry_date: r.entry_date, method: null, who: r.ref || "", kind: r.kind, sales: r.sales, cost: r.cost });
       }
       for (const e of expenses) {
         // Cash handed back to a customer on a return reduces stock money in;
         // it is not an operating expense.
         if (e.category === "customer_refund") {
-          rows.push({ source_stream: brandStream(e.brand), direction: "in", amount: -Number(e.amount || 0), entry_date: e.entry_date, method: "cash", who: e.note || "", kind: "Refund on a return" });
+          // the return already took its margin off stock profit
+          continue;
         } else {
           rows.push({ source_stream: "expenses", direction: "out", amount: Number(e.amount || 0), entry_date: e.entry_date, who: e.note || e.category || "", kind: e.category || "other" });
         }
@@ -223,7 +229,12 @@ function Overview() {
       }
       setConsolidatedSupplier(consolidated);
       setAllLedger(rows);
-      setAllPaymentRows(rows.filter((r) => r.direction === "in" && r.amount > 0).map((r) => ({ payment_method: r.method, amount_paid: r.amount, exam_date: r.entry_date, stream: r.source_stream })));
+      // The payment-method charts are about money received, so they keep the
+      // cash actually taken for stock, not the profit.
+      setAllPaymentRows([
+        ...rows.filter((r) => r.source_stream === "scans" && r.direction === "in" && r.amount > 0),
+        ...stockIn.map((r) => ({ source_stream: brandStream(r.brand), amount: r.amount, entry_date: r.entry_date, method: r.method })).filter((r) => r.amount > 0),
+      ].map((r) => ({ payment_method: r.method, amount_paid: r.amount, exam_date: r.entry_date, stream: r.source_stream })));
       setDentalUnits(items.filter((i) => i.category === "dental").reduce((s, i) => s + Number(i.qty_remaining || 0), 0));
       setEl3awamaUnits(items.filter((i) => i.category === "el3awama").reduce((s, i) => s + Number(i.qty_remaining || 0), 0));
     } finally {
@@ -303,6 +314,23 @@ function Overview() {
     const rows = ledger
       .filter((l) => l.source_stream === stream && l.direction === "in")
       .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)));
+    if (stream !== "scans") {
+      // Stock lines are profit per item sold (4 Nov 2026).
+      setDrill({
+        title: t("{stream}: profit on items sold", { stream: t(streamLabel) }),
+        subtitle: t("{n} payments, {amount} EGP", { n: rows.length.toLocaleString(), amount: formatMoney(rows.reduce((s, r) => s + r.amount, 0)) }) + (start ? t(" in the selected period") : "") + (rows.length > 300 ? t(" (latest 300 shown)") : ""),
+        columns: [
+          { key: "entry_date", label: t("Date") },
+          { key: "kind", label: t("Type"), render: (r) => t(r.kind) },
+          { key: "who", label: t("Item") },
+          { key: "sales", label: t("Sale price"), render: (r) => formatMoney(r.sales, { decimals: 2 }) },
+          { key: "cost", label: t("Purchase price"), render: (r) => formatMoney(r.cost, { decimals: 2 }) },
+          { key: "amount", label: t("Stock profit"), render: (r) => formatMoney(r.amount, { decimals: 2 }) },
+        ],
+        rows: rows.slice(0, 300),
+      });
+      return;
+    }
     setDrill({
       title: t("{stream}: money received", { stream: t(streamLabel) }),
       subtitle: t("{n} payments, {amount} EGP", { n: rows.length.toLocaleString(), amount: formatMoney(rows.reduce((s, r) => s + r.amount, 0)) }) + (start ? t(" in the selected period") : "") + (rows.length > 300 ? t(" (latest 300 shown)") : ""),
@@ -328,7 +356,9 @@ function Overview() {
   const cashOutSalaries = sum("salaries", "out");
 
   const totalCashIn = cashInScans + cashInEl3awama + cashInStock;
-  const totalCashOut = cashOutEl3awama + cashOutStock + cashOutScans + cashOutSuppliers + cashOutExpenses + cashOutSalaries;
+  // Supplier payments buy stock; stock is counted through its profit, so they
+  // are shown but not deducted (4 Nov 2026).
+  const totalCashOut = cashOutScans + cashOutExpenses + cashOutSalaries;
   const netPL = totalCashIn - totalCashOut;
 
   const revenueStreams = [
@@ -342,7 +372,7 @@ function Overview() {
     { label: "El3awama purchases", value: cashOutEl3awama },
     { label: "Stock purchases", value: cashOutStock },
     { label: "Scans-related costs", value: cashOutScans },
-    { label: "Supplier payments (Purchase Orders)", value: cashOutSuppliers },
+    { label: "Stock bought (counted through stock profit, not deducted)", value: cashOutSuppliers, info: true },
     { label: "Salaries (issued payslips)", value: cashOutSalaries },
     // Every expense category on its own line, so rent, utilities and the rest
     // can each be read (30 Oct 2026).
@@ -367,8 +397,8 @@ function Overview() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
         <KpiCard label={t("Cash In: Scans")} value={cashInScans} />
-        <KpiCard label={t("Cash In: El3awama")} value={cashInEl3awama} />
-        <KpiCard label={t("Cash In: Stock")} value={cashInStock} />
+        <KpiCard label={t("El3awama profit")} value={cashInEl3awama} />
+        <KpiCard label={t("Stock profit (sale price minus purchase price)")} value={cashInStock} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
         <KpiCard label={t("Total Cash Out")} value={totalCashOut} negative />
@@ -411,7 +441,7 @@ function Overview() {
           {expenses.map((e) => (
             <div key={e.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
               <span style={{ color: theme.navy }}>{t(e.label)}</span>
-              <span style={{ color: "#ba1a1a", fontWeight: 600 }}>{t("{amount} EGP", { amount: formatMoney(e.value) })}</span>
+              <span style={{ color: e.info ? theme.gray : "#ba1a1a", fontWeight: 600 }}>{t("{amount} EGP", { amount: formatMoney(e.value) })}</span>
             </div>
           ))}
           {expenses.length > 0 && (
