@@ -2,6 +2,7 @@ const fetch = require("node-fetch");
 const { pollChanges, getStudy, getStudyArchiveBuffer, setStudyMetadata, SYNCED_AT_METADATA_ID } = require("./orthancClient");
 const { loadChangeSeq, saveChangeSeq } = require("./changeCursor");
 const { startStudyUpload, completeStudyUpload } = require("./shscanClient");
+const { convertArchive } = require("./romexisConvert");
 
 const STATE_STABLE_STUDY = "StableStudy";
 // Was a plain in-memory `let lastChangeSeq = 0`, which reset to 0 on every
@@ -28,7 +29,10 @@ async function handleStableStudy(studyId) {
 
   console.log(`[study] stable study ${studyId} (uid ${dicomStudyUid}, accession ${dicomAccessionNumber})`);
 
-  const archive = await getStudyArchiveBuffer(studyId);
+  // Romexis export layout (one .dcm + .txt + .xml) instead of one file per
+  // slice; falls back to Orthanc's own archive if the conversion fails.
+  const original = await getStudyArchiveBuffer(studyId);
+  const archive = (await convertArchive(original)) || original;
 
   const session = await startStudyUpload({
     dicomStudyUid,
