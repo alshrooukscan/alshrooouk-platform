@@ -174,7 +174,7 @@ def build_xml(template, ds, img_no, dcm_name):
     n, r, c = int(ds.NumberOfFrames), int(ds.Rows), int(ds.Columns)
     now = datetime.datetime.now()
     rep = {
-        "{{STUDY_UID}}": ds.StudyInstanceUID, "{{DCM_PATH}}": dcm_name, "{{IMAGE_ID}}": img_no,
+        "{{STUDY_UID}}": ds.StudyInstanceUID, "{{SOP_UID}}": ds.SOPInstanceUID, "{{DCM_PATH}}": dcm_name, "{{IMAGE_ID}}": img_no,
         "{{VIEW_ID}}": img_no, "{{DATE}}": now.strftime("%Y%m%d"), "{{TIME}}": now.strftime("%H%M%S") + "000",
         "{{CX}}": f"{c / 2:.1f}", "{{CY}}": f"{r / 2:.1f}", "{{CZ}}": f"{n / 2:.1f}",
         "{{SX}}": str(c // 2), "{{SY}}": str(r // 2), "{{SZ}}": str(n // 2),

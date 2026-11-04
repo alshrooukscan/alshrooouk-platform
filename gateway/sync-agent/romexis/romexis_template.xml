@@ -2665,7 +2665,7 @@
       <int>{{IMAGE_ID}}</int>
      </void>
      <void property="stringValue">
-      <string>2.16.840.1.113669.632.10.20261103.150146954.33504.37</string>
+      <string>{{SOP_UID}}</string>
      </void>
      <void property="updatedDate">
       <int>{{DATE}}</int>
