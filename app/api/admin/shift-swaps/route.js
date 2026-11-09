@@ -66,6 +66,8 @@ export async function POST(req) {
     .from("employee_schedule_days").select("id, employee_id, work_date")
     .eq("id", swap.target_day_id).maybeSingle();
 
+  if (swap.kind === "cover") return approveCover(swap, reqDay, staff, note);
+
   if (!reqDay || !tgtDay || reqDay.employee_id !== swap.requester_id || tgtDay.employee_id !== swap.target_id) {
     await supabaseAdmin
       .from("shift_swap_requests")
@@ -126,5 +128,35 @@ export async function POST(req) {
     },
   });
 
+  return NextResponse.json({ ok: true, status: "accepted" });
+}
+
+// Cover Shift: the working day moves to the colleague, nothing comes back.
+// apply_cover_shift does it in one transaction (and re-checks everything).
+async function approveCover(swap, reqDay, staff, note) {
+  const { data: claimed } = await supabaseAdmin
+    .from("shift_swap_requests")
+    .update({ status: "accepted", approved_by_id: staff.id, approved_by_name: staff.name,
+              decision_note: note || null, responded_at: new Date().toISOString() })
+    .eq("id", swap.id).eq("status", "awaiting_admin")
+    .select("id").maybeSingle();
+  if (!claimed) return NextResponse.json({ error: "This request was just handled elsewhere." }, { status: 409 });
+
+  const { data: result, error } = await supabaseAdmin.rpc("apply_cover_shift", { p_request: swap.id });
+  if (error || result !== "ok") {
+    await supabaseAdmin.from("shift_swap_requests")
+      .update({ status: "cancelled", decision_note: `Not applied: ${error?.message || result}` })
+      .eq("id", swap.id);
+    return NextResponse.json(
+      { error: "The schedule changed since these two agreed, so the cover was cancelled rather than applied." },
+      { status: 409 }
+    );
+  }
+
+  await supabaseAdmin.from("activity_log").insert({
+    actor_id: staff.id, actor_name: staff.name, actor_type: "admin",
+    action: "approved_cover_shift", entity_type: "shift_swap_request", entity_id: swap.id,
+    details: { from: swap.requester?.name, coveredBy: swap.target?.name, date: reqDay?.work_date },
+  });
   return NextResponse.json({ ok: true, status: "accepted" });
 }

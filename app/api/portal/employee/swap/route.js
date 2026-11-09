@@ -86,7 +86,8 @@ export async function POST(req) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { requesterDayId, targetId, targetDayId, note } = await req.json();
+  const { requesterDayId, targetId, targetDayId, note, kind } = await req.json();
+  if (kind === "cover") return requestCover(session, { requesterDayId, targetId, note });
   if (!requesterDayId || !targetId || !targetDayId) {
     return NextResponse.json(
       { error: "Pick one of your own days, a colleague, and one of their days." },
@@ -145,5 +146,52 @@ export async function POST(req) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  return NextResponse.json({ request: data });
+}
+
+// Cover Shift (Mohamed Said, 9 Nov 2026): hand one of my working days to a
+// colleague who is free that day, with nothing given back. Same approvals as
+// a swap (colleague agrees, then an admin), applied by apply_cover_shift.
+async function requestCover(session, { requesterDayId, targetId, note }) {
+  if (!requesterDayId || !targetId) {
+    return NextResponse.json({ error: "Pick the day you need covered and who will cover it." }, { status: 400 });
+  }
+  if (targetId === session.id) {
+    return NextResponse.json({ error: "You can't ask yourself to cover." }, { status: 400 });
+  }
+  const { data: myDay } = await supabaseAdmin
+    .from("employee_schedule_days")
+    .select("id, employee_id, work_date, is_day_off")
+    .eq("id", requesterDayId)
+    .maybeSingle();
+  if (!myDay || myDay.employee_id !== session.id) {
+    return NextResponse.json({ error: "That day isn't on your schedule." }, { status: 400 });
+  }
+  if (myDay.is_day_off) {
+    return NextResponse.json({ error: "That's already a day off; there is nothing to cover." }, { status: 400 });
+  }
+  if (myDay.work_date < todayISO()) {
+    return NextResponse.json({ error: "You can only ask for cover on upcoming days." }, { status: 400 });
+  }
+  const { data: theirs } = await supabaseAdmin
+    .from("employee_schedule_days")
+    .select("id, is_day_off")
+    .eq("employee_id", targetId)
+    .eq("work_date", myDay.work_date)
+    .maybeSingle();
+  if (theirs && !theirs.is_day_off) {
+    return NextResponse.json({ error: "Your colleague is already working that day. Use Swap instead." }, { status: 400 });
+  }
+  const { data, error } = await supabaseAdmin
+    .from("shift_swap_requests")
+    .insert({ kind: "cover", requester_id: session.id, requester_day_id: requesterDayId, target_id: targetId, note: note || null, status: "pending" })
+    .select("*")
+    .single();
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "You already asked someone to cover that day." }, { status: 409 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ request: data });
 }

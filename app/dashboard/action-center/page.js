@@ -1083,7 +1083,7 @@ export default function ActionCenterPage() {
 
       {isAdmin && (
         <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginTop: 20, boxShadow: "0 4px 20px rgba(39,33,77,0.06)" }}>
-          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Shift Swaps Awaiting Approval")}</h3>
+          <h3 style={{ color: theme.navy, marginTop: 0 }}>{t("Shift Swaps & Covers Awaiting Approval")}</h3>
           <p style={{ fontSize: 12, color: theme.gray, marginTop: -8, marginBottom: 16 }}>
             {t("Both employees have already agreed. The published roster only changes once you approve here.")}
           </p>
@@ -1091,14 +1091,26 @@ export default function ActionCenterPage() {
           {swaps.map((r) => (
             <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
               <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 6 }}>
-                {r.requester?.name} &harr; {r.target?.name}
+                {r.kind === "cover"
+                  ? <>{t("Cover Shift")}: {t("{b} covers {a}", { a: r.requester?.name, b: r.target?.name })}</>
+                  : <>{r.requester?.name} &harr; {r.target?.name}</>}
               </div>
-              <div style={{ fontSize: 12, color: theme.gray }}>
-                {t("{a} gives up {day} → goes to {b}", { a: r.requester?.name, day: fmtSwapDay(r.requester_day), b: r.target?.name })}
-              </div>
-              <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
-                {t("{a} gives up {day} → goes to {b}", { a: r.target?.name, day: fmtSwapDay(r.target_day), b: r.requester?.name })}
-              </div>
+              {r.kind === "cover" ? (
+                <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+                  {t("{a} gives up {day} → goes to {b}", { a: r.requester?.name, day: fmtSwapDay(r.requester_day), b: r.target?.name })}
+                  <br />
+                  {t("Nothing given back. {b} is paid the normal rate for it; {a} is not paid for it and it is not an absence.", { a: r.requester?.name, b: r.target?.name })}
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: theme.gray }}>
+                    {t("{a} gives up {day} → goes to {b}", { a: r.requester?.name, day: fmtSwapDay(r.requester_day), b: r.target?.name })}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+                    {t("{a} gives up {day} → goes to {b}", { a: r.target?.name, day: fmtSwapDay(r.target_day), b: r.requester?.name })}
+                  </div>
+                </>
+              )}
               {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", marginBottom: 8 }}>&ldquo;{r.note}&rdquo;</div>}
               <div style={{ display: "flex", gap: 8 }}>
                 <button

@@ -1341,6 +1341,9 @@ function SwapsTab({ onChanged }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // "swap" trades two days; "cover" hands one day to a free colleague with
+  // nothing back (Mohamed Said, 9 Nov 2026).
+  const [mode, setMode] = useState("swap");
 
   useEffect(() => {
     loadSwaps();
@@ -1355,15 +1358,17 @@ function SwapsTab({ onChanged }) {
 
   async function submit() {
     setError("");
-    if (!myDayId || !colleagueId || !theirDayId) {
-      setError(tx("Pick your day, a colleague, and the day you want from them."));
+    if (mode === "cover" ? (!myDayId || !colleagueId) : (!myDayId || !colleagueId || !theirDayId)) {
+      setError(mode === "cover" ? tx("Pick the day you need covered and who will cover it.") : tx("Pick your day, a colleague, and the day you want from them."));
       return;
     }
     setBusy(true);
     const res = await fetch("/api/portal/employee/swap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requesterDayId: myDayId, targetId: colleagueId, targetDayId: theirDayId, note }),
+      body: JSON.stringify(mode === "cover"
+        ? { kind: "cover", requesterDayId: myDayId, targetId: colleagueId, note }
+        : { requesterDayId: myDayId, targetId: colleagueId, targetDayId: theirDayId, note }),
     });
     const result = await res.json();
     setBusy(false);
@@ -1403,6 +1408,12 @@ function SwapsTab({ onChanged }) {
   if (!swapData) return <div style={cardStyle}>{t("Could not load swaps.")}</div>;
 
   const theirDays = swapData.colleagueDays.filter((d) => d.employee_id === colleagueId);
+  // Cover: only my working days, and only colleagues not working that date.
+  const coverDay = swapData.myDays.find((d) => d.id === myDayId);
+  const freeColleagues = coverDay
+    ? swapData.colleagues.filter((c) => !swapData.colleagueDays.some((d) => d.employee_id === c.id && d.work_date === coverDay.work_date && !d.is_day_off))
+    : [];
+  const isCover = (r) => r.kind === "cover";
   const OPEN = ["pending", "awaiting_admin"];
   const pendingIncoming = swapData.incoming.filter((r) => r.status === "pending");
   const awaitingHr = [...swapData.incoming, ...swapData.outgoing].filter((r) => r.status === "awaiting_admin");
@@ -1414,16 +1425,67 @@ function SwapsTab({ onChanged }) {
 
   return (
     <div>
-      <button
-        onClick={() => setShowForm((v) => !v)}
-        style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 14 }}
-      >
-        {showForm ? t("Cancel") : t("+ Request a Swap")}
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {[["swap", "+ Request a Swap"], ["cover", "+ Cover Shift"]].map(([m, label]) => {
+          const on = showForm && mode === m;
+          return (
+            <button
+              key={m}
+              onClick={() => {
+                if (on) { setShowForm(false); return; }
+                setMode(m); setShowForm(true); setMyDayId(""); setColleagueId(""); setTheirDayId(""); setError("");
+              }}
+              style={{ padding: "10px 18px", borderRadius: 8, border: m === "swap" || on ? "none" : `1px solid ${theme.navy}`, background: m === "swap" || on ? theme.navy : "#fff", color: m === "swap" || on ? "#fff" : theme.navy, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+            >
+              {on ? t("Cancel") : t(label)}
+            </button>
+          );
+        })}
+      </div>
 
       {error && <p style={{ color: "#ba1a1a", fontSize: 13 }}>{t(error)}</p>}
 
-      {showForm && (
+      {showForm && mode === "cover" && (
+        <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 18 }}>
+          <p style={{ fontSize: 12, color: theme.navy, margin: "0 0 12px" }}>
+            {t("A colleague who is off that day works your shift instead. You don't take a day from them in return.")}
+          </p>
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Day I need covered")}</label>
+          <select value={myDayId} onChange={(e) => { setMyDayId(e.target.value); setColleagueId(""); }} style={selectStyle}>
+            <option value="">{t("Select one of your days...")}</option>
+            {swapData.myDays.filter((d) => !d.is_day_off).map((d) => (
+              <option key={d.id} value={d.id}>{describeDay(d)}</option>
+            ))}
+          </select>
+
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Who will cover it")}</label>
+          <select value={colleagueId} onChange={(e) => setColleagueId(e.target.value)} disabled={!myDayId} style={{ ...selectStyle, opacity: myDayId ? 1 : 0.6 }}>
+            <option value="">{myDayId ? t("Select a colleague who is off that day...") : t("Pick your day first")}</option>
+            {freeColleagues.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {myDayId && freeColleagues.length === 0 && (
+            <p style={{ fontSize: 12, color: "#a97c00", margin: "0 0 10px" }}>{t("Everyone is already working that day.")}</p>
+          )}
+
+          <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("Note (optional)")}</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("Why you're asking")} style={{ ...selectStyle, marginBottom: 12 }} />
+
+          <button
+            onClick={submit}
+            disabled={busy}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: theme.navy, color: "#fff", fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer" }}
+          >
+            {busy ? t("Sending...") : t("Send Request")}
+          </button>
+          <p style={{ fontSize: 11, color: theme.gray, margin: "10px 0 0" }}>
+            {t("Your colleague has to agree, then HR approves. After that the day is theirs: they are paid for it and you are not.")}
+          </p>
+        </div>
+      )}
+
+      {showForm && mode === "swap" && (
         <div style={{ background: "#faf9fb", borderRadius: 12, padding: 16, marginBottom: 18 }}>
           <label style={{ display: "block", fontSize: 11, color: "#48464E", fontWeight: 600, marginBottom: 4 }}>{t("My day to give up")}</label>
           <select value={myDayId} onChange={(e) => setMyDayId(e.target.value)} style={selectStyle}>
@@ -1484,14 +1546,22 @@ function SwapsTab({ onChanged }) {
       {pendingIncoming.map((r) => (
         <div key={r.id} style={cardStyle}>
           <div style={{ fontSize: 13, color: theme.navy, fontWeight: 700, marginBottom: 4 }}>
-            {t("{name} wants to swap", { name: r.requester?.name })}
+            {isCover(r) ? t("{name} asks you to cover a shift", { name: r.requester?.name }) : t("{name} wants to swap", { name: r.requester?.name })}
           </div>
-          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
-            {t("They give you: {day}", { day: describeDay(r.requester_day) })}
-          </div>
-          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
-            {t("You give them: {day}", { day: describeDay(r.target_day) })}
-          </div>
+          {isCover(r) ? (
+            <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+              {t("You would work: {day} (nothing given back)", { day: describeDay(r.requester_day) })}
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>
+                {t("They give you: {day}", { day: describeDay(r.requester_day) })}
+              </div>
+              <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>
+                {t("You give them: {day}", { day: describeDay(r.target_day) })}
+              </div>
+            </>
+          )}
           {r.note && <div style={{ fontSize: 12, color: theme.navy, fontStyle: "italic", marginBottom: 8 }}>&ldquo;{r.note}&rdquo;</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -1521,12 +1591,14 @@ function SwapsTab({ onChanged }) {
             <div key={r.id} style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>
-                  {r.requester?.name || t("You")} &harr; {r.target?.name || t("You")}
+                  {isCover(r)
+                    ? t("{b} covers {a}", { a: r.requester?.name || t("You"), b: r.target?.name || t("You") })
+                    : <>{r.requester?.name || t("You")} &harr; {r.target?.name || t("You")}</>}
                 </span>
                 <StatusPill status={r.status} />
               </div>
               <div style={{ fontSize: 12, color: theme.gray }}>
-                {describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}
+                {isCover(r) ? describeDay(r.requester_day) : <>{describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}</>}
               </div>
               <div style={{ fontSize: 11, color: "#a97c00", marginTop: 6 }}>
                 {t("Both of you agreed. Your roster stays as-is until HR approves.")}
@@ -1546,8 +1618,10 @@ function SwapsTab({ onChanged }) {
             <span style={{ fontSize: 13, color: theme.navy, fontWeight: 700 }}>{t("Waiting on {name}", { name: r.target?.name })}</span>
             <StatusPill status={r.status} />
           </div>
-          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 2 }}>{t("You give up: {day}", { day: describeDay(r.requester_day) })}</div>
-          <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>{t("You would take: {day}", { day: describeDay(r.target_day) })}</div>
+          <div style={{ fontSize: 12, color: theme.gray, marginBottom: isCover(r) ? 8 : 2 }}>
+            {isCover(r) ? t("Cover for: {day}", { day: describeDay(r.requester_day) }) : t("You give up: {day}", { day: describeDay(r.requester_day) })}
+          </div>
+          {!isCover(r) && <div style={{ fontSize: 12, color: theme.gray, marginBottom: 8 }}>{t("You would take: {day}", { day: describeDay(r.target_day) })}</div>}
           <button
             onClick={() => respond(r.id, "cancel")}
             disabled={busy}
@@ -1570,7 +1644,7 @@ function SwapsTab({ onChanged }) {
                   {r.requester?.name || t("You")} {isAr ? "\u2190" : "\u2192"} {r.target?.name || t("You")}
                 </div>
                 <div style={{ fontSize: 11, color: theme.gray }}>
-                  {describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}
+                  {isCover(r) ? `${t("Cover Shift")} · ${describeDay(r.requester_day)}` : <>{describeDay(r.requester_day)} &harr; {describeDay(r.target_day)}</>}
                 </div>
               </div>
               <StatusPill status={r.status} />

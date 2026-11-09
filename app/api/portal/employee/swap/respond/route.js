@@ -72,7 +72,18 @@ export async function POST(req) {
     .eq("id", swap.target_day_id)
     .maybeSingle();
 
-  if (!reqDay || !tgtDay || reqDay.employee_id !== swap.requester_id || tgtDay.employee_id !== swap.target_id) {
+  // A cover has no second day; instead the colleague must still be free.
+  let coverBlocked = false;
+  if (swap.kind === "cover" && reqDay) {
+    const { data: busyRow } = await supabaseAdmin
+      .from("employee_schedule_days").select("id, is_day_off")
+      .eq("employee_id", swap.target_id).eq("work_date", reqDay.work_date).maybeSingle();
+    coverBlocked = !!(busyRow && !busyRow.is_day_off);
+  }
+  const stale = swap.kind === "cover"
+    ? (!reqDay || reqDay.employee_id !== swap.requester_id || coverBlocked)
+    : (!reqDay || !tgtDay || reqDay.employee_id !== swap.requester_id || tgtDay.employee_id !== swap.target_id);
+  if (stale) {
     await supabaseAdmin
       .from("shift_swap_requests")
       .update({ status: "cancelled", responded_at: new Date().toISOString() })
@@ -99,14 +110,15 @@ export async function POST(req) {
     actor_id: session.id,
     actor_name: swap.target?.name || session.name,
     actor_type: "employee",
-    action: "agreed_shift_swap",
+    action: swap.kind === "cover" ? "agreed_cover_shift" : "agreed_shift_swap",
     entity_type: "shift_swap_request",
     entity_id: requestId,
     details: {
       requester: swap.requester?.name,
       target: swap.target?.name,
       requesterDate: reqDay.work_date,
-      targetDate: tgtDay.work_date,
+      targetDate: tgtDay?.work_date || null,
+      kind: swap.kind || "swap",
       note: "Awaiting HR approval",
     },
   });
