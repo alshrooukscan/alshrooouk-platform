@@ -7,6 +7,7 @@ import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 import { useT } from "../../../lib/i18n";
 import LanguageToggle from "../../../lib/i18n/LanguageToggle";
+import ViewOnlineLink from "../../../components/ViewOnlineLink";
 
 export default function PatientPortalPage() {
   const { t, tCode, isAr } = useT();
@@ -97,18 +98,20 @@ export default function PatientPortalPage() {
                 {v.files.map((f) => f.seriesCount > 1 ? (
                   <SetEntry key={f.id} f={f} box={{ padding: "8px 10px", borderRadius: 8, background: "#faf9fb" }} />
                 ) : (
-                  <a
-                    key={f.id}
-                    href={f.webViewLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, background: "#faf9fb", textDecoration: "none" }}
-                  >
-                    <span style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                    {!f.exact && (
-                      <span style={{ fontSize: 9, color: theme.gray, fontStyle: "italic", whiteSpace: "nowrap", marginInlineStart: 8 }}>{t("possibly related")}</span>
-                    )}
-                  </a>
+                  <div key={f.id} style={{ padding: "8px 10px", borderRadius: 8, background: "#faf9fb" }}>
+                    <a
+                      href={f.webViewLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none" }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                      {!f.exact && (
+                        <span style={{ fontSize: 9, color: theme.gray, fontStyle: "italic", whiteSpace: "nowrap", marginInlineStart: 8 }}>{t("possibly related")}</span>
+                      )}
+                    </a>
+                    <ViewOnlineLink fileId={f.id} name={f.name} />
+                  </div>
                 ))}
               </div>
             )}

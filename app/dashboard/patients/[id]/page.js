@@ -30,6 +30,7 @@ import { resolveUniqueUsername, resolvePatientUsername } from "../../../../lib/u
 import { syncPatientLastVisitDate } from "../../../../lib/syncPatientLastVisitDate";
 import { APP_URL } from "../../../../lib/appUrl";
 import { useT, tx, Ltr, dateLocale } from "../../../../lib/i18n";
+import ViewOnlineLink from "../../../../components/ViewOnlineLink";
 
 const CATEGORY_LABELS = { "2d": "2D", "3d": "3D", bundle: "Bundle", misc: "Misc" };
 const CATEGORY_ORDER = ["2d", "3d", "bundle", "misc"];
@@ -982,6 +983,7 @@ export default function PatientProfilePage() {
                 {f.typeLabel ? ` · ${f.typeLabel}` : ""}
               </div>
             </a>
+            <ViewOnlineLink fileId={f.id} name={f.name} />
             {canManageFiles && (
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                 <button onClick={() => replaceFile(f)} disabled={fileBusy === f.id} style={fileActionBtn}>

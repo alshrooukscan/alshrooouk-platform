@@ -8,6 +8,7 @@ import ImpersonationBanner from "../../../components/ImpersonationBanner";
 import Loading from "../../../lib/Loading";
 import { useT, Ltr, dateLocale } from "../../../lib/i18n";
 import LanguageToggle from "../../../lib/i18n/LanguageToggle";
+import ViewOnlineLink from "../../../components/ViewOnlineLink";
 
 // Mirrors the staff dental orders screen so both sides describe an order the
 // same way.
@@ -410,16 +411,13 @@ export default function DoctorPortalPage() {
                                 )}
                               </div>
                             ) : (
-                              <a
-                                key={f.id}
-                                href={f.webViewLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ background: "#faf9fb", borderRadius: 8, padding: 10, textDecoration: "none" }}
-                              >
-                                <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                                <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
-                              </a>
+                              <div key={f.id} style={{ background: "#faf9fb", borderRadius: 8, padding: 10 }}>
+                                <a href={f.webViewLink} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none" }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: theme.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                                  <div style={{ fontSize: 10, color: theme.gray }}>{new Date(f.createdTime).toLocaleDateString()}</div>
+                                </a>
+                                <ViewOnlineLink fileId={f.id} name={f.name} />
+                              </div>
                             )
                           )}
                         </div>

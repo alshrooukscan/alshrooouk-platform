@@ -12,6 +12,14 @@ const securityHeaders = [
 
 const nextConfig = {
   poweredByHeader: false,
+  // Online CBCT viewer (our VolView build) lives in its own Vercel project;
+  // served here under /viewer so it can fetch /api/portal/file same-origin.
+  async rewrites() {
+    return [
+      { source: "/viewer", destination: "https://shscan-viewer-test.vercel.app/viewer/" },
+      { source: "/viewer/:path*", destination: "https://shscan-viewer-test.vercel.app/viewer/:path*" },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
