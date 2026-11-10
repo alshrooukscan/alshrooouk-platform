@@ -58,10 +58,10 @@ index ac71948..25acba0 100644
    </closeable-dialog>
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..3ff8cb4
+index 0000000..c1f27ec
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,692 @@
+@@ -0,0 +1,709 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -135,7 +135,29 @@ index 0000000..3ff8cb4
 +const sSel = ref<number | null>(null); // index along the curve for cross-sections
 +type NP = { s: number; t: number; z: number }; // z = panoramic row
 +const nerves = ref<{ R: NP[]; L: NP[] }>({ R: [], L: [] });
-+const measure = ref<{ a: [number, number] | null; b: [number, number] | null }>({ a: null, b: null });
++// one measurement at a time, on the panoramic or any cross-section
++const measure = ref<{ key: string; a: [number, number] | null; b: [number, number] | null }>({ key: '', a: null, b: null });
++function drawMeasure(ctx: CanvasRenderingContext2D, f: Fit, dpr: number, key: string, v: Vol) {
++  const m = measure.value; if (m.key !== key || !m.a) return;
++  const [ax, ay] = toCanvas(f, m.a[0], m.a[1]);
++  ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(ax, ay, 3.5 * dpr, 0, Math.PI * 2); ctx.fill();
++  if (!m.b) return;
++  const [bx, by] = toCanvas(f, m.b[0], m.b[1]);
++  ctx.beginPath(); ctx.arc(bx, by, 3.5 * dpr, 0, Math.PI * 2); ctx.fill();
++  ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
++  // columns are 1 voxel of arc length (panoramic) or of width (cross-section); rows are slices
++  const mm = Math.hypot((m.b[0] - m.a[0]) * v.sx, (m.b[1] - m.a[1]) * v.sz);
++  const label = `${mm.toFixed(1)} mm`;
++  ctx.font = `bold ${14 * dpr}px sans-serif`;
++  const tw = ctx.measureText(label).width;
++  ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx + 6 * dpr, by - 22 * dpr, tw + 8 * dpr, 20 * dpr);
++  ctx.fillStyle = '#ffeb3b'; ctx.fillText(label, bx + 10 * dpr, by - 7 * dpr);
++}
++function measureClick(key: string, p: number[]) {
++  const m = measure.value;
++  if (m.key !== key || !m.a || m.b) measure.value = { key, a: [p[0], p[1]], b: null };
++  else measure.value = { ...m, b: [p[0], p[1]] };
++}
 +
 +const axialCv = ref<HTMLCanvasElement | null>(null);
 +const panoCv = ref<HTMLCanvasElement | null>(null);
@@ -471,6 +493,8 @@ index 0000000..3ff8cb4
 +    P.forEach((p) => { const [x, y] = toCanvas(f, p.s, p.z); ctx.beginPath(); ctx.arc(x, y, 3.5 * dpr, 0, Math.PI * 2); ctx.fill(); });
 +  });
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
++  drawMeasure(ctx, f, dpr, 'pano', v);
++  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
 +  ctx.fillText(`Panoramic · slab ${slabMm.value} mm ${slabMip.value ? '(MIP)' : ''} · length ${(c.N * v.sx).toFixed(0)} mm`, 8 * dpr, 18 * dpr);
 +}
 +
@@ -510,16 +534,7 @@ index 0000000..3ff8cb4
 +      ctx.strokeStyle = NERVE_COL[side]; ctx.lineWidth = 2 * dpr;
 +      ctx.beginPath(); ctx.arc(x, y, Math.max(3 * dpr, (nerveDiaMm.value / v.sx / 2) * f.s), 0, Math.PI * 2); ctx.stroke();
 +    });
-+    if (idx === 1 && measure.value.a) {
-+      const [ax, ay] = toCanvas(f, measure.value.a[0], measure.value.a[1]);
-+      ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(ax, ay, 3 * dpr, 0, Math.PI * 2); ctx.fill();
-+      if (measure.value.b) {
-+        const [bx, by] = toCanvas(f, measure.value.b[0], measure.value.b[1]);
-+        ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-+        const mm = Math.hypot((measure.value.b[0] - measure.value.a[0]) * v.sx, (measure.value.b[1] - measure.value.a[1]) * v.sz);
-+        ctx.font = `bold ${13 * dpr}px sans-serif`; ctx.fillText(`${mm.toFixed(1)} mm`, bx + 6 * dpr, by - 6 * dpr);
-+      }
-+    }
++    drawMeasure(ctx, f, dpr, `cs${idx}`, v);
 +    if (tiltBL.value !== 0) {
 +      // where the leaning panoramic surface cuts this cross-section
 +      const [x0, y0] = toCanvas(f, cs.half + surfOffset(v, 0), 0), [x1, y1] = toCanvas(f, cs.half + surfOffset(v, v.nz - 1), v.nz - 1);
@@ -588,6 +603,7 @@ index 0000000..3ff8cb4
 +  const cv = panoCv.value, c = curve.value, v = vol.value; if (!cv || !c || !v) return;
 +  const p = fromEvent(cv, 'pano', e); if (!p) return;
 +  const s = Math.max(0, Math.min(c.N - 1, p[0])), z = Math.max(0, Math.min(v.nz - 1, p[1]));
++  if (mode.value === 'measure') { measureClick('pano', [s, z]); return; }
 +  if (mode.value === 'nerveR' || mode.value === 'nerveL') {
 +    const side = mode.value === 'nerveR' ? 'R' : 'L';
 +    nerves.value[side].push({ s, t: surfOffset(v, z), z });
@@ -627,11 +643,7 @@ index 0000000..3ff8cb4
 +  const cv = csCvs[1].value, c = curve.value, v = vol.value; if (!cv || !c || !v || sSel.value == null) return;
 +  const p = fromEvent(cv, 'cs1', e); if (!p) return;
 +  const half = Math.round(csHalfMm.value / v.sx);
-+  if (mode.value === 'measure') {
-+    if (!measure.value.a || measure.value.b) measure.value = { a: [p[0], p[1]], b: null };
-+    else measure.value = { ...measure.value, b: [p[0], p[1]] };
-+    return;
-+  }
++  if (mode.value === 'measure') { measureClick('cs1', p); return; }
 +  if (mode.value === 'nerveR' || mode.value === 'nerveL') {
 +    const side = mode.value === 'nerveR' ? 'R' : 'L';
 +    const s = Math.round(sAt(v, sSel.value, p[1]));
@@ -641,14 +653,19 @@ index 0000000..3ff8cb4
 +    if (near >= 0) list[near] = pt; else list.push(pt);
 +  }
 +}
++function sideMeasure(idx: number, e: MouseEvent) {
++  if (mode.value !== 'measure') return;
++  const cv = csCvs[idx].value; if (!cv) return;
++  const p = fromEvent(cv, `cs${idx}`, e); if (p) measureClick(`cs${idx}`, p);
++}
 +function undo() {
 +  if (mode.value === 'nerveR') nerves.value.R.pop();
 +  else if (mode.value === 'nerveL') nerves.value.L.pop();
-+  else if (mode.value === 'measure') measure.value = { a: null, b: null };
++  else if (mode.value === 'measure') measure.value = { key: '', a: null, b: null };
 +  else archPts.value.pop();
 +}
 +function clearAll() {
-+  archPts.value = []; archK.value = null; csTilt.value = 0; csPivot.value = null; nerves.value = { R: [], L: [] }; sSel.value = null; measure.value = { a: null, b: null };
++  archPts.value = []; archK.value = null; csTilt.value = 0; csPivot.value = null; nerves.value = { R: [], L: [] }; sSel.value = null; measure.value = { key: '', a: null, b: null };
 +}
 +function savePng() {
 +  const cv = panoCv.value; if (!cv) return;
@@ -677,7 +694,7 @@ index 0000000..3ff8cb4
 +  pick: 'Click the panoramic to show cross-sections there. Scroll to move them. Drag an end of the green line (or Shift+scroll) to tilt it left/right; the cross-sections follow the tilt.',
 +  nerveR: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (red).',
 +  nerveL: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (orange).',
-+  measure: 'Click two points on the middle cross-section to measure in mm.',
++  measure: 'Click two points on the panoramic or on any cross-section to measure the distance in mm. A third click starts a new measurement.',
 +}[mode.value]));
 +</script>
 +
@@ -729,9 +746,9 @@ index 0000000..3ff8cb4
 +      <div class="dw-right">
 +        <canvas ref="panoCv" class="cv pano" @mousedown="panoDown" @mousemove="panoMove" @mouseup="panoUp" @mouseleave="panoUp" @click="panoClick" @wheel="panoWheel" />
 +        <div class="dw-cs">
-+          <canvas :ref="(el) => (csCvs[0].value = el as any)" class="cv" />
++          <canvas :ref="(el) => (csCvs[0].value = el as any)" class="cv" @click="(e) => sideMeasure(0, e)" />
 +          <canvas :ref="(el) => (csCvs[1].value = el as any)" class="cv sel" @click="csClick" />
-+          <canvas :ref="(el) => (csCvs[2].value = el as any)" class="cv" />
++          <canvas :ref="(el) => (csCvs[2].value = el as any)" class="cv" @click="(e) => sideMeasure(2, e)" />
 +        </div>
 +      </div>
 +    </div>
