@@ -1,0 +1,2485 @@
+diff --git a/index.html b/index.html
+index d460585..532ed87 100644
+--- a/index.html
++++ b/index.html
+@@ -5,7 +5,7 @@
+     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+     <link rel="icon" href="/favicon.ico" />
+-    <title>VolView</title>
++    <title>Al Shrooouk Scan · Online Viewer</title>
+   </head>
+   <body>
+     <noscript>
+diff --git a/src/assets/shscan-logo.png b/src/assets/shscan-logo.png
+new file mode 100644
+index 0000000..98c668b
+Binary files /dev/null and b/src/assets/shscan-logo.png differ
+diff --git a/src/components/AppBar.vue b/src/components/AppBar.vue
+index ac71948..25acba0 100644
+--- a/src/components/AppBar.vue
++++ b/src/components/AppBar.vue
+@@ -6,6 +6,12 @@ import AboutBox from '@/src/components/AboutBox.vue';
+ import VolViewFullLogo from '@/src/components/icons/VolViewFullLogo.vue';
+ import VolViewLogo from '@/src/components/icons/VolViewLogo.vue';
+ import { useKeyboardShortcutsStore } from '@/src/store/keyboard-shortcuts';
++import DentalWorkspace from '@/src/components/DentalWorkspace.vue';
++import { useImageStore } from '@/src/store/datasets-images';
++import { computed } from 'vue';
++const imageStore = useImageStore();
++const hasImage = computed(() => (imageStore.idList || []).length > 0);
++const dentalOpen = ref(false);
+ 
+ const emit = defineEmits(['click:left-menu']);
+ 
+@@ -21,6 +27,15 @@ const keyboardStore = useKeyboardShortcutsStore();
+       <vol-view-logo v-if="mobile" />
+       <vol-view-full-logo v-else />
+     </v-toolbar-title>
++    <v-btn
++      color="#c9a227"
++      variant="flat"
++      class="mr-2"
++      prepend-icon="mdi-tooth-outline"
++      @click="dentalOpen = true"
++    >
++      Panoramic &amp; Nerve
++    </v-btn>
+     <v-btn
+       variant="text"
+       icon
+@@ -44,6 +59,7 @@ const keyboardStore = useKeyboardShortcutsStore();
+       <v-tooltip activator="parent" location="bottom">About</v-tooltip>
+     </v-btn>
+   </v-app-bar>
++  <dental-workspace v-if="dentalOpen" @close="dentalOpen = false" />
+   <closeable-dialog v-model="aboutBoxDialog">
+     <about-box />
+   </closeable-dialog>
+diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
+new file mode 100644
+index 0000000..b3a055f
+--- /dev/null
++++ b/src/components/DentalWorkspace.vue
+@@ -0,0 +1,528 @@
++<script setup lang="ts">
++// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
++// tracing, measurements and image processing) built on the loaded CBCT
++// volume. Everything is computed on the CPU from the voxel data VolView has
++// already loaded, in index space (CBCT voxels are isotropic in-plane).
++import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
++import { useCurrentImage } from '@/src/composables/useCurrentImage';
++
++const emit = defineEmits(['close']);
++const { currentImageData } = useCurrentImage('global');
++
++// ---------------------------------------------------------------- volume
++type Vol = {
++  data: ArrayLike<number>; nx: number; ny: number; nz: number;
++  sx: number; sz: number; flipX: boolean; flipY: boolean; topIsK0: boolean;
++  lo: number; hi: number;
++};
++const vol = ref<Vol | null>(null);
++const status = ref('');
++
++function loadVolume() {
++  const im: any = currentImageData.value;
++  if (!im) { status.value = 'Open a scan first.'; vol.value = null; return; }
++  const [nx, ny, nz] = im.getDimensions();
++  const sp = im.getSpacing();
++  const d = im.getDirection();
++  const data = im.getPointData().getScalars().getData();
++  // direction is column-major in vtk.js: column 2 (indices 6..8) is the k axis
++  const topIsK0 = d[8] < 0;
++  // percentiles for auto window
++  const step = Math.max(1, Math.floor(data.length / 200000));
++  const sample: number[] = [];
++  for (let i = 0; i < data.length; i += step) sample.push(data[i]);
++  sample.sort((a, b) => a - b);
++  const lo = sample[Math.floor(sample.length * 0.02)];
++  const hi = sample[Math.floor(sample.length * 0.997)];
++  vol.value = { data, nx, ny, nz, sx: sp[0], sz: sp[2], flipX: d[0] < 0, flipY: d[4] < 0, topIsK0, lo, hi };
++  win.value = Math.round(hi - lo);
++  lev.value = Math.round((hi + lo) / 2);
++  axialK.value = Math.round(nz * 0.5);
++  status.value = '';
++}
++
++// ---------------------------------------------------------------- state
++const mode = ref<'arch' | 'pick' | 'nerveR' | 'nerveL' | 'measure'>('arch');
++const axialK = ref(0);
++const win = ref(2000);
++const lev = ref(500);
++const slabMm = ref(10);
++const slabMip = ref(false);
++const sharpen = ref(0.6);
++const denoise = ref(true);
++const invert = ref(false);
++const csGapMm = ref(1);
++const csHalfMm = ref(15);
++const nerveDiaMm = ref(2.5);
++const archPts = ref<{ i: number; j: number }[]>([]);
++const sSel = ref<number | null>(null); // index along the curve for cross-sections
++type NP = { s: number; t: number; z: number }; // z = panoramic row
++const nerves = ref<{ R: NP[]; L: NP[] }>({ R: [], L: [] });
++const measure = ref<{ a: [number, number] | null; b: [number, number] | null }>({ a: null, b: null });
++
++const axialCv = ref<HTMLCanvasElement | null>(null);
++const panoCv = ref<HTMLCanvasElement | null>(null);
++const csCvs = [ref<HTMLCanvasElement | null>(null), ref<HTMLCanvasElement | null>(null), ref<HTMLCanvasElement | null>(null)];
++
++// ---------------------------------------------------------------- helpers
++function voxel(v: Vol, i: number, j: number, k: number) {
++  if (i < 0 || j < 0 || i > v.nx - 1 || j > v.ny - 1) return v.lo;
++  const i0 = Math.floor(i), j0 = Math.floor(j);
++  const i1 = Math.min(i0 + 1, v.nx - 1), j1 = Math.min(j0 + 1, v.ny - 1);
++  const fi = i - i0, fj = j - j0;
++  const base = k * v.nx * v.ny;
++  const a = v.data[base + j0 * v.nx + i0], b = v.data[base + j0 * v.nx + i1];
++  const c = v.data[base + j1 * v.nx + i0], e = v.data[base + j1 * v.nx + i1];
++  return (a * (1 - fi) + b * fi) * (1 - fj) + (c * (1 - fi) + e * fi) * fj;
++}
++const kOfRow = (v: Vol, r: number) => (v.topIsK0 ? r : v.nz - 1 - r);
++
++// Catmull-Rom through the arch points, resampled every 1 voxel of arc length.
++const curve = computed(() => {
++  const P = archPts.value;
++  if (P.length < 2) return null;
++  const dense: [number, number][] = [];
++  const at = (n: number) => P[Math.max(0, Math.min(P.length - 1, n))];
++  for (let n = 0; n < P.length - 1; n++) {
++    const p0 = at(n - 1), p1 = at(n), p2 = at(n + 1), p3 = at(n + 2);
++    for (let q = 0; q < 40; q++) {
++      const t = q / 40, t2 = t * t, t3 = t2 * t;
++      const f = (a: number, b: number, c: number, d: number) =>
++        0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
++      dense.push([f(p0.i, p1.i, p2.i, p3.i), f(p0.j, p1.j, p2.j, p3.j)]);
++    }
++  }
++  dense.push([P[P.length - 1].i, P[P.length - 1].j]);
++  const xs: number[] = [], ys: number[] = [];
++  let acc = 0, next = 0;
++  for (let n = 1; n < dense.length; n++) {
++    const [x0, y0] = dense[n - 1], [x1, y1] = dense[n];
++    const L = Math.hypot(x1 - x0, y1 - y0);
++    while (next <= acc + L && L > 0) {
++      const f = (next - acc) / L;
++      xs.push(x0 + (x1 - x0) * f); ys.push(y0 + (y1 - y0) * f);
++      next += 1;
++    }
++    acc += L;
++  }
++  const N = xs.length;
++  const nxv: number[] = [], nyv: number[] = [];
++  for (let s = 0; s < N; s++) {
++    const a = Math.max(0, s - 2), b = Math.min(N - 1, s + 2);
++    let tx = xs[b] - xs[a], ty = ys[b] - ys[a];
++    const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
++    nxv.push(-ty); nyv.push(tx);
++  }
++  return { xs, ys, nxv, nyv, N };
++});
++
++// 2D image processing on a float buffer
++function process(buf: Float32Array, w: number, h: number) {
++  let src = buf;
++  if (denoise.value) src = blur(src, w, h);
++  if (sharpen.value > 0) {
++    const b = blur(blur(src, w, h), w, h);
++    const out = new Float32Array(src.length);
++    for (let n = 0; n < src.length; n++) out[n] = src[n] + sharpen.value * (src[n] - b[n]);
++    src = out;
++  }
++  return src;
++}
++function blur(a: Float32Array, w: number, h: number) {
++  const o = new Float32Array(a.length);
++  for (let y = 0; y < h; y++)
++    for (let x = 0; x < w; x++) {
++      let s = 0, c = 0;
++      for (let dy = -1; dy <= 1; dy++) {
++        const yy = y + dy; if (yy < 0 || yy >= h) continue;
++        for (let dx = -1; dx <= 1; dx++) {
++          const xx = x + dx; if (xx < 0 || xx >= w) continue;
++          const wt = dx === 0 && dy === 0 ? 4 : dx === 0 || dy === 0 ? 2 : 1;
++          s += a[yy * w + xx] * wt; c += wt;
++        }
++      }
++      o[y * w + x] = s / c;
++    }
++  return o;
++}
++function toImage(buf: Float32Array, w: number, h: number) {
++  const img = new ImageData(w, h);
++  const lo = lev.value - win.value / 2, sc = 255 / Math.max(1, win.value);
++  for (let n = 0; n < w * h; n++) {
++    let g = (buf[n] - lo) * sc; g = g < 0 ? 0 : g > 255 ? 255 : g;
++    if (invert.value) g = 255 - g;
++    img.data[n * 4] = img.data[n * 4 + 1] = img.data[n * 4 + 2] = g; img.data[n * 4 + 3] = 255;
++  }
++  return img;
++}
++
++// Draws an image into a canvas, fitted, and returns the mapping.
++type Fit = { s: number; ox: number; oy: number; w: number; h: number; ax: number };
++const fits: Record<string, Fit> = {};
++function blit(cv: HTMLCanvasElement | null, key: string, img: ImageData, aspect = 1) {
++  if (!cv) return null;
++  const dpr = window.devicePixelRatio || 1;
++  const cw = cv.clientWidth * dpr, ch = cv.clientHeight * dpr;
++  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
++  const ctx = cv.getContext('2d')!;
++  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cw, ch);
++  const off = document.createElement('canvas'); off.width = img.width; off.height = img.height;
++  off.getContext('2d')!.putImageData(img, 0, 0);
++  const s = Math.min(cw / img.width, ch / (img.height * aspect));
++  const ox = (cw - img.width * s) / 2, oy = (ch - img.height * aspect * s) / 2;
++  ctx.imageSmoothingEnabled = true;
++  ctx.drawImage(off, ox, oy, img.width * s, img.height * aspect * s);
++  const f = { s, ox, oy, w: img.width, h: img.height, ax: aspect };
++  fits[key] = f;
++  return { ctx, f, dpr };
++}
++const toCanvas = (f: Fit, x: number, y: number) => [f.ox + x * f.s, f.oy + y * f.ax * f.s];
++function fromEvent(cv: HTMLCanvasElement, key: string, e: MouseEvent) {
++  const f = fits[key]; if (!f) return null;
++  const r = cv.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
++  const x = ((e.clientX - r.left) * dpr - f.ox) / f.s;
++  const y = ((e.clientY - r.top) * dpr - f.oy) / (f.s * f.ax);
++  return [x, y];
++}
++
++// axial display coords <-> index coords (radiological view, anterior up)
++const axToIdx = (v: Vol, x: number, y: number) => ({ i: v.flipX ? v.nx - 1 - x : x, j: v.flipY ? v.ny - 1 - y : y });
++const idxToAx = (v: Vol, i: number, j: number) => [v.flipX ? v.nx - 1 - i : i, v.flipY ? v.ny - 1 - j : j];
++
++// ---------------------------------------------------------------- nerves
++function nerveAt(pts: NP[], s: number): { t: number; z: number } | null {
++  if (pts.length < 2) return null;
++  const P = [...pts].sort((a, b) => a.s - b.s);
++  if (s < P[0].s || s > P[P.length - 1].s) return null;
++  for (let n = 1; n < P.length; n++)
++    if (s <= P[n].s) {
++      const f = (s - P[n - 1].s) / Math.max(1e-6, P[n].s - P[n - 1].s);
++      return { t: P[n - 1].t + (P[n].t - P[n - 1].t) * f, z: P[n - 1].z + (P[n].z - P[n - 1].z) * f };
++    }
++  return null;
++}
++const NERVE_COL = { R: '#ff4d4d', L: '#ffb020' };
++
++// ---------------------------------------------------------------- render
++function drawAxial() {
++  const v = vol.value; const cv = axialCv.value; if (!v || !cv) return;
++  const k = Math.max(0, Math.min(v.nz - 1, axialK.value));
++  const buf = new Float32Array(v.nx * v.ny);
++  for (let y = 0; y < v.ny; y++)
++    for (let x = 0; x < v.nx; x++) {
++      const { i, j } = axToIdx(v, x, y);
++      buf[y * v.nx + x] = v.data[k * v.nx * v.ny + j * v.nx + i];
++    }
++  const r = blit(cv, 'ax', toImage(buf, v.nx, v.ny)); if (!r) return;
++  const { ctx, f, dpr } = r;
++  const c = curve.value;
++  if (c) {
++    ctx.strokeStyle = '#3fd0ff'; ctx.lineWidth = 2 * dpr; ctx.beginPath();
++    c.xs.forEach((xi, n) => { const [ax, ay] = idxToAx(v, xi, c.ys[n]); const [px, py] = toCanvas(f, ax, ay); n ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
++    ctx.stroke();
++    if (sSel.value != null) {
++      const s = Math.round(sSel.value), half = csHalfMm.value / v.sx;
++      const gap = csGapMm.value / v.sx;
++      [-gap, 0, gap].forEach((dg, idx) => {
++        const ss = Math.max(0, Math.min(c.N - 1, Math.round(s + dg)));
++        const [a1, b1] = idxToAx(v, c.xs[ss] - c.nxv[ss] * half, c.ys[ss] - c.nyv[ss] * half);
++        const [a2, b2] = idxToAx(v, c.xs[ss] + c.nxv[ss] * half, c.ys[ss] + c.nyv[ss] * half);
++        const [p1, q1] = toCanvas(f, a1, b1), [p2, q2] = toCanvas(f, a2, b2);
++        ctx.strokeStyle = idx === 1 ? '#7CFC00' : 'rgba(124,252,0,0.5)'; ctx.lineWidth = (idx === 1 ? 2 : 1) * dpr;
++        ctx.beginPath(); ctx.moveTo(p1, q1); ctx.lineTo(p2, q2); ctx.stroke();
++      });
++    }
++    (['R', 'L'] as const).forEach((side) => {
++      const pts = nerves.value[side]; if (pts.length < 2) return;
++      const P = [...pts].sort((a, b) => a.s - b.s);
++      ctx.strokeStyle = NERVE_COL[side]; ctx.lineWidth = 2 * dpr; ctx.beginPath();
++      let first = true;
++      for (let s = Math.ceil(P[0].s); s <= P[P.length - 1].s && s < c.N; s++) {
++        const nz = nerveAt(P, s); if (!nz) continue;
++        const [ax, ay] = idxToAx(v, c.xs[s] + c.nxv[s] * nz.t, c.ys[s] + c.nyv[s] * nz.t);
++        const [px, py] = toCanvas(f, ax, ay); first ? ctx.moveTo(px, py) : ctx.lineTo(px, py); first = false;
++      }
++      ctx.stroke();
++    });
++  }
++  archPts.value.forEach((p) => {
++    const [ax, ay] = idxToAx(v, p.i, p.j); const [px, py] = toCanvas(f, ax, ay);
++    ctx.fillStyle = '#3fd0ff'; ctx.beginPath(); ctx.arc(px, py, 5 * dpr, 0, Math.PI * 2); ctx.fill();
++  });
++  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
++  ctx.fillText(`Axial ${k + 1}/${v.nz}`, 8 * dpr, 18 * dpr);
++  ctx.fillText('A', cv.width / 2, 16 * dpr); ctx.fillText('R', 6 * dpr, cv.height / 2);
++}
++
++let panoBuf: { buf: Float32Array; w: number; h: number } | null = null;
++function buildPano() {
++  const v = vol.value, c = curve.value; panoBuf = null;
++  if (!v || !c) return;
++  const w = c.N, h = v.nz;
++  const half = Math.max(0, Math.round(slabMm.value / v.sx / 2));
++  const buf = new Float32Array(w * h);
++  for (let r = 0; r < h; r++) {
++    const k = kOfRow(v, r);
++    for (let s = 0; s < w; s++) {
++      let acc = 0, mx = -Infinity, cnt = 0;
++      for (let t = -half; t <= half; t++) {
++        const val = voxel(v, c.xs[s] + c.nxv[s] * t, c.ys[s] + c.nyv[s] * t, k);
++        acc += val; cnt++; if (val > mx) mx = val;
++      }
++      buf[r * w + s] = slabMip.value ? mx : acc / cnt;
++    }
++  }
++  panoBuf = { buf: process(buf, w, h), w, h };
++}
++function drawPano() {
++  const v = vol.value, cv = panoCv.value, c = curve.value;
++  if (!cv) return;
++  if (!v || !c || !panoBuf) {
++    const ctx = cv.getContext('2d')!; cv.width = cv.clientWidth; cv.height = cv.clientHeight;
++    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
++    ctx.fillStyle = '#aaa'; ctx.font = '14px sans-serif';
++    ctx.fillText('Draw the arch on the axial view (click along the teeth, left to right).', 16, 30);
++    return;
++  }
++  const r = blit(cv, 'pano', toImage(panoBuf.buf, panoBuf.w, panoBuf.h), v.sz / v.sx); if (!r) return;
++  const { ctx, f, dpr } = r;
++  if (sSel.value != null) {
++    const [x] = toCanvas(f, sSel.value, 0);
++    ctx.strokeStyle = '#7CFC00'; ctx.lineWidth = 1.5 * dpr; ctx.beginPath(); ctx.moveTo(x, f.oy); ctx.lineTo(x, f.oy + f.h * f.ax * f.s); ctx.stroke();
++  }
++  (['R', 'L'] as const).forEach((side) => {
++    const P = [...nerves.value[side]].sort((a, b) => a.s - b.s); if (!P.length) return;
++    ctx.strokeStyle = NERVE_COL[side]; ctx.fillStyle = NERVE_COL[side];
++    ctx.lineWidth = Math.max(2, (nerveDiaMm.value / v.sx) * f.s) ; ctx.globalAlpha = 0.55; ctx.lineCap = 'round';
++    ctx.beginPath(); P.forEach((p, n) => { const [x, y] = toCanvas(f, p.s, p.z); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
++    ctx.globalAlpha = 1;
++    P.forEach((p) => { const [x, y] = toCanvas(f, p.s, p.z); ctx.beginPath(); ctx.arc(x, y, 3.5 * dpr, 0, Math.PI * 2); ctx.fill(); });
++  });
++  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
++  ctx.fillText(`Panoramic · slab ${slabMm.value} mm ${slabMip.value ? '(MIP)' : ''} · length ${(c.N * v.sx).toFixed(0)} mm`, 8 * dpr, 18 * dpr);
++}
++
++function csSample(v: Vol, c: any, s: number) {
++  const half = Math.round(csHalfMm.value / v.sx); const w = half * 2 + 1, h = v.nz;
++  const buf = new Float32Array(w * h);
++  const ss = Math.max(0, Math.min(c.N - 1, Math.round(s)));
++  for (let r = 0; r < h; r++) {
++    const k = kOfRow(v, r);
++    for (let x = 0; x < w; x++) { const t = x - half; buf[r * w + x] = voxel(v, c.xs[ss] + c.nxv[ss] * t, c.ys[ss] + c.nyv[ss] * t, k); }
++  }
++  return { buf: process(buf, w, h), w, h, half, ss };
++}
++function drawCross() {
++  const v = vol.value, c = curve.value;
++  csCvs.forEach((cr, idx) => {
++    const cv = cr.value; if (!cv) return;
++    if (!v || !c || sSel.value == null) {
++      const ctx = cv.getContext('2d')!; cv.width = cv.clientWidth; cv.height = cv.clientHeight;
++      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
++      ctx.fillStyle = '#888'; ctx.font = '12px sans-serif'; ctx.fillText('Click the panoramic to show cross-sections', 10, 22);
++      return;
++    }
++    const gap = csGapMm.value / v.sx;
++    const s = sSel.value + (idx - 1) * gap;
++    const cs = csSample(v, c, s);
++    const r = blit(cv, `cs${idx}`, toImage(cs.buf, cs.w, cs.h), v.sz / v.sx); if (!r) return;
++    const { ctx, f, dpr } = r;
++    (['R', 'L'] as const).forEach((side) => {
++      const nz = nerveAt(nerves.value[side], cs.ss); if (!nz) return;
++      const [x, y] = toCanvas(f, nz.t + cs.half, nz.z);
++      ctx.strokeStyle = NERVE_COL[side]; ctx.lineWidth = 2 * dpr;
++      ctx.beginPath(); ctx.arc(x, y, Math.max(3 * dpr, (nerveDiaMm.value / v.sx / 2) * f.s), 0, Math.PI * 2); ctx.stroke();
++    });
++    if (idx === 1 && measure.value.a) {
++      const [ax, ay] = toCanvas(f, measure.value.a[0], measure.value.a[1]);
++      ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(ax, ay, 3 * dpr, 0, Math.PI * 2); ctx.fill();
++      if (measure.value.b) {
++        const [bx, by] = toCanvas(f, measure.value.b[0], measure.value.b[1]);
++        ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
++        const mm = Math.hypot((measure.value.b[0] - measure.value.a[0]) * v.sx, (measure.value.b[1] - measure.value.a[1]) * v.sz);
++        ctx.font = `bold ${13 * dpr}px sans-serif`; ctx.fillText(`${mm.toFixed(1)} mm`, bx + 6 * dpr, by - 6 * dpr);
++      }
++    }
++    ctx.fillStyle = '#fff'; ctx.font = `${11 * dpr}px sans-serif`;
++    ctx.fillText(`${(cs.ss * v.sx).toFixed(1)} mm${idx === 1 ? ' (selected)' : ''}`, 6 * dpr, 16 * dpr);
++  });
++}
++
++function redrawAll(rebuild = true) {
++  if (rebuild) buildPano();
++  drawAxial(); drawPano(); drawCross();
++}
++let pending = 0;
++function schedule(rebuild = true) {
++  cancelAnimationFrame(pending);
++  pending = requestAnimationFrame(() => redrawAll(rebuild));
++}
++watch([archPts, slabMm, slabMip, sharpen, denoise, invert, win, lev], () => schedule(true), { deep: true });
++watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure], () => schedule(false), { deep: true });
++
++// ---------------------------------------------------------------- input
++let dragIdx = -1;
++function axialDown(e: MouseEvent) {
++  const v = vol.value, cv = axialCv.value; if (!v || !cv) return;
++  const p = fromEvent(cv, 'ax', e); if (!p) return;
++  const { i, j } = axToIdx(v, p[0], p[1]);
++  const f = fits.ax; const tol = 10 / f.s;
++  const near = archPts.value.findIndex((q) => Math.hypot(q.i - i, q.j - j) < tol);
++  if (e.button === 2) { if (near >= 0) archPts.value.splice(near, 1); return; }
++  if (near >= 0) { dragIdx = near; return; }
++  if (mode.value === 'arch') archPts.value.push({ i, j });
++}
++function axialMove(e: MouseEvent) {
++  if (dragIdx < 0) return; const v = vol.value, cv = axialCv.value; if (!v || !cv) return;
++  const p = fromEvent(cv, 'ax', e); if (!p) return;
++  const { i, j } = axToIdx(v, p[0], p[1]); archPts.value[dragIdx] = { i, j };
++}
++function axialUp() { dragIdx = -1; }
++function axialWheel(e: WheelEvent) {
++  const v = vol.value; if (!v) return; e.preventDefault();
++  axialK.value = Math.max(0, Math.min(v.nz - 1, axialK.value + (e.deltaY > 0 ? 1 : -1) * (v.topIsK0 ? 1 : -1)));
++}
++function panoClick(e: MouseEvent) {
++  const cv = panoCv.value, c = curve.value, v = vol.value; if (!cv || !c || !v) return;
++  const p = fromEvent(cv, 'pano', e); if (!p) return;
++  const s = Math.max(0, Math.min(c.N - 1, p[0])), z = Math.max(0, Math.min(v.nz - 1, p[1]));
++  if (mode.value === 'nerveR' || mode.value === 'nerveL') {
++    const side = mode.value === 'nerveR' ? 'R' : 'L';
++    nerves.value[side].push({ s, t: 0, z });
++    sSel.value = s;
++  } else {
++    sSel.value = s;
++    axialK.value = Math.round(kOfRow(v, z));
++  }
++}
++function panoWheel(e: WheelEvent) {
++  const c = curve.value; if (!c || sSel.value == null) return; e.preventDefault();
++  sSel.value = Math.max(0, Math.min(c.N - 1, sSel.value + (e.deltaY > 0 ? 1 : -1)));
++}
++function csClick(e: MouseEvent) {
++  const cv = csCvs[1].value, c = curve.value, v = vol.value; if (!cv || !c || !v || sSel.value == null) return;
++  const p = fromEvent(cv, 'cs1', e); if (!p) return;
++  const half = Math.round(csHalfMm.value / v.sx);
++  if (mode.value === 'measure') {
++    if (!measure.value.a || measure.value.b) measure.value = { a: [p[0], p[1]], b: null };
++    else measure.value = { ...measure.value, b: [p[0], p[1]] };
++    return;
++  }
++  if (mode.value === 'nerveR' || mode.value === 'nerveL') {
++    const side = mode.value === 'nerveR' ? 'R' : 'L';
++    const s = Math.round(sSel.value);
++    const list = nerves.value[side];
++    const near = list.findIndex((q) => Math.abs(q.s - s) <= 2 / v.sx);
++    const pt = { s, t: p[0] - half, z: p[1] };
++    if (near >= 0) list[near] = pt; else list.push(pt);
++  }
++}
++function undo() {
++  if (mode.value === 'nerveR') nerves.value.R.pop();
++  else if (mode.value === 'nerveL') nerves.value.L.pop();
++  else if (mode.value === 'measure') measure.value = { a: null, b: null };
++  else archPts.value.pop();
++}
++function clearAll() {
++  archPts.value = []; nerves.value = { R: [], L: [] }; sSel.value = null; measure.value = { a: null, b: null };
++}
++function savePng() {
++  const cv = panoCv.value; if (!cv) return;
++  const a = document.createElement('a'); a.download = 'panoramic.png'; a.href = cv.toDataURL('image/png'); a.click();
++}
++
++const onResize = () => schedule(false);
++onMounted(async () => {
++  loadVolume();
++  await nextTick();
++  window.addEventListener('resize', onResize);
++  schedule(true);
++});
++onBeforeUnmount(() => window.removeEventListener('resize', onResize));
++watch(currentImageData, () => { loadVolume(); schedule(true); });
++
++const modes = [
++  { key: 'arch', label: 'Draw arch', icon: 'mdi-vector-curve' },
++  { key: 'pick', label: 'Cross-sections', icon: 'mdi-view-column' },
++  { key: 'nerveR', label: 'Nerve right', icon: 'mdi-sine-wave' },
++  { key: 'nerveL', label: 'Nerve left', icon: 'mdi-sine-wave' },
++  { key: 'measure', label: 'Measure', icon: 'mdi-ruler' },
++] as const;
++const hint = computed(() => ({
++  arch: 'Click along the middle of the teeth on the axial view, from one side to the other. Drag a point to move it, right-click to remove it. Scroll to change the axial slice.',
++  pick: 'Click the panoramic to show cross-sections there. Scroll over the panoramic to move them.',
++  nerveR: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (red).',
++  nerveL: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (orange).',
++  measure: 'Click two points on the middle cross-section to measure in mm.',
++}[mode.value]));
++</script>
++
++<template>
++  <div class="dw">
++    <div class="dw-bar">
++      <strong class="mr-4">Panoramic &amp; Nerve</strong>
++      <v-btn-toggle v-model="mode" mandatory density="compact" color="primary" variant="outlined" divided>
++        <v-btn v-for="m in modes" :key="m.key" :value="m.key" size="small">
++          <v-icon :icon="m.icon" start :color="m.key === 'nerveR' ? '#ff4d4d' : m.key === 'nerveL' ? '#ffb020' : undefined" />{{ m.label }}
++        </v-btn>
++      </v-btn-toggle>
++      <v-btn size="small" variant="text" class="ml-2" prepend-icon="mdi-undo" @click="undo">Undo</v-btn>
++      <v-btn size="small" variant="text" prepend-icon="mdi-delete-outline" @click="clearAll">Clear</v-btn>
++      <v-btn size="small" variant="text" prepend-icon="mdi-download" @click="savePng">Save panoramic</v-btn>
++      <v-spacer />
++      <v-btn icon="mdi-close" variant="text" @click="emit('close')" />
++    </div>
++    <div class="dw-hint">{{ status || hint }}</div>
++    <div class="dw-body">
++      <div class="dw-left">
++        <canvas ref="axialCv" class="cv" @mousedown="axialDown" @mousemove="axialMove" @mouseup="axialUp" @mouseleave="axialUp" @wheel="axialWheel" @contextmenu.prevent />
++        <div class="dw-ctrl">
++          <div class="lbl">Axial slice</div>
++          <v-slider v-if="vol" v-model="axialK" :min="0" :max="vol.nz - 1" :step="1" hide-details density="compact" />
++          <div class="lbl">Window / Level</div>
++          <v-slider v-model="win" :min="50" :max="6000" :step="10" hide-details density="compact" />
++          <v-slider v-model="lev" :min="-1500" :max="4000" :step="10" hide-details density="compact" />
++          <div class="lbl">Panoramic slab {{ slabMm }} mm</div>
++          <v-slider v-model="slabMm" :min="0" :max="30" :step="1" hide-details density="compact" />
++          <div class="lbl">Sharpen {{ sharpen.toFixed(1) }}</div>
++          <v-slider v-model="sharpen" :min="0" :max="3" :step="0.1" hide-details density="compact" />
++          <div class="d-flex flex-wrap" style="gap: 4px 12px">
++            <v-checkbox v-model="denoise" label="Reduce noise" hide-details density="compact" />
++            <v-checkbox v-model="slabMip" label="MIP slab" hide-details density="compact" />
++            <v-checkbox v-model="invert" label="Invert" hide-details density="compact" />
++          </div>
++          <div class="lbl">Cross-section gap {{ csGapMm }} mm · width {{ csHalfMm * 2 }} mm</div>
++          <v-slider v-model="csGapMm" :min="0.5" :max="5" :step="0.5" hide-details density="compact" />
++          <v-slider v-model="csHalfMm" :min="8" :max="30" :step="1" hide-details density="compact" />
++          <div class="lbl">Nerve diameter {{ nerveDiaMm }} mm</div>
++          <v-slider v-model="nerveDiaMm" :min="1" :max="5" :step="0.5" hide-details density="compact" />
++        </div>
++      </div>
++      <div class="dw-right">
++        <canvas ref="panoCv" class="cv pano" @click="panoClick" @wheel="panoWheel" />
++        <div class="dw-cs">
++          <canvas :ref="(el) => (csCvs[0].value = el as any)" class="cv" />
++          <canvas :ref="(el) => (csCvs[1].value = el as any)" class="cv sel" @click="csClick" />
++          <canvas :ref="(el) => (csCvs[2].value = el as any)" class="cv" />
++        </div>
++      </div>
++    </div>
++  </div>
++</template>
++
++<style scoped>
++.dw { position: fixed; inset: 0; z-index: 3000; background: #111; color: #eee; display: flex; flex-direction: column; }
++.dw-bar { display: flex; align-items: center; padding: 6px 10px; gap: 6px; background: #1c1b22; flex-wrap: wrap; }
++.dw-hint { font-size: 12px; color: #bbb; padding: 4px 12px; background: #17161c; }
++.dw-body { flex: 1; display: flex; min-height: 0; }
++.dw-left { width: 34%; display: flex; flex-direction: column; border-right: 1px solid #333; min-height: 0; }
++.dw-left .cv { flex: 1; min-height: 200px; }
++.dw-ctrl { padding: 6px 12px; overflow-y: auto; max-height: 48%; }
++.lbl { font-size: 11px; color: #aaa; margin-top: 4px; }
++.dw-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
++.pano { flex: 1.1; min-height: 0; border-bottom: 1px solid #333; cursor: crosshair; }
++.dw-cs { flex: 1; display: flex; min-height: 0; }
++.dw-cs .cv { flex: 1; min-width: 0; border-right: 1px solid #333; }
++.dw-cs .sel { outline: 2px solid #7CFC00; outline-offset: -2px; cursor: crosshair; }
++.cv { display: block; width: 100%; height: 100%; background: #000; }
++</style>
+diff --git a/src/components/icons/VolViewFullLogo.vue b/src/components/icons/VolViewFullLogo.vue
+index d06f2ee..3624729 100644
+--- a/src/components/icons/VolViewFullLogo.vue
++++ b/src/components/icons/VolViewFullLogo.vue
+@@ -1,139 +1,6 @@
+-<template svg>
+-  <svg
+-    width="362"
+-    height="46"
+-    viewBox="0 0 362 46"
+-    fill="none"
+-    xmlns="http://www.w3.org/2000/svg"
+-  >
+-    <g clip-path="url(#clip0_137_135)">
+-      <path
+-        d="M217.55 26.6132C217.498 26.6912 217.447 26.7951 217.37 26.8731C216.06 28.64 213.364 29.3676 210 28.8999C209.846 28.8739 209.692 28.8479 209.537 28.8219C207.509 28.4841 205.3 27.7306 203.092 26.6132C201.782 25.9377 200.472 25.1062 199.214 24.1447C197.853 23.1054 196.621 21.988 195.568 20.7928C193.898 18.9479 192.666 16.9991 191.87 15.1282C190.56 12.0361 190.56 9.28175 191.844 7.48883C193.154 5.7219 195.722 5.04631 198.932 5.54001C200.524 5.77387 202.27 6.31954 204.068 7.12505C205.84 7.93057 207.663 8.99592 209.435 10.3471C212.979 13.0235 215.649 16.2715 217.087 19.3377C218.474 22.2479 218.654 24.8463 217.55 26.6132Z"
+-        fill="#3EAE2B"
+-      />
+-      <path
+-        d="M217.55 26.6132C217.498 26.6912 217.447 26.7951 217.37 26.8731C216.06 28.64 213.364 29.3676 210 28.8998C209.846 28.8739 209.692 28.8479 209.537 28.8219C207.663 28.4321 205.506 27.7306 203.092 26.6132C201.782 25.9376 200.473 25.1061 199.214 24.1447C197.853 23.1054 196.621 21.988 195.568 20.7928C193 16.5054 193.539 11.1786 195.08 9.48961C196.954 7.41087 201.243 6.94315 207.945 11.4904C213.852 15.492 218.089 23.2613 217.55 26.6132Z"
+-        fill="black"
+-        fill-opacity="0.15"
+-      />
+-      <path
+-        d="M214.442 22.2479C214.442 22.7416 214.34 23.1833 214.16 23.5731C214.108 23.703 214.031 23.8329 213.929 23.9628C213.518 24.5345 212.85 24.8983 211.951 25.0801C211.053 25.262 209.974 25.2101 208.767 24.9762C206.353 24.5085 203.58 23.2353 201.14 21.4164C201.115 21.3904 201.063 21.3644 201.037 21.3384C198.675 19.5195 196.877 17.3109 195.876 15.2581C194.849 13.1534 194.772 11.3085 195.619 10.1652C196.441 9.02188 198.213 8.68409 200.498 9.1518C202.784 9.61952 205.429 10.8927 207.843 12.7376C210.257 14.5825 212.26 16.8172 213.415 18.9219C214.108 20.1431 214.442 21.2864 214.442 22.2479Z"
+-        fill="#3EAE2B"
+-      />
+-      <path
+-        d="M214.16 23.5731C214.108 23.7031 214.031 23.833 213.929 23.9629C213.518 24.5346 212.85 24.8983 211.951 25.0802C211.053 25.2621 209.974 25.2102 208.767 24.9763C206.353 24.5086 203.58 23.2353 201.14 21.4165C201.114 21.3905 201.063 21.3645 201.037 21.3385C198.187 18.4542 198.059 13.855 199.214 12.5558C200.524 11.3865 202.835 11.4125 207.072 14.2708C210.616 16.6873 213.877 21.1826 214.16 23.5731Z"
+-        fill="black"
+-        fill-opacity="0.15"
+-      />
+-      <path
+-        d="M210.616 21.4944C210.436 21.7282 210.128 21.8841 209.666 21.9621C209.204 22.0141 208.613 21.9881 207.92 21.8062C206.559 21.4684 204.915 20.6889 203.374 19.5196C201.834 18.3503 200.652 17.0251 199.985 15.8038C199.651 15.2062 199.471 14.6605 199.394 14.1928C199.343 13.7251 199.42 13.4133 199.599 13.1794C199.779 12.9456 200.062 12.7637 200.524 12.7117C200.96 12.6597 201.525 12.6857 202.193 12.8416C202.835 12.9975 203.58 13.2834 204.324 13.6731C205.069 14.0629 205.865 14.5566 206.61 15.1542C208.151 16.3235 209.383 17.6487 210.102 18.844C210.462 19.4416 210.667 19.9873 210.744 20.455C210.847 20.9487 210.77 21.2865 210.616 21.4944Z"
+-        fill="#3EAE2B"
+-      />
+-      <path
+-        d="M211.309 21.8061C211.078 22.4038 210.847 22.8455 210.462 23.3912C208.151 26.5093 203.323 26.951 199.933 24.3786C196.543 21.8061 195.67 16.999 197.956 13.8809C198.418 13.3093 198.752 12.9195 199.291 12.4778C199.188 12.5557 199.111 12.6337 199.034 12.7376C198.701 13.1794 198.624 13.725 198.701 14.2967C198.778 14.8683 199.009 15.5179 199.368 16.1675C200.087 17.4668 201.346 18.8959 202.963 20.1172C204.581 21.3384 206.302 22.1699 207.791 22.5077C208.536 22.6896 209.229 22.7416 209.794 22.6636C210.385 22.5857 210.898 22.3518 211.232 21.9101C211.258 21.9101 211.284 21.8581 211.309 21.8061Z"
+-        fill="#0068C7"
+-      />
+-      <path
+-        d="M214.879 24.0148C214.571 24.9502 213.441 26.6652 212.747 27.4447C209.101 32.3558 201.448 33.2132 195.953 29.0558C190.483 24.9762 189.482 16.6873 193.128 11.7502C193.693 10.9967 194.643 9.80143 195.465 9.09985C195.285 9.25576 195.105 9.43765 194.951 9.64552C193.821 11.1786 194.078 13.4132 195.131 15.6219C196.21 17.8565 198.136 20.1951 200.627 22.092C201.885 23.0534 203.22 23.8589 204.581 24.4825C205.942 25.1062 207.303 25.5739 208.562 25.8077C209.846 26.0676 211.027 26.1195 212.054 25.9117C213.081 25.7038 213.954 25.2621 214.545 24.4825C214.699 24.3266 214.802 24.1707 214.879 24.0148Z"
+-        fill="#0068C7"
+-      />
+-      <path
+-        d="M218.577 26.4054C218.012 27.9385 216.959 29.8353 215.495 31.5503C209.589 38.3582 199.368 39.6314 192.024 34.0448C184.705 28.5101 182.985 18.3503 187.787 10.633C188.865 8.89203 190.945 6.83928 192.178 5.95581C192.152 5.98179 191.459 6.6314 191.176 7.02116C189.61 9.15187 189.738 12.296 191.099 15.466C192.46 18.6881 195.08 22.066 198.701 24.8204C200.524 26.1975 202.424 27.2889 204.324 28.1204C206.225 28.9519 208.125 29.4716 209.871 29.7314C213.364 30.1991 216.445 29.5235 218.012 27.3928C218.243 27.081 218.448 26.7432 218.577 26.4054Z"
+-        fill="#0068C7"
+-      />
+-      <path
+-        d="M217.832 18.9739C216.317 15.7779 213.544 12.4259 209.923 9.67158C206.328 6.91725 202.424 5.22828 199.06 4.70859C197.853 4.5267 196.672 4.50072 195.619 4.63064C195.568 4.63064 195.516 4.63064 195.491 4.65662C195.337 4.68261 195.157 4.70859 195.003 4.73458C194.977 4.73458 194.951 4.73458 194.9 4.76056C194.797 4.78654 194.695 4.81253 194.618 4.83851C194.515 4.8645 194.438 4.89048 194.361 4.91647C194.284 4.94245 194.207 4.96843 194.13 4.99442C193.385 5.22828 192.717 5.59206 192.127 6.05977C191.767 6.31962 191.459 6.63143 191.176 7.02119C189.61 9.1519 189.738 12.296 191.099 15.4661C192.46 18.6881 195.08 22.0661 198.701 24.8204C200.524 26.1976 202.424 27.2889 204.324 28.1204C206.225 28.9519 208.125 29.4716 209.871 29.7314C213.364 30.1991 216.445 29.5236 218.012 27.3928C218.243 27.107 218.423 26.7692 218.577 26.4314C219.527 24.3527 219.116 21.6763 217.832 18.9739ZM217.55 26.6133C217.498 26.6913 217.447 26.7952 217.37 26.8732C216.06 28.6401 213.364 29.3676 210 28.8999C209.846 28.8739 209.692 28.848 209.537 28.822C207.509 28.4842 205.3 27.7306 203.092 26.6133C201.782 25.9377 200.473 25.1062 199.214 24.1448C197.853 23.1054 196.621 21.9881 195.568 20.7928C193.899 18.948 192.666 16.9991 191.87 15.1283C190.56 12.0362 190.56 9.28182 191.844 7.48891C193.154 5.72198 195.722 5.04639 198.932 5.54009C200.524 5.77395 202.27 6.31962 204.068 7.12513C205.84 7.93064 207.663 8.99599 209.435 10.3472C212.979 13.0236 215.649 16.2716 217.087 19.3377C218.474 22.248 218.654 24.8464 217.55 26.6133Z"
+-        fill="white"
+-      />
+-      <path
+-        d="M214.16 18.5061C212.953 16.2975 210.873 13.9589 208.382 12.062C205.891 10.1652 203.143 8.84 200.704 8.3463C198.88 7.95654 197.16 8.03449 195.927 8.78803C195.901 8.78803 195.876 8.81402 195.876 8.81402C195.876 8.81402 195.85 8.81402 195.85 8.84C195.799 8.86599 195.747 8.89197 195.722 8.94394C195.645 8.99591 195.568 9.07386 195.491 9.12583C195.311 9.28173 195.131 9.46362 194.977 9.6715C193.847 11.2046 194.104 13.4392 195.157 15.6479C196.235 17.8825 198.161 20.2211 200.652 22.118C201.911 23.0794 203.246 23.8849 204.607 24.5085C205.968 25.1321 207.329 25.5998 208.587 25.8337C209.871 26.0935 211.053 26.1455 212.08 25.9376C213.107 25.7298 213.98 25.288 214.571 24.5085C214.673 24.3786 214.776 24.2227 214.853 24.0668C215.675 22.5077 215.238 20.4809 214.16 18.5061ZM213.929 23.9628C213.518 24.5345 212.85 24.8983 211.951 25.0802C211.053 25.262 209.974 25.2101 208.767 24.9762C206.353 24.5085 203.58 23.2353 201.14 21.4164C198.726 19.5975 196.877 17.3369 195.876 15.2581C194.849 13.1534 194.772 11.3085 195.619 10.1652C196.441 9.02189 198.213 8.6841 200.498 9.15181C202.784 9.61953 205.429 10.8928 207.843 12.7376C210.256 14.5825 212.259 16.8172 213.415 18.9219C214.108 20.1691 214.442 21.3124 214.442 22.2739C214.442 22.9235 214.288 23.4951 213.929 23.9628Z"
+-        fill="white"
+-      />
+-      <path
+-        fill-rule="evenodd"
+-        clip-rule="evenodd"
+-        d="M211.515 20.351C211.412 19.7793 211.155 19.1297 210.77 18.4801C210 17.1809 208.716 15.7778 207.098 14.5565C205.506 13.3352 203.837 12.4778 202.398 12.14C201.679 11.9581 201.012 11.9061 200.447 11.9841C200.01 12.036 199.599 12.2179 199.291 12.4778C199.189 12.5557 199.111 12.6337 199.034 12.7376C198.701 13.1793 198.624 13.725 198.701 14.2967C198.778 14.8683 199.009 15.5179 199.368 16.1675C200.087 17.4667 201.346 18.8959 202.963 20.1171C204.581 21.3384 206.302 22.1699 207.791 22.5077C208.536 22.6896 209.229 22.7415 209.794 22.6636C210.385 22.5856 210.899 22.3518 211.232 21.91C211.258 21.8581 211.284 21.8321 211.309 21.7801C211.54 21.3904 211.592 20.8707 211.515 20.351ZM210.616 21.4943C210.436 21.7281 210.128 21.8841 209.666 21.962C209.204 22.014 208.613 21.988 207.92 21.8061C206.559 21.4683 204.915 20.6888 203.374 19.5195C201.834 18.3502 200.652 17.025 199.985 15.8037C199.651 15.2061 199.471 14.6604 199.394 14.1927C199.343 13.725 199.42 13.4132 199.599 13.1793C199.779 12.9455 200.062 12.7636 200.524 12.7116C200.96 12.6596 201.525 12.6856 202.193 12.8415C202.835 12.9974 203.58 13.2833 204.324 13.673C205.069 14.0628 205.865 14.5565 206.61 15.1541C208.151 16.3234 209.383 17.6486 210.102 18.8439C210.462 19.4415 210.667 19.9872 210.744 20.4549C210.847 20.9486 210.77 21.2864 210.616 21.4943Z"
+-        fill="white"
+-      />
+-    </g>
+-    <path
+-      d="M246.292 9.76333H243.172L235.252 31.1633L227.372 9.76333H224.252L233.692 35.0433H236.852L246.292 9.76333ZM261.251 25.4033C261.251 29.8033 260.131 32.6033 255.691 32.6033C251.251 32.6033 250.091 29.8033 250.091 25.4033C250.091 21.0033 251.251 18.2033 255.691 18.2033C260.131 18.2033 261.251 21.0033 261.251 25.4033ZM255.691 35.3633C261.771 35.3633 264.171 31.2833 264.171 25.4033C264.171 19.4033 261.891 15.4433 255.691 15.4433C249.571 15.4433 247.171 19.5233 247.171 25.4033C247.171 31.4033 249.451 35.3633 255.691 35.3633ZM268.747 29.6833C268.747 33.8433 270.827 35.2833 273.587 35.2833C274.627 35.2833 275.427 35.1233 275.947 34.8833L275.547 32.2433C275.107 32.4433 274.507 32.5233 273.827 32.5233C272.467 32.5233 271.667 31.8833 271.667 29.2433V7.76333H268.747V29.6833Z"
+-      fill="#3EAE2B"
+-    />
+-    <path
+-      d="M299.261 9.76333H296.141L288.221 31.1633L280.341 9.76333H277.221L286.661 35.0433H289.821L299.261 9.76333ZM302.505 35.0433H305.425V15.7633H302.505V35.0433ZM302.065 9.16333C302.065 10.2033 302.905 11.0433 303.985 11.0433C305.025 11.0433 305.865 10.2033 305.865 9.16333C305.865 8.12333 305.025 7.24333 303.985 7.24333C302.905 7.24333 302.065 8.08333 302.065 9.16333ZM326.615 23.8833C326.615 18.2833 323.615 15.4433 318.535 15.4433C312.215 15.4433 310.175 19.8833 310.175 25.4433C310.175 32.2833 313.295 35.3633 319.455 35.3633C321.815 35.3633 324.095 34.8833 325.975 34.0433L325.535 31.2833C324.095 32.0433 321.735 32.6033 319.495 32.6033C315.495 32.6033 313.135 30.8033 313.135 26.7233V26.5633H326.295C326.535 25.7233 326.615 24.6833 326.615 23.8833ZM313.135 23.8433C313.135 19.6833 315.215 18.0433 318.455 18.0433C321.735 18.0433 323.815 19.7233 323.815 23.8433V24.0833H313.135V23.8433ZM332.648 15.7633H329.648L336.368 35.0433H339.368L344.608 20.2833L349.848 35.0433H352.848L359.568 15.7633H356.568L351.328 31.0833L346.088 15.7633H343.128L337.888 31.0833L332.648 15.7633Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M8.87229 5.59206L0.781128 14.7137L2.74742 16.9885L13.3699 5.00647H10.1831C9.68593 5.00647 9.2113 5.20917 8.87229 5.59206Z"
+-      fill="#3EAE2B"
+-    />
+-    <path
+-      d="M15.0876 5.59206L3.85486 18.2497L5.82115 20.5245L19.5852 5.00647H16.3984C15.9012 5.00647 15.404 5.20917 15.0876 5.59206Z"
+-      fill="#3EAE2B"
+-    />
+-    <path
+-      d="M25.7778 5.00647H22.6137C22.1165 5.00647 21.6193 5.23169 21.2802 5.59206L6.90601 21.8083L19.879 36.8308C20.218 37.2137 20.6926 37.4389 21.2124 37.4389H24.3314L10.8386 21.8308L25.7778 5.00647Z"
+-      fill="#3EAE2B"
+-    />
+-    <path
+-      d="M12.059 37.4389L0.781128 24.3983V28.9479L7.60663 36.8307C7.94565 37.2136 8.42027 37.4389 8.94009 37.4389H12.059Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M18.2065 37.4389L0.781128 17.2812V21.8308L13.7541 36.8308C14.0931 37.2137 14.5677 37.4389 15.0876 37.4389H18.2065Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M31.2925 7.37134H34.2532V35.029H31.2925V7.37134ZM43.2936 15.4794H47.068L38.9316 24.7137L47.8816 35.0065H44.1073L35.1573 24.7137L43.2936 15.4794Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M51.6786 6.85327C52.7408 6.85327 53.5996 7.75417 53.5996 8.79021C53.5996 9.84877 52.7408 10.7046 51.6786 10.7046C50.5711 10.7046 49.7349 9.84877 49.7349 8.79021C49.7349 7.70913 50.5937 6.85327 51.6786 6.85327ZM50.1869 15.4794H53.1476V35.0289H50.1869V15.4794Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M57.6453 10.2091H60.606V15.4794H68.4486V18.2722H60.606V28.1596C60.606 31.5154 62.1203 32.5289 64.3804 32.5289C66.0077 32.5289 67.7253 32.1235 68.8554 31.6055L69.3074 34.3983C67.9965 34.9614 66.2111 35.3217 64.3804 35.3217C60.4252 35.3217 57.6227 33.4974 57.6227 28.137V10.2091H57.6453Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M79.0032 31.0199L84.337 15.4794H87.343L92.6768 30.9974L97.988 15.4794H101.039L94.2137 35.0289H91.1625L85.8287 20.074L80.4949 35.0289H77.4437L70.6182 15.4794H73.6694L79.0032 31.0199Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M117.109 34.2182C115.278 34.8713 112.385 35.3443 109.673 35.3443C104.949 35.3443 101.83 33.7677 101.83 29.3533C101.83 24.9839 104.972 23.3173 110.283 23.3173H114.148V21.4029C114.148 18.7227 112.272 17.8668 109.176 17.8668C106.893 17.8668 105.017 18.2722 103.797 18.7227L103.345 15.9975C104.927 15.547 106.915 15.1416 109.289 15.1416C113.764 15.1416 117.109 16.7632 117.109 21.6281V34.2182ZM114.148 25.6596H110.328C106.712 25.6596 104.791 26.5605 104.791 29.3083C104.791 32.056 106.712 32.7993 109.582 32.7993C111.006 32.7993 112.882 32.6416 114.148 32.2362V25.6596Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M121.651 16.2902C122.962 15.6821 125.403 15.1866 127.799 15.1866C129.336 15.1866 130.647 15.3443 131.709 15.6821L131.144 18.4299C130.534 18.1821 129.313 17.9794 127.889 17.9794C126.217 17.9794 125.335 18.1821 124.635 18.4975V35.0065H121.674V16.2902H121.651Z"
+-      fill="#0068C7"
+-    />
+-    <path
+-      d="M148.931 26.4253H135.528V26.583C135.528 30.7271 137.924 32.5515 141.992 32.5515C144.275 32.5515 146.671 31.9884 148.14 31.2226L148.592 34.0154C146.671 34.8713 144.365 35.3442 141.97 35.3442C135.709 35.3442 132.522 32.2136 132.522 25.2992C132.522 19.6686 134.602 15.1641 141.02 15.1641C146.196 15.1641 149.247 18.0469 149.247 23.7226C149.247 24.5334 149.157 25.5695 148.931 26.4253ZM135.528 23.9253H146.399V23.6776C146.399 19.5109 144.275 17.7992 140.953 17.7992C137.653 17.7992 135.551 19.4659 135.551 23.6776V23.9253H135.528Z"
+-      fill="#0068C7"
+-    />
+-    <line
+-      x1="170.559"
+-      y1="0.935669"
+-      x2="170.559"
+-      y2="42.4279"
+-      stroke="#CACACA"
+-    />
+-    <defs>
+-      <clipPath id="clip0_137_135">
+-        <rect
+-          width="34"
+-          height="33"
+-          fill="white"
+-          transform="translate(185.09 4.55261)"
+-        />
+-      </clipPath>
+-    </defs>
+-  </svg>
++<template>
++  <div class="d-flex align-center" style="gap: 8px">
++    <img src="../../assets/shscan-logo.png" alt="Al Shrooouk Scan" style="height: 30px; width: auto; background: #fff; border-radius: 6px; padding: 2px 4px" />
++    <span style="font-weight: 600; font-size: 15px; white-space: nowrap">Al Shrooouk Scan · Online Viewer</span>
++  </div>
+ </template>
+-
+-<script>
+-export default {
+-  name: 'volview-full-logo',
+-};
+-</script>
+diff --git a/src/components/icons/VolViewLogo.vue b/src/components/icons/VolViewLogo.vue
+index 6a0c0cb..3624729 100644
+--- a/src/components/icons/VolViewLogo.vue
++++ b/src/components/icons/VolViewLogo.vue
+@@ -1,78 +1,6 @@
+-<template svg>
+-  <svg
+-    width="178"
+-    height="41"
+-    viewBox="0 0 178 41"
+-    fill="none"
+-    xmlns="http://www.w3.org/2000/svg"
+-  >
+-    <g clip-path="url(#clip0_137_151)">
+-      <path
+-        d="M33.2403 22.3722C33.189 22.4501 33.1376 22.554 33.0606 22.632C31.7509 24.3989 29.0545 25.1265 25.6905 24.6588C25.5364 24.6328 25.3823 24.6068 25.2282 24.5808C23.1995 24.243 20.9911 23.4895 18.7826 22.3722C17.4729 21.6966 16.1633 20.8651 14.905 19.9037C13.5439 18.8643 12.3113 17.747 11.2584 16.5517C9.58926 14.7068 8.35663 12.758 7.56056 10.8871C6.25089 7.79499 6.25089 5.04066 7.53488 3.24774C8.84455 1.48082 11.4125 0.805225 14.6225 1.29893C16.2146 1.53278 17.9609 2.07845 19.7584 2.88396C21.5303 3.68948 23.3536 4.75483 25.1255 6.10601C28.6693 8.78239 31.34 12.0304 32.7781 15.0966C34.1648 18.0068 34.3445 20.6052 33.2403 22.3722Z"
+-        fill="#3EAE2B"
+-      />
+-      <path
+-        d="M33.2404 22.3721C33.189 22.4501 33.1377 22.554 33.0606 22.632C31.7509 24.3989 29.0546 25.1265 25.6905 24.6588C25.5364 24.6328 25.3824 24.6068 25.2283 24.5808C23.3537 24.191 21.1966 23.4895 18.7827 22.3721C17.473 21.6966 16.1633 20.8651 14.905 19.9036C13.544 18.8643 12.3114 17.7469 11.2585 16.5517C8.69052 12.2643 9.2298 6.9375 10.7706 5.24852C12.6452 3.16978 16.9337 2.70206 23.6361 7.24931C29.5425 11.2509 33.7796 19.0202 33.2404 22.3721Z"
+-        fill="black"
+-        fill-opacity="0.15"
+-      />
+-      <path
+-        d="M30.1331 18.0068C30.1331 18.5005 30.0304 18.9422 29.8506 19.332C29.7993 19.4619 29.7222 19.5918 29.6195 19.7217C29.2086 20.2934 28.541 20.6572 27.6422 20.8391C26.7434 21.021 25.6648 20.969 24.4579 20.7351C22.044 20.2674 19.2706 18.9942 16.831 17.1753C16.8053 17.1493 16.7539 17.1233 16.7283 17.0973C14.3657 15.2784 12.5681 13.0698 11.5666 11.017C10.5394 8.91229 10.4624 7.06741 11.3098 5.9241C12.1316 4.78079 13.9035 4.443 16.189 4.91071C18.4745 5.37843 21.1195 6.65166 23.5334 8.49654C25.9473 10.3414 27.9503 12.5761 29.1059 14.6808C29.7993 15.9021 30.1331 17.0454 30.1331 18.0068Z"
+-        fill="#3EAE2B"
+-      />
+-      <path
+-        d="M29.8506 19.3321C29.7992 19.462 29.7222 19.5919 29.6195 19.7218C29.2086 20.2935 28.5409 20.6573 27.6421 20.8391C26.7433 21.021 25.6648 20.9691 24.4578 20.7352C22.0439 20.2675 19.2705 18.9943 16.831 17.1754C16.8053 17.1494 16.7539 17.1234 16.7282 17.0974C13.8778 14.2132 13.7494 9.61394 14.905 8.31473C16.2146 7.14544 18.5258 7.17142 22.763 10.0297C26.3068 12.4462 29.5681 16.9415 29.8506 19.3321Z"
+-        fill="black"
+-        fill-opacity="0.15"
+-      />
+-      <path
+-        d="M26.3068 17.2533C26.1271 17.4871 25.8189 17.6431 25.3567 17.721C24.8944 17.773 24.3038 17.747 23.6105 17.5651C22.2494 17.2273 20.6059 16.4478 19.0651 15.2785C17.5243 14.1092 16.3431 12.784 15.6754 11.5627C15.3416 10.9651 15.1618 10.4194 15.0848 9.95171C15.0334 9.484 15.1105 9.17219 15.2902 8.93833C15.47 8.70447 15.7524 8.52258 16.2147 8.47061C16.6512 8.41864 17.2162 8.44463 17.8839 8.60053C18.5259 8.75644 19.2706 9.04227 20.0153 9.43203C20.76 9.82179 21.5561 10.3155 22.3008 10.9131C23.8416 12.0824 25.0742 13.4076 25.7932 14.6029C26.1528 15.2005 26.3582 15.7462 26.4352 16.2139C26.5379 16.7076 26.4609 17.0454 26.3068 17.2533Z"
+-        fill="#3EAE2B"
+-      />
+-      <path
+-        d="M27.0001 17.565C26.769 18.1627 26.5379 18.6044 26.1527 19.1501C23.8415 22.2682 19.0137 22.7099 15.624 20.1375C12.2343 17.565 11.3612 12.758 13.6467 9.63984C14.1089 9.06819 14.4427 8.67843 14.982 8.23669C14.8793 8.31465 14.8022 8.3926 14.7252 8.49654C14.3914 8.93827 14.3143 9.48394 14.3914 10.0556C14.4684 10.6272 14.6995 11.2769 15.059 11.9265C15.7781 13.2257 17.0364 14.6548 18.6542 15.8761C20.272 17.0973 21.9926 17.9288 23.482 18.2666C24.2267 18.4485 24.9201 18.5005 25.485 18.4225C26.0757 18.3446 26.5893 18.1107 26.9231 17.669C26.9488 17.669 26.9745 17.617 27.0001 17.565Z"
+-        fill="#0068C7"
+-      />
+-      <path
+-        d="M30.5696 19.7737C30.2615 20.7092 29.1316 22.4241 28.4382 23.2036C24.7917 28.1147 17.1391 28.9722 11.6436 24.8147C6.17386 20.7351 5.17235 12.4462 8.81888 7.50916C9.38383 6.75562 10.334 5.56034 11.1557 4.85876C10.976 5.01467 10.7962 5.19656 10.6421 5.40443C9.51223 6.93751 9.76903 9.17215 10.8219 11.3808C11.9004 13.6155 13.8264 15.954 16.3174 17.8509C17.5757 18.8123 18.911 19.6178 20.272 20.2414C21.6331 20.8651 22.9941 21.3328 24.2524 21.5666C25.5364 21.8265 26.7177 21.8784 27.7449 21.6706C28.7721 21.4627 29.6452 21.021 30.2358 20.2414C30.3899 20.0855 30.4926 19.9296 30.5696 19.7737Z"
+-        fill="#0068C7"
+-      />
+-      <path
+-        d="M34.2675 22.1643C33.7025 23.6974 32.6497 25.5942 31.1859 27.3092C25.2796 34.1171 15.059 35.3903 7.71463 29.8037C0.395901 24.2691 -1.32464 14.1092 3.47747 6.39189C4.55602 4.65094 6.63608 2.59819 7.86871 1.71472C7.84303 1.74071 7.14968 2.39031 6.8672 2.78008C5.30074 4.91078 5.42913 8.05488 6.79016 11.225C8.15119 14.447 10.7705 17.825 14.3914 20.5793C16.2146 21.9565 18.1149 23.0478 20.0152 23.8793C21.9155 24.7108 23.8158 25.2305 25.5621 25.4903C29.0545 25.958 32.1361 25.2824 33.7026 23.1517C33.9337 22.8399 34.1391 22.5021 34.2675 22.1643Z"
+-        fill="#0068C7"
+-      />
+-      <path
+-        d="M33.5228 14.7329C32.0077 11.5368 29.2343 8.18483 25.6135 5.4305C22.0183 2.67616 18.115 0.987188 14.7509 0.467503C13.544 0.285613 12.3627 0.259629 11.3098 0.38955C11.2585 0.38955 11.2071 0.38955 11.1814 0.415535C11.0274 0.441519 10.8476 0.467503 10.6935 0.493487C10.6679 0.493487 10.6422 0.493487 10.5908 0.519472C10.4881 0.545456 10.3854 0.57144 10.3083 0.597424C10.2056 0.623409 10.1286 0.649393 10.0515 0.675377C9.9745 0.701361 9.89746 0.727346 9.82042 0.75333C9.07571 0.987188 8.40803 1.35097 7.8174 1.81868C7.45788 2.07853 7.14973 2.39034 6.86725 2.7801C5.30078 4.91081 5.42918 8.0549 6.79021 11.225C8.15124 14.447 10.7706 17.825 14.3914 20.5793C16.2147 21.9565 18.115 23.0478 20.0153 23.8793C21.9156 24.7108 23.8159 25.2305 25.5621 25.4903C29.0546 25.9581 32.1361 25.2825 33.7026 23.1518C33.9337 22.8659 34.1135 22.5281 34.2675 22.1903C35.2177 20.1116 34.8068 17.4352 33.5228 14.7329ZM33.2404 22.3722C33.189 22.4502 33.1376 22.5541 33.0606 22.6321C31.7509 24.399 29.0546 25.1266 25.6905 24.6588C25.5364 24.6329 25.3824 24.6069 25.2283 24.5809C23.1996 24.2431 20.9911 23.4895 18.7827 22.3722C17.473 21.6966 16.1633 20.8651 14.905 19.9037C13.544 18.8644 12.3114 17.747 11.2585 16.5518C9.5893 14.7069 8.35667 12.7581 7.5606 10.8872C6.25093 7.79506 6.25093 5.04073 7.53492 3.24782C8.84459 1.48089 11.4126 0.805298 14.6225 1.299C16.2147 1.53286 17.9609 2.07853 19.7585 2.88404C21.5304 3.68955 23.3537 4.7549 25.1256 6.10609C28.6694 8.78246 31.3401 12.0305 32.7781 15.0966C34.1648 18.0069 34.3446 20.6053 33.2404 22.3722Z"
+-        fill="white"
+-      />
+-      <path
+-        d="M29.8506 14.2651C28.6436 12.0564 26.5636 9.71781 24.0726 7.82096C21.5817 5.92411 18.834 4.59891 16.3944 4.10521C14.5711 3.71545 12.8506 3.7934 11.618 4.54694C11.5923 4.54694 11.5666 4.57293 11.5666 4.57293C11.5666 4.57293 11.5409 4.57293 11.5409 4.59891C11.4896 4.6249 11.4382 4.65088 11.4125 4.70285C11.3355 4.75482 11.2584 4.83277 11.1814 4.88474C11.0016 5.04065 10.8219 5.22254 10.6678 5.43041C9.5379 6.96348 9.79469 9.19813 10.8476 11.4068C11.9261 13.6414 13.8521 15.98 16.343 17.8769C17.6013 18.8383 18.9367 19.6438 20.2977 20.2674C21.6587 20.891 23.0198 21.3588 24.2781 21.5926C25.5621 21.8525 26.7433 21.9044 27.7705 21.6966C28.7977 21.4887 29.6708 21.0469 30.2615 20.2674C30.3642 20.1375 30.4669 19.9816 30.5439 19.8257C31.3657 18.2666 30.9291 16.2399 29.8506 14.2651ZM29.6195 19.7217C29.2086 20.2934 28.5409 20.6572 27.6421 20.8391C26.7433 21.021 25.6648 20.969 24.4578 20.7351C22.0439 20.2674 19.2705 18.9942 16.8309 17.1753C14.4171 15.3564 12.5681 13.0958 11.5666 11.017C10.5394 8.9123 10.4624 7.06742 11.3098 5.92411C12.1316 4.7808 13.9035 4.44301 16.189 4.91072C18.4745 5.37844 21.1195 6.65167 23.5334 8.49655C25.9473 10.3414 27.9503 12.5761 29.1059 14.6808C29.7992 15.928 30.1331 17.0714 30.1331 18.0328C30.1331 18.6824 29.979 19.254 29.6195 19.7217Z"
+-        fill="white"
+-      />
+-      <path
+-        fill-rule="evenodd"
+-        clip-rule="evenodd"
+-        d="M27.2056 16.1099C27.1029 15.5382 26.8461 14.8886 26.4609 14.239C25.6905 12.9398 24.4065 11.5367 22.7887 10.3154C21.1965 9.09415 19.5274 8.23667 18.0893 7.89887C17.3703 7.71698 16.7026 7.66501 16.1376 7.74296C15.7011 7.79493 15.2902 7.97682 14.982 8.23667C14.8793 8.31462 14.8023 8.39257 14.7252 8.49651C14.3914 8.93824 14.3144 9.48391 14.3914 10.0556C14.4684 10.6272 14.6996 11.2768 15.0591 11.9264C15.7781 13.2256 17.0364 14.6548 18.6542 15.876C20.2721 17.0973 21.9926 17.9288 23.482 18.2666C24.2268 18.4485 24.9201 18.5004 25.4851 18.4225C26.0757 18.3445 26.5893 18.1107 26.9231 17.6689C26.9488 17.617 26.9745 17.591 27.0002 17.539C27.2313 17.1493 27.2826 16.6296 27.2056 16.1099ZM26.3068 17.2532C26.1271 17.4871 25.8189 17.643 25.3567 17.7209C24.8944 17.7729 24.3038 17.7469 23.6104 17.565C22.2494 17.2272 20.6059 16.4477 19.0651 15.2784C17.5243 14.1091 16.3431 12.7839 15.6754 11.5626C15.3416 10.965 15.1618 10.4193 15.0848 9.95163C15.0334 9.48391 15.1104 9.1721 15.2902 8.93824C15.47 8.70438 15.7524 8.52249 16.2147 8.47052C16.6512 8.41855 17.2162 8.44454 17.8839 8.60044C18.5259 8.75635 19.2706 9.04218 20.0153 9.43194C20.76 9.8217 21.5561 10.3154 22.3008 10.913C23.8416 12.0823 25.0742 13.4075 25.7932 14.6028C26.1527 15.2004 26.3582 15.7461 26.4352 16.2138C26.5379 16.7075 26.4609 17.0453 26.3068 17.2532Z"
+-        fill="white"
+-      />
+-    </g>
+-    <path
+-      d="M61.9829 5.52224H58.8629L50.9429 26.9222L43.0629 5.52224H39.9429L49.3829 30.8022H52.5429L61.9829 5.52224ZM76.9417 21.1622C76.9417 25.5622 75.8217 28.3622 71.3817 28.3622C66.9417 28.3622 65.7817 25.5622 65.7817 21.1622C65.7817 16.7622 66.9417 13.9622 71.3817 13.9622C75.8217 13.9622 76.9417 16.7622 76.9417 21.1622ZM71.3817 31.1222C77.4617 31.1222 79.8617 27.0422 79.8617 21.1622C79.8617 15.1622 77.5817 11.2022 71.3817 11.2022C65.2617 11.2022 62.8617 15.2822 62.8617 21.1622C62.8617 27.1622 65.1417 31.1222 71.3817 31.1222ZM84.4373 25.4422C84.4373 29.6022 86.5173 31.0422 89.2773 31.0422C90.3173 31.0422 91.1173 30.8822 91.6373 30.6422L91.2373 28.0022C90.7973 28.2022 90.1973 28.2822 89.5173 28.2822C88.1573 28.2822 87.3573 27.6422 87.3573 25.0022V3.52224H84.4373V25.4422Z"
+-      fill="#3EAE2B"
+-    />
+-    <path
+-      d="M114.952 5.52224H111.832L103.912 26.9222L96.0317 5.52224H92.9117L102.352 30.8022H105.512L114.952 5.52224ZM118.196 30.8022H121.116V11.5222H118.196V30.8022ZM117.756 4.92225C117.756 5.96224 118.596 6.80225 119.676 6.80225C120.716 6.80225 121.556 5.96224 121.556 4.92225C121.556 3.88224 120.716 3.00224 119.676 3.00224C118.596 3.00224 117.756 3.84225 117.756 4.92225ZM142.306 19.6422C142.306 14.0422 139.306 11.2022 134.226 11.2022C127.906 11.2022 125.866 15.6422 125.866 21.2022C125.866 28.0422 128.986 31.1222 135.146 31.1222C137.506 31.1222 139.786 30.6422 141.666 29.8022L141.226 27.0422C139.786 27.8022 137.426 28.3622 135.186 28.3622C131.186 28.3622 128.826 26.5622 128.826 22.4822V22.3222H141.986C142.226 21.4822 142.306 20.4422 142.306 19.6422ZM128.826 19.6022C128.826 15.4422 130.906 13.8022 134.146 13.8022C137.426 13.8022 139.506 15.4822 139.506 19.6022V19.8422H128.826V19.6022ZM148.339 11.5222H145.339L152.059 30.8022H155.059L160.299 16.0422L165.539 30.8022H168.539L175.259 11.5222H172.259L167.019 26.8422L161.779 11.5222H158.819L153.579 26.8422L148.339 11.5222Z"
+-      fill="#0068C7"
+-    />
+-    <defs>
+-      <clipPath id="clip0_137_151">
+-        <rect
+-          width="34"
+-          height="33"
+-          fill="white"
+-          transform="translate(0.781128 0.311523)"
+-        />
+-      </clipPath>
+-    </defs>
+-  </svg>
++<template>
++  <div class="d-flex align-center" style="gap: 8px">
++    <img src="../../assets/shscan-logo.png" alt="Al Shrooouk Scan" style="height: 30px; width: auto; background: #fff; border-radius: 6px; padding: 2px 4px" />
++    <span style="font-weight: 600; font-size: 15px; white-space: nowrap">Al Shrooouk Scan · Online Viewer</span>
++  </div>
+ </template>
+diff --git a/src/components/tools/ResetViews.vue b/src/components/tools/ResetViews.vue
+index b9b2c90..5e65570 100644
+--- a/src/components/tools/ResetViews.vue
++++ b/src/components/tools/ResetViews.vue
+@@ -7,6 +7,9 @@ const clickEvent = createEventHook<void>();
+ export function useResetViewsEvents() {
+   return { onClick: clickEvent.on };
+ }
++export function triggerResetViews() {
++  clickEvent.trigger();
++}
+ 
+ export default defineComponent({
+   components: {
+diff --git a/src/config.ts b/src/config.ts
+index 0730fcf..7ed3245 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -189,12 +189,12 @@ export const TOOL_COLORS = [
+ export const STROKE_WIDTH_ANNOTATION_TOOL_DEFAULT = 1;
+ 
+ export const DEFAULT_PRESET_BY_MODALITY: Record<string, string> = {
+-  CT: 'CT-AAA',
++  CT: 'CBCT-Dental',
+   MR: 'CT-Coronary-Arteries-2',
+   US: 'US-Fetal',
+ };
+ 
+-export const DEFAULT_PRESET = 'CT-AAA';
++export const DEFAULT_PRESET = 'CBCT-Dental';
+ 
+ // Keyboard shortcuts/hotkeys. Can add modifiers: 'Shift+Ctrl+a'
+ export const ACTION_TO_KEY = {
+diff --git a/src/core/streaming/dicomChunkImage.ts b/src/core/streaming/dicomChunkImage.ts
+index 566f5c1..be2daba 100644
+--- a/src/core/streaming/dicomChunkImage.ts
++++ b/src/core/streaming/dicomChunkImage.ts
+@@ -1,3 +1,6 @@
++import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
++import { useCropStore } from '@/src/store/tools/crop';
++import { triggerResetViews } from '@/src/components/tools/ResetViews.vue';
+ import {
+   readDicomSegmentation,
+   ReadOverlappingSegmentationMeta,
+@@ -580,6 +583,47 @@ export default class DicomChunkImage
+     const offset = dims[0] * dims[1] * componentCount * sliceIndex;
+     pixelData.set(chunkData, offset);
+ 
++    // ShScan: a single multi-frame file (Enhanced CT, e.g. a Romexis export)
++    // can store its frames top-down. The allocator assumes the frames run
++    // along +normal, which mirrors coronal/sagittal/3D. ITK reads the real
++    // per-frame geometry, so take origin, spacing and direction from it.
++    if (this.chunks.length === 1 && (result.image.size[2] ?? 1) > 1) {
++      const im = result.image as any;
++      const d = im.direction?.data ?? im.direction;
++      if (d && d.length === 9 && im.origin && im.spacing) {
++        const dir = new Array(9);
++        for (let r = 0; r < 3; r++)
++          for (let c = 0; c < 3; c++) dir[c + r * 3] = d[r + c * 3];
++        // ITK may report a negative spacing for frames stored top-down;
++        // keep spacing positive and flip that axis of the direction instead.
++        const sp = Array.from(im.spacing as ArrayLike<number>);
++        for (let a = 0; a < 3; a++)
++          if (sp[a] < 0) {
++            sp[a] = -sp[a];
++            for (let k = 0; k < 3; k++) dir[a * 3 + k] = -dir[a * 3 + k];
++          }
++        // Swap in a new vtkImageData sharing the same scalars so the
++        // metadata watchers (and the views) pick up the new geometry.
++        const prev = this.vtkImageData.value;
++        const next = vtkImageData.newInstance();
++        next.setExtent(prev.getExtent());
++        next.setOrigin(Array.from(im.origin) as any);
++        next.setSpacing(sp as any);
++        next.setDirection(dir as any);
++        next.getPointData().setScalars(prev.getPointData().getScalars());
++        this.vtkImageData.value = next;
++        // Crop planes were seeded from the placeholder geometry; re-seed
++        // them from the real one or the 3D view only shows a sliver.
++        const refit = () => {
++          const crop = useCropStore();
++          Object.keys(crop.croppingByImageID).forEach((id) => crop.resetCropping(id));
++          triggerResetViews();
++        };
++        setTimeout(refit, 50);
++        setTimeout(refit, 800);
++      }
++    }
++
+     const rangeAlreadyInitialized = this.chunkStatus.some(
+       (status) => status === ChunkStatus.Loaded
+     );
+diff --git a/src/io/zip.ts b/src/io/zip.ts
+index e4a05af..68c8051 100644
+--- a/src/io/zip.ts
++++ b/src/io/zip.ts
+@@ -8,7 +8,11 @@ export async function extractFilesFromZip(zipFile: File): Promise<FileEntry[]> {
+   const paths: string[] = [];
+   zip.forEach((relPath, file) => {
+     const fileName = basename(file.name);
+-    if (!file.dir && fileName.toLowerCase() !== 'license') {
++    // ShScan: Romexis exports carry .txt/.xml/.ini descriptors next to the
++    // .dcm; they are not images, so skip them instead of showing errors.
++    const lower = fileName.toLowerCase();
++    const descriptor = /\.(txt|xml|ini|htm|html|pdf|exe|dll|inf|json)$/.test(lower) || lower.startsWith('.') || lower === 'thumbs.db';
++    if (!file.dir && lower !== 'license' && !descriptor) {
+       const path = dirname(file.name);
+       const fileEntry = zip.file(file.name);
+       if (fileEntry) {
+diff --git a/src/vtk/ColorMaps.ts b/src/vtk/ColorMaps.ts
+index c467774..167be52 100644
+--- a/src/vtk/ColorMaps.ts
++++ b/src/vtk/ColorMaps.ts
+@@ -21,6 +21,7 @@ const GroupedPresets = [
+   {
+     group: 'CT',
+     presets: [
++      'CBCT-Dental',
+       'CT-AAA',
+       'CT-AAA2',
+       'CT-Bone',
+diff --git a/src/vtk/MedicalColorPresets.json b/src/vtk/MedicalColorPresets.json
+index db8dae4..4ec84a8 100644
+--- a/src/vtk/MedicalColorPresets.json
++++ b/src/vtk/MedicalColorPresets.json
+@@ -1,1528 +1 @@
+-[
+-  {
+-    "Name": "CT-AAA",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      143.556,
+-      0.0,
+-      166.222,
+-      0.686275,
+-      214.389,
+-      0.696078,
+-      419.736,
+-      0.833333,
+-      3071.0,
+-      0.803922
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      143.556,
+-      0.615686,
+-      0.356863,
+-      0.184314,
+-      166.222,
+-      0.882353,
+-      0.603922,
+-      0.290196,
+-      214.389,
+-      1.0,
+-      1.0,
+-      1.0,
+-      419.736,
+-      1.0,
+-      0.937033,
+-      0.954531,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      143.556,
+-      419.736
+-    ]
+-  },
+-  {
+-    "Name": "CT-AAA2",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      129.542,
+-      0.0,
+-      145.244,
+-      0.166667,
+-      157.02,
+-      0.5,
+-      169.918,
+-      0.627451,
+-      395.575,
+-      0.8125,
+-      1578.73,
+-      0.8125,
+-      3071.0,
+-      0.8125
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      129.542,
+-      0.54902,
+-      0.25098,
+-      0.14902,
+-      145.244,
+-      0.6,
+-      0.627451,
+-      0.843137,
+-      157.02,
+-      0.890196,
+-      0.47451,
+-      0.6,
+-      169.918,
+-      0.992157,
+-      0.870588,
+-      0.392157,
+-      395.575,
+-      1.0,
+-      0.886275,
+-      0.658824,
+-      1578.73,
+-      1.0,
+-      0.829256,
+-      0.957922,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      0.0,
+-      1600.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-Bone",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -16.4458,
+-      0.0,
+-      641.385,
+-      0.715686,
+-      3071.0,
+-      0.705882
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -16.4458,
+-      0.729412,
+-      0.254902,
+-      0.301961,
+-      641.385,
+-      0.905882,
+-      0.815686,
+-      0.552941,
+-      3071.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -16.4458,
+-      641.385
+-    ]
+-  },
+-  {
+-    "Name": "CT-Bones",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -1000.0,
+-      0.0,
+-      152.19,
+-      0.0,
+-      278.93,
+-      0.190476,
+-      952.0,
+-      0.2
+-    ],
+-    "RGBPoints": [
+-      -1000.0,
+-      0.3,
+-      0.3,
+-      1.0,
+-      -488.0,
+-      0.3,
+-      1.0,
+-      0.3,
+-      463.28,
+-      1.0,
+-      0.0,
+-      0.0,
+-      659.15,
+-      1.0,
+-      0.912535,
+-      0.0374849,
+-      953.0,
+-      1.0,
+-      0.3,
+-      0.3
+-    ],
+-    "EffectiveRange": [
+-      152.19,
+-      952.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-Cardiac",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -77.6875,
+-      0.0,
+-      94.9518,
+-      0.285714,
+-      179.052,
+-      0.553571,
+-      260.439,
+-      0.848214,
+-      3071.0,
+-      0.875
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -77.6875,
+-      0.54902,
+-      0.25098,
+-      0.14902,
+-      94.9518,
+-      0.882353,
+-      0.603922,
+-      0.290196,
+-      179.052,
+-      1.0,
+-      0.937033,
+-      0.954531,
+-      260.439,
+-      0.615686,
+-      0.0,
+-      0.0,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -77.6875,
+-      260.439
+-    ]
+-  },
+-  {
+-    "Name": "CT-Cardiac2",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      42.8964,
+-      0.0,
+-      163.488,
+-      0.428571,
+-      277.642,
+-      0.776786,
+-      1587.0,
+-      0.754902,
+-      3071.0,
+-      0.754902
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      42.8964,
+-      0.54902,
+-      0.25098,
+-      0.14902,
+-      163.488,
+-      0.917647,
+-      0.639216,
+-      0.0588235,
+-      277.642,
+-      1.0,
+-      0.878431,
+-      0.623529,
+-      1587.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      42.8964,
+-      1587.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-Cardiac3",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -86.9767,
+-      0.0,
+-      45.3791,
+-      0.169643,
+-      139.919,
+-      0.589286,
+-      347.907,
+-      0.607143,
+-      1224.16,
+-      0.607143,
+-      3071.0,
+-      0.616071
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -86.9767,
+-      0.0,
+-      0.25098,
+-      1.0,
+-      45.3791,
+-      1.0,
+-      0.0,
+-      0.0,
+-      139.919,
+-      1.0,
+-      0.894893,
+-      0.894893,
+-      347.907,
+-      1.0,
+-      1.0,
+-      0.25098,
+-      1224.16,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -86.9767,
+-      1224.16
+-    ]
+-  },
+-  {
+-    "Name": "CT-Chest-Contrast-Enhanced",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      67.0106,
+-      0.0,
+-      251.105,
+-      0.446429,
+-      439.291,
+-      0.625,
+-      3071.0,
+-      0.616071
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      67.0106,
+-      0.54902,
+-      0.25098,
+-      0.14902,
+-      251.105,
+-      0.882353,
+-      0.603922,
+-      0.290196,
+-      439.291,
+-      1.0,
+-      0.937033,
+-      0.954531,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      67.0106,
+-      439.291
+-    ]
+-  },
+-  {
+-    "Name": "CT-Chest-Vessels",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -1278.35,
+-      0.0,
+-      22.8277,
+-      0.428571,
+-      439.291,
+-      0.625,
+-      3071.0,
+-      0.616071
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -1278.35,
+-      0.54902,
+-      0.25098,
+-      0.14902,
+-      22.8277,
+-      0.882353,
+-      0.603922,
+-      0.290196,
+-      439.291,
+-      1.0,
+-      0.937033,
+-      0.954531,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -1278.35,
+-      439.291
+-    ]
+-  },
+-  {
+-    "Name": "CT-Coronary-Arteries",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      136.47,
+-      0.0,
+-      159.215,
+-      0.258929,
+-      318.43,
+-      0.571429,
+-      478.693,
+-      0.776786,
+-      3661.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      136.47,
+-      0.0,
+-      0.0,
+-      0.0,
+-      159.215,
+-      0.159804,
+-      0.159804,
+-      0.159804,
+-      318.43,
+-      0.764706,
+-      0.764706,
+-      0.764706,
+-      478.693,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      136.47,
+-      478.693
+-    ]
+-  },
+-  {
+-    "Name": "CT-Coronary-Arteries-2",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      142.677,
+-      0.0,
+-      145.016,
+-      0.116071,
+-      192.174,
+-      0.5625,
+-      217.24,
+-      0.776786,
+-      384.347,
+-      0.830357,
+-      3661.0,
+-      0.830357
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      142.677,
+-      0.0,
+-      0.0,
+-      0.0,
+-      145.016,
+-      0.615686,
+-      0.0,
+-      0.0156863,
+-      192.174,
+-      0.909804,
+-      0.454902,
+-      0.0,
+-      217.24,
+-      0.972549,
+-      0.807843,
+-      0.611765,
+-      384.347,
+-      0.909804,
+-      0.909804,
+-      1.0,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      142.677,
+-      384.347
+-    ]
+-  },
+-  {
+-    "Name": "CT-Coronary-Arteries-3",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      128.643,
+-      0.0,
+-      129.982,
+-      0.0982143,
+-      173.636,
+-      0.669643,
+-      255.884,
+-      0.857143,
+-      584.878,
+-      0.866071,
+-      3661.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      128.643,
+-      0.0,
+-      0.0,
+-      0.0,
+-      129.982,
+-      0.615686,
+-      0.0,
+-      0.0156863,
+-      173.636,
+-      0.909804,
+-      0.454902,
+-      0.0,
+-      255.884,
+-      0.886275,
+-      0.886275,
+-      0.886275,
+-      584.878,
+-      0.968627,
+-      0.968627,
+-      0.968627,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      128.643,
+-      584.878
+-    ]
+-  },
+-  {
+-    "Name": "CT-Cropped-Volume-Bone",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      -451.0,
+-      0.0,
+-      -450.0,
+-      1.0,
+-      1050.0,
+-      1.0,
+-      3661.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -451.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -450.0,
+-      0.0556356,
+-      0.0556356,
+-      0.0556356,
+-      1050.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -451.0,
+-      1050.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-Fat",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -1000.0,
+-      0.0,
+-      -100.0,
+-      0.0,
+-      -99.0,
+-      0.15,
+-      -60.0,
+-      0.15,
+-      -59.0,
+-      0.0,
+-      101.2,
+-      0.0,
+-      952.0,
+-      0.0
+-    ],
+-    "RGBPoints": [
+-      -1000.0,
+-      0.3,
+-      0.3,
+-      1.0,
+-      -497.5,
+-      0.3,
+-      1.0,
+-      0.3,
+-      -99.0,
+-      0.0,
+-      0.0,
+-      1.0,
+-      -76.946,
+-      0.0,
+-      1.0,
+-      0.0,
+-      -65.481,
+-      0.835431,
+-      0.888889,
+-      0.0165387,
+-      83.89,
+-      1.0,
+-      0.0,
+-      0.0,
+-      463.28,
+-      1.0,
+-      0.0,
+-      0.0,
+-      659.15,
+-      1.0,
+-      0.912535,
+-      0.0374849,
+-      2952.0,
+-      1.0,
+-      0.300267,
+-      0.299886
+-    ],
+-    "EffectiveRange": [
+-      -100.0,
+-      101.2
+-    ]
+-  },
+-  {
+-    "Name": "CT-Liver-Vasculature",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      149.113,
+-      0.0,
+-      157.884,
+-      0.482143,
+-      339.96,
+-      0.660714,
+-      388.526,
+-      0.830357,
+-      1197.95,
+-      0.839286,
+-      3661.0,
+-      0.848214
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      149.113,
+-      0.0,
+-      0.0,
+-      0.0,
+-      157.884,
+-      0.501961,
+-      0.25098,
+-      0.0,
+-      339.96,
+-      0.695386,
+-      0.59603,
+-      0.36886,
+-      388.526,
+-      0.854902,
+-      0.85098,
+-      0.827451,
+-      1197.95,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      149.113,
+-      1197.95
+-    ]
+-  },
+-  {
+-    "Name": "CT-Lung",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -1000.0,
+-      0.0,
+-      -600.0,
+-      0.0,
+-      -599.0,
+-      0.15,
+-      -400.0,
+-      0.15,
+-      -399.0,
+-      0.0,
+-      2952.0,
+-      0.0
+-    ],
+-    "RGBPoints": [
+-      -1000.0,
+-      0.3,
+-      0.3,
+-      1.0,
+-      -600.0,
+-      0.0,
+-      0.0,
+-      1.0,
+-      -530.0,
+-      0.134704,
+-      0.781726,
+-      0.0724558,
+-      -460.0,
+-      0.929244,
+-      1.0,
+-      0.109473,
+-      -400.0,
+-      0.888889,
+-      0.254949,
+-      0.0240258,
+-      2952.0,
+-      1.0,
+-      0.3,
+-      0.3
+-    ],
+-    "EffectiveRange": [
+-      -600.0,
+-      -399.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-MIP",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -637.62,
+-      0.0,
+-      700.0,
+-      1.0,
+-      3071.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -637.62,
+-      1.0,
+-      1.0,
+-      1.0,
+-      700.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3071.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -637.62,
+-      700.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-Muscle",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -155.407,
+-      0.0,
+-      217.641,
+-      0.676471,
+-      419.736,
+-      0.833333,
+-      3071.0,
+-      0.803922
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -155.407,
+-      0.54902,
+-      0.25098,
+-      0.14902,
+-      217.641,
+-      0.882353,
+-      0.603922,
+-      0.290196,
+-      419.736,
+-      1.0,
+-      0.937033,
+-      0.954531,
+-      3071.0,
+-      0.827451,
+-      0.658824,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -155.407,
+-      419.736
+-    ]
+-  },
+-  {
+-    "Name": "CT-Pulmonary-Arteries",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      -568.625,
+-      0.0,
+-      -364.081,
+-      0.0714286,
+-      -244.813,
+-      0.401786,
+-      18.2775,
+-      0.607143,
+-      447.798,
+-      0.830357,
+-      3592.73,
+-      0.839286
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -568.625,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -364.081,
+-      0.396078,
+-      0.301961,
+-      0.180392,
+-      -244.813,
+-      0.611765,
+-      0.352941,
+-      0.0705882,
+-      18.2775,
+-      0.843137,
+-      0.0156863,
+-      0.156863,
+-      447.798,
+-      0.752941,
+-      0.752941,
+-      0.752941,
+-      3592.73,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -568.625,
+-      447.798
+-    ]
+-  },
+-  {
+-    "Name": "CT-Soft-Tissue",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      -167.01,
+-      0.0,
+-      -160.0,
+-      1.0,
+-      240.0,
+-      1.0,
+-      3661.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -167.01,
+-      0.0,
+-      0.0,
+-      0.0,
+-      -160.0,
+-      0.0556356,
+-      0.0556356,
+-      0.0556356,
+-      240.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -167.01,
+-      240.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-Air",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.705882,
+-      -900.0,
+-      0.715686,
+-      -500.0,
+-      0.0,
+-      3071.0,
+-      0.0
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      -900.0,
+-      0.2,
+-      1.0,
+-      1.0,
+-      -500.0,
+-      0.3,
+-      0.3,
+-      1.0,
+-      3071.0,
+-      0.0,
+-      0.0,
+-      0.0
+-    ],
+-    "EffectiveRange": [
+-      -1200.0,
+-      -200.0
+-    ]
+-  },
+-  {
+-    "Name": "CT-X-ray",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -3024.0,
+-      0.0,
+-      -200.0,
+-      0.0,
+-      1500.0,
+-      0.05,
+-      3071.0,
+-      0.05
+-    ],
+-    "RGBPoints": [
+-      -3024.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      3071.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      -250.0,
+-      1550.0
+-    ]
+-  },
+-  {
+-    "Name": "MR-Angio",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -2048.0,
+-      0.0,
+-      151.354,
+-      0.0,
+-      158.279,
+-      0.4375,
+-      190.112,
+-      0.580357,
+-      200.873,
+-      0.732143,
+-      3661.0,
+-      0.741071
+-    ],
+-    "RGBPoints": [
+-      -2048.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      151.354,
+-      0.0,
+-      0.0,
+-      0.0,
+-      158.279,
+-      0.74902,
+-      0.376471,
+-      0.0,
+-      190.112,
+-      1.0,
+-      0.866667,
+-      0.733333,
+-      200.873,
+-      0.937255,
+-      0.937255,
+-      0.937255,
+-      3661.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      151.354,
+-      200.873
+-    ]
+-  },
+-  {
+-    "Name": "MR-Default",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      0.0,
+-      0.0,
+-      20.0,
+-      0.0,
+-      40.0,
+-      0.15,
+-      120.0,
+-      0.3,
+-      220.0,
+-      0.375,
+-      1024.0,
+-      0.5
+-    ],
+-    "RGBPoints": [
+-      0.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      20.0,
+-      0.168627,
+-      0.0,
+-      0.0,
+-      40.0,
+-      0.403922,
+-      0.145098,
+-      0.0784314,
+-      120.0,
+-      0.780392,
+-      0.607843,
+-      0.380392,
+-      220.0,
+-      0.847059,
+-      0.835294,
+-      0.788235,
+-      1024.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      0.0,
+-      220.0
+-    ]
+-  },
+-  {
+-    "Name": "MR-MIP",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      0.0,
+-      0.0,
+-      98.3725,
+-      0.0,
+-      416.637,
+-      1.0,
+-      2800.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      0.0,
+-      1.0,
+-      1.0,
+-      1.0,
+-      98.3725,
+-      1.0,
+-      1.0,
+-      1.0,
+-      416.637,
+-      1.0,
+-      1.0,
+-      1.0,
+-      2800.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      0.0,
+-      416.637
+-    ]
+-  },
+-  {
+-    "Name": "MR-T2-Brain",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      0.0,
+-      0.0,
+-      36.05,
+-      0.0,
+-      218.302,
+-      0.171429,
+-      412.406,
+-      1.0,
+-      641.0,
+-      1.0
+-    ],
+-    "RGBPoints": [
+-      0.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      98.7223,
+-      0.956863,
+-      0.839216,
+-      0.192157,
+-      412.406,
+-      0.0,
+-      0.592157,
+-      0.807843,
+-      641.0,
+-      1.0,
+-      1.0,
+-      1.0
+-    ],
+-    "EffectiveRange": [
+-      0.0,
+-      412.406
+-    ]
+-  },
+-  {
+-    "Name": "DTI-FA-Brain",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      0.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      0.3501,
+-      0.0158,
+-      0.49379,
+-      0.7619,
+-      0.6419,
+-      1.0,
+-      0.992,
+-      1.0,
+-      0.995,
+-      0.0,
+-      0.995,
+-      0.0
+-    ],
+-    "RGBPoints": [
+-      0.0,
+-      1.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      1.0,
+-      0.0,
+-      0.0,
+-      0.24974,
+-      0.4941,
+-      1.0,
+-      0.0,
+-      0.49949,
+-      0.0,
+-      0.9882,
+-      1.0,
+-      0.7492,
+-      0.51764,
+-      0.0,
+-      1.0,
+-      0.995,
+-      1.0,
+-      0.0,
+-      0.0,
+-      0.995,
+-      1.0,
+-      0.0,
+-      0.0
+-    ],
+-    "EffectiveRange": [
+-      0.0,
+-      1.0
+-    ]
+-  },
+-  {
+-    "Name": "US-Fetal",
+-    "NanColor": [
+-      1,
+-      1,
+-      0
+-    ],
+-    "ColorSpace": "RGB",
+-    "AbsoluteRange": true,
+-    "OpacityPoints": [
+-      -10.0,
+-      0.0,
+-      0.0,
+-      0.0,
+-      270.0,
+-      0.8
+-    ],
+-    "RGBPoints": [
+-      -10.0,
+-      0.325,
+-      0.153,
+-      0.153,
+-      74.0,
+-      0.474,
+-      0.392,
+-      0.302,
+-      136.0,
+-      0.718,
+-      0.510,
+-      0.443,
+-      270.0,
+-      0.760,
+-      0.440,
+-      0.530
+-    ],
+-    "EffectiveRange": [
+-      -10.0,
+-      270.0
+-    ]
+-  },
+-  {
+-    "ColorSpace" : "Lab",
+-    "Name" : "2hot",
+-    "RGBPoints" : [
+-        -1,
+-        0.0416667,
+-        0,
+-        0,
+-        -0.873016,
+-        0.208333,
+-        0,
+-        0,
+-        -0.746032,
+-        0.375,
+-        0,
+-        0,
+-        -0.619048,
+-        0.541667,
+-        0,
+-        0,
+-        -0.492063,
+-        0.708333,
+-        0,
+-        0,
+-        -0.365079,
+-        0.854137,
+-        0,
+-        0,
+-        -0.238095,
+-        0.937488,
+-        0.039062,
+-        0,
+-        -0.111111,
+-        1,
+-        0.208333,
+-        0,
+-        0.015873,
+-        1,
+-        0.375,
+-        0,
+-        0.142857,
+-        1,
+-        0.541667,
+-        0,
+-        0.269841,
+-        1,
+-        0.708333,
+-        0,
+-        0.396825,
+-        1,
+-        0.858805,
+-        0.03125,
+-        0.52381,
+-        1,
+-        0.947392,
+-        0.15625,
+-        0.650794,
+-        1,
+-        1,
+-        0.3125,
+-        0.777778,
+-        1,
+-        1,
+-        0.5625,
+-        0.904762,
+-        1,
+-        1,
+-        0.8125,
+-        1,
+-        1,
+-        1,
+-        1
+-    ]
+-   },
+-   {
+-      "ColorSpace" : "HSV",
+-      "Name" : "Blue to Red Rainbow",
+-      "NanColor" : [ 0.498039215686, 0.498039215686, 0.498039215686 ],
+-      "RGBPoints" : [ 0, 0, 0, 1, 1, 1, 0, 0 ]
+-   }
+-]
++[{"Name": "CBCT-Dental", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, 150.0, 0.0, 450.0, 0.35, 1100.0, 0.85, 3071.0, 0.95], "RGBPoints": [-3024.0, 0, 0, 0, 150.0, 0.62, 0.42, 0.32, 450.0, 0.9, 0.82, 0.68, 1100.0, 0.98, 0.96, 0.9, 3071.0, 1, 1, 1], "EffectiveRange": [150.0, 1100.0]}, {"Name": "CT-AAA", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, 143.556, 0.0, 166.222, 0.686275, 214.389, 0.696078, 419.736, 0.833333, 3071.0, 0.803922], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, 143.556, 0.615686, 0.356863, 0.184314, 166.222, 0.882353, 0.603922, 0.290196, 214.389, 1.0, 1.0, 1.0, 419.736, 1.0, 0.937033, 0.954531, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [143.556, 419.736]}, {"Name": "CT-AAA2", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, 129.542, 0.0, 145.244, 0.166667, 157.02, 0.5, 169.918, 0.627451, 395.575, 0.8125, 1578.73, 0.8125, 3071.0, 0.8125], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, 129.542, 0.54902, 0.25098, 0.14902, 145.244, 0.6, 0.627451, 0.843137, 157.02, 0.890196, 0.47451, 0.6, 169.918, 0.992157, 0.870588, 0.392157, 395.575, 1.0, 0.886275, 0.658824, 1578.73, 1.0, 0.829256, 0.957922, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [0.0, 1600.0]}, {"Name": "CT-Bone", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -16.4458, 0.0, 641.385, 0.715686, 3071.0, 0.705882], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, -16.4458, 0.729412, 0.254902, 0.301961, 641.385, 0.905882, 0.815686, 0.552941, 3071.0, 1.0, 1.0, 1.0], "EffectiveRange": [-16.4458, 641.385]}, {"Name": "CT-Bones", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-1000.0, 0.0, 152.19, 0.0, 278.93, 0.190476, 952.0, 0.2], "RGBPoints": [-1000.0, 0.3, 0.3, 1.0, -488.0, 0.3, 1.0, 0.3, 463.28, 1.0, 0.0, 0.0, 659.15, 1.0, 0.912535, 0.0374849, 953.0, 1.0, 0.3, 0.3], "EffectiveRange": [152.19, 952.0]}, {"Name": "CT-Cardiac", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -77.6875, 0.0, 94.9518, 0.285714, 179.052, 0.553571, 260.439, 0.848214, 3071.0, 0.875], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, -77.6875, 0.54902, 0.25098, 0.14902, 94.9518, 0.882353, 0.603922, 0.290196, 179.052, 1.0, 0.937033, 0.954531, 260.439, 0.615686, 0.0, 0.0, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [-77.6875, 260.439]}, {"Name": "CT-Cardiac2", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, 42.8964, 0.0, 163.488, 0.428571, 277.642, 0.776786, 1587.0, 0.754902, 3071.0, 0.754902], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, 42.8964, 0.54902, 0.25098, 0.14902, 163.488, 0.917647, 0.639216, 0.0588235, 277.642, 1.0, 0.878431, 0.623529, 1587.0, 1.0, 1.0, 1.0, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [42.8964, 1587.0]}, {"Name": "CT-Cardiac3", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -86.9767, 0.0, 45.3791, 0.169643, 139.919, 0.589286, 347.907, 0.607143, 1224.16, 0.607143, 3071.0, 0.616071], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, -86.9767, 0.0, 0.25098, 1.0, 45.3791, 1.0, 0.0, 0.0, 139.919, 1.0, 0.894893, 0.894893, 347.907, 1.0, 1.0, 0.25098, 1224.16, 1.0, 1.0, 1.0, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [-86.9767, 1224.16]}, {"Name": "CT-Chest-Contrast-Enhanced", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, 67.0106, 0.0, 251.105, 0.446429, 439.291, 0.625, 3071.0, 0.616071], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, 67.0106, 0.54902, 0.25098, 0.14902, 251.105, 0.882353, 0.603922, 0.290196, 439.291, 1.0, 0.937033, 0.954531, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [67.0106, 439.291]}, {"Name": "CT-Chest-Vessels", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -1278.35, 0.0, 22.8277, 0.428571, 439.291, 0.625, 3071.0, 0.616071], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, -1278.35, 0.54902, 0.25098, 0.14902, 22.8277, 0.882353, 0.603922, 0.290196, 439.291, 1.0, 0.937033, 0.954531, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [-1278.35, 439.291]}, {"Name": "CT-Coronary-Arteries", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, 136.47, 0.0, 159.215, 0.258929, 318.43, 0.571429, 478.693, 0.776786, 3661.0, 1.0], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, 136.47, 0.0, 0.0, 0.0, 159.215, 0.159804, 0.159804, 0.159804, 318.43, 0.764706, 0.764706, 0.764706, 478.693, 1.0, 1.0, 1.0, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [136.47, 478.693]}, {"Name": "CT-Coronary-Arteries-2", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, 142.677, 0.0, 145.016, 0.116071, 192.174, 0.5625, 217.24, 0.776786, 384.347, 0.830357, 3661.0, 0.830357], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, 142.677, 0.0, 0.0, 0.0, 145.016, 0.615686, 0.0, 0.0156863, 192.174, 0.909804, 0.454902, 0.0, 217.24, 0.972549, 0.807843, 0.611765, 384.347, 0.909804, 0.909804, 1.0, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [142.677, 384.347]}, {"Name": "CT-Coronary-Arteries-3", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, 128.643, 0.0, 129.982, 0.0982143, 173.636, 0.669643, 255.884, 0.857143, 584.878, 0.866071, 3661.0, 1.0], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, 128.643, 0.0, 0.0, 0.0, 129.982, 0.615686, 0.0, 0.0156863, 173.636, 0.909804, 0.454902, 0.0, 255.884, 0.886275, 0.886275, 0.886275, 584.878, 0.968627, 0.968627, 0.968627, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [128.643, 584.878]}, {"Name": "CT-Cropped-Volume-Bone", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, -451.0, 0.0, -450.0, 1.0, 1050.0, 1.0, 3661.0, 1.0], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, -451.0, 0.0, 0.0, 0.0, -450.0, 0.0556356, 0.0556356, 0.0556356, 1050.0, 1.0, 1.0, 1.0, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [-451.0, 1050.0]}, {"Name": "CT-Fat", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-1000.0, 0.0, -100.0, 0.0, -99.0, 0.15, -60.0, 0.15, -59.0, 0.0, 101.2, 0.0, 952.0, 0.0], "RGBPoints": [-1000.0, 0.3, 0.3, 1.0, -497.5, 0.3, 1.0, 0.3, -99.0, 0.0, 0.0, 1.0, -76.946, 0.0, 1.0, 0.0, -65.481, 0.835431, 0.888889, 0.0165387, 83.89, 1.0, 0.0, 0.0, 463.28, 1.0, 0.0, 0.0, 659.15, 1.0, 0.912535, 0.0374849, 2952.0, 1.0, 0.300267, 0.299886], "EffectiveRange": [-100.0, 101.2]}, {"Name": "CT-Liver-Vasculature", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, 149.113, 0.0, 157.884, 0.482143, 339.96, 0.660714, 388.526, 0.830357, 1197.95, 0.839286, 3661.0, 0.848214], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, 149.113, 0.0, 0.0, 0.0, 157.884, 0.501961, 0.25098, 0.0, 339.96, 0.695386, 0.59603, 0.36886, 388.526, 0.854902, 0.85098, 0.827451, 1197.95, 1.0, 1.0, 1.0, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [149.113, 1197.95]}, {"Name": "CT-Lung", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-1000.0, 0.0, -600.0, 0.0, -599.0, 0.15, -400.0, 0.15, -399.0, 0.0, 2952.0, 0.0], "RGBPoints": [-1000.0, 0.3, 0.3, 1.0, -600.0, 0.0, 0.0, 1.0, -530.0, 0.134704, 0.781726, 0.0724558, -460.0, 0.929244, 1.0, 0.109473, -400.0, 0.888889, 0.254949, 0.0240258, 2952.0, 1.0, 0.3, 0.3], "EffectiveRange": [-600.0, -399.0]}, {"Name": "CT-MIP", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -637.62, 0.0, 700.0, 1.0, 3071.0, 1.0], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, -637.62, 1.0, 1.0, 1.0, 700.0, 1.0, 1.0, 1.0, 3071.0, 1.0, 1.0, 1.0], "EffectiveRange": [-637.62, 700.0]}, {"Name": "CT-Muscle", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -155.407, 0.0, 217.641, 0.676471, 419.736, 0.833333, 3071.0, 0.803922], "RGBPoints": [-3024.0, 0.0, 0.0, 0.0, -155.407, 0.54902, 0.25098, 0.14902, 217.641, 0.882353, 0.603922, 0.290196, 419.736, 1.0, 0.937033, 0.954531, 3071.0, 0.827451, 0.658824, 1.0], "EffectiveRange": [-155.407, 419.736]}, {"Name": "CT-Pulmonary-Arteries", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, -568.625, 0.0, -364.081, 0.0714286, -244.813, 0.401786, 18.2775, 0.607143, 447.798, 0.830357, 3592.73, 0.839286], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, -568.625, 0.0, 0.0, 0.0, -364.081, 0.396078, 0.301961, 0.180392, -244.813, 0.611765, 0.352941, 0.0705882, 18.2775, 0.843137, 0.0156863, 0.156863, 447.798, 0.752941, 0.752941, 0.752941, 3592.73, 1.0, 1.0, 1.0], "EffectiveRange": [-568.625, 447.798]}, {"Name": "CT-Soft-Tissue", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, -167.01, 0.0, -160.0, 1.0, 240.0, 1.0, 3661.0, 1.0], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, -167.01, 0.0, 0.0, 0.0, -160.0, 0.0556356, 0.0556356, 0.0556356, 240.0, 1.0, 1.0, 1.0, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [-167.01, 240.0]}, {"Name": "CT-Air", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.705882, -900.0, 0.715686, -500.0, 0.0, 3071.0, 0.0], "RGBPoints": [-3024.0, 1.0, 1.0, 1.0, -900.0, 0.2, 1.0, 1.0, -500.0, 0.3, 0.3, 1.0, 3071.0, 0.0, 0.0, 0.0], "EffectiveRange": [-1200.0, -200.0]}, {"Name": "CT-X-ray", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-3024.0, 0.0, -200.0, 0.0, 1500.0, 0.05, 3071.0, 0.05], "RGBPoints": [-3024.0, 1.0, 1.0, 1.0, 3071.0, 1.0, 1.0, 1.0], "EffectiveRange": [-250.0, 1550.0]}, {"Name": "MR-Angio", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-2048.0, 0.0, 151.354, 0.0, 158.279, 0.4375, 190.112, 0.580357, 200.873, 0.732143, 3661.0, 0.741071], "RGBPoints": [-2048.0, 0.0, 0.0, 0.0, 151.354, 0.0, 0.0, 0.0, 158.279, 0.74902, 0.376471, 0.0, 190.112, 1.0, 0.866667, 0.733333, 200.873, 0.937255, 0.937255, 0.937255, 3661.0, 1.0, 1.0, 1.0], "EffectiveRange": [151.354, 200.873]}, {"Name": "MR-Default", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [0.0, 0.0, 20.0, 0.0, 40.0, 0.15, 120.0, 0.3, 220.0, 0.375, 1024.0, 0.5], "RGBPoints": [0.0, 0.0, 0.0, 0.0, 20.0, 0.168627, 0.0, 0.0, 40.0, 0.403922, 0.145098, 0.0784314, 120.0, 0.780392, 0.607843, 0.380392, 220.0, 0.847059, 0.835294, 0.788235, 1024.0, 1.0, 1.0, 1.0], "EffectiveRange": [0.0, 220.0]}, {"Name": "MR-MIP", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [0.0, 0.0, 98.3725, 0.0, 416.637, 1.0, 2800.0, 1.0], "RGBPoints": [0.0, 1.0, 1.0, 1.0, 98.3725, 1.0, 1.0, 1.0, 416.637, 1.0, 1.0, 1.0, 2800.0, 1.0, 1.0, 1.0], "EffectiveRange": [0.0, 416.637]}, {"Name": "MR-T2-Brain", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [0.0, 0.0, 36.05, 0.0, 218.302, 0.171429, 412.406, 1.0, 641.0, 1.0], "RGBPoints": [0.0, 0.0, 0.0, 0.0, 98.7223, 0.956863, 0.839216, 0.192157, 412.406, 0.0, 0.592157, 0.807843, 641.0, 1.0, 1.0, 1.0], "EffectiveRange": [0.0, 412.406]}, {"Name": "DTI-FA-Brain", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [0.0, 0.0, 0.0, 0.0, 0.3501, 0.0158, 0.49379, 0.7619, 0.6419, 1.0, 0.992, 1.0, 0.995, 0.0, 0.995, 0.0], "RGBPoints": [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.24974, 0.4941, 1.0, 0.0, 0.49949, 0.0, 0.9882, 1.0, 0.7492, 0.51764, 0.0, 1.0, 0.995, 1.0, 0.0, 0.0, 0.995, 1.0, 0.0, 0.0], "EffectiveRange": [0.0, 1.0]}, {"Name": "US-Fetal", "NanColor": [1, 1, 0], "ColorSpace": "RGB", "AbsoluteRange": true, "OpacityPoints": [-10.0, 0.0, 0.0, 0.0, 270.0, 0.8], "RGBPoints": [-10.0, 0.325, 0.153, 0.153, 74.0, 0.474, 0.392, 0.302, 136.0, 0.718, 0.51, 0.443, 270.0, 0.76, 0.44, 0.53], "EffectiveRange": [-10.0, 270.0]}, {"ColorSpace": "Lab", "Name": "2hot", "RGBPoints": [-1, 0.0416667, 0, 0, -0.873016, 0.208333, 0, 0, -0.746032, 0.375, 0, 0, -0.619048, 0.541667, 0, 0, -0.492063, 0.708333, 0, 0, -0.365079, 0.854137, 0, 0, -0.238095, 0.937488, 0.039062, 0, -0.111111, 1, 0.208333, 0, 0.015873, 1, 0.375, 0, 0.142857, 1, 0.541667, 0, 0.269841, 1, 0.708333, 0, 0.396825, 1, 0.858805, 0.03125, 0.52381, 1, 0.947392, 0.15625, 0.650794, 1, 1, 0.3125, 0.777778, 1, 1, 0.5625, 0.904762, 1, 1, 0.8125, 1, 1, 1, 1]}, {"ColorSpace": "HSV", "Name": "Blue to Red Rainbow", "NanColor": [0.498039215686, 0.498039215686, 0.498039215686], "RGBPoints": [0, 0, 0, 1, 1, 1, 0, 0]}]
+\ No newline at end of file
