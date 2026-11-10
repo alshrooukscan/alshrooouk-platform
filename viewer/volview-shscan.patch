@@ -16,10 +16,10 @@ new file mode 100644
 index 0000000..98c668b
 Binary files /dev/null and b/src/assets/shscan-logo.png differ
 diff --git a/src/components/AppBar.vue b/src/components/AppBar.vue
-index ac71948..25acba0 100644
+index ac71948..ab6d8d4 100644
 --- a/src/components/AppBar.vue
 +++ b/src/components/AppBar.vue
-@@ -6,6 +6,12 @@ import AboutBox from '@/src/components/AboutBox.vue';
+@@ -6,6 +6,25 @@ import AboutBox from '@/src/components/AboutBox.vue';
  import VolViewFullLogo from '@/src/components/icons/VolViewFullLogo.vue';
  import VolViewLogo from '@/src/components/icons/VolViewLogo.vue';
  import { useKeyboardShortcutsStore } from '@/src/store/keyboard-shortcuts';
@@ -29,13 +29,35 @@ index ac71948..25acba0 100644
 +const imageStore = useImageStore();
 +const hasImage = computed(() => (imageStore.idList || []).length > 0);
 +const dentalOpen = ref(false);
++// ShScan: tilt axes on/off. On = four views with tiltable axis lines (ruler
++// works); off = VolView's normal four views where every tool works.
++import { useViewStore } from '@/src/store/views';
++const viewStore = useViewStore();
++const tiltOn = computed(() => viewStore.currentLayoutName === 'Four Up (tilt)');
++import { useCurrentImage } from '@/src/composables/useCurrentImage';
++const { currentImageID: tiltImageID } = useCurrentImage('global');
++function toggleTilt() {
++  const id = tiltImageID.value;
++  viewStore.switchToNamedLayout(tiltOn.value ? 'Four Up' : 'Four Up (tilt)');
++  // new views start empty; show the same scan in all of them
++  if (id) viewStore.setDataForAllViews(id);
++}
  
  const emit = defineEmits(['click:left-menu']);
  
-@@ -21,6 +27,15 @@ const keyboardStore = useKeyboardShortcutsStore();
+@@ -21,6 +40,24 @@ const keyboardStore = useKeyboardShortcutsStore();
        <vol-view-logo v-if="mobile" />
        <vol-view-full-logo v-else />
      </v-toolbar-title>
++    <v-btn
++      :color="tiltOn ? 'primary' : undefined"
++      :variant="tiltOn ? 'flat' : 'outlined'"
++      class="mr-2"
++      prepend-icon="mdi-axis-arrow"
++      @click="toggleTilt"
++    >
++      Tilt axes: {{ tiltOn ? 'ON' : 'OFF' }}
++    </v-btn>
 +    <v-btn
 +      color="#c9a227"
 +      variant="flat"
@@ -48,7 +70,7 @@ index ac71948..25acba0 100644
      <v-btn
        variant="text"
        icon
-@@ -44,6 +59,7 @@ const keyboardStore = useKeyboardShortcutsStore();
+@@ -44,6 +81,7 @@ const keyboardStore = useKeyboardShortcutsStore();
        <v-tooltip activator="parent" location="bottom">About</v-tooltip>
      </v-btn>
    </v-app-bar>
@@ -56,6 +78,30 @@ index ac71948..25acba0 100644
    <closeable-dialog v-model="aboutBoxDialog">
      <about-box />
    </closeable-dialog>
+diff --git a/src/components/ControlsStripTools.vue b/src/components/ControlsStripTools.vue
+index 2923ea1..c013b9a 100644
+--- a/src/components/ControlsStripTools.vue
++++ b/src/components/ControlsStripTools.vue
+@@ -156,9 +156,8 @@ export default defineComponent({
+       Tools.Crosshairs,
+       Tools.Rectangle,
+       Tools.Polygon,
+-      Tools.Ruler,
+       Tools.Crop,
+-    ]);
++    ]); // ShScan: Ruler works in tilt views (ObliqueRuler)
+     const toolUnavailableReason = (tool: Tools) => {
+       if (tool === Tools.Paint)
+         return toolStore.paintUnavailableReason || undefined;
+@@ -169,7 +168,7 @@ export default defineComponent({
+         return windowingUnavailableReason.value;
+       if (noCurrentImage.value) return 'Load an image to use this tool.';
+       if (isObliqueLayout.value && obliqueUnavailableTools.has(tool))
+-        return 'This tool is unavailable in an oblique view.';
++        return 'Turn off "Tilt axes" in the top bar to use this tool.';
+       return undefined;
+     };
+ 
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
 index 0000000..eb4de8f
@@ -801,6 +847,26 @@ index 0000000..eb4de8f
 +.dw-cs .sel { outline: 2px solid #7CFC00; outline-offset: -2px; cursor: crosshair; }
 +.cv { display: block; width: 100%; height: 100%; background: #000; }
 +</style>
+diff --git a/src/components/ObliqueSliceViewer.vue b/src/components/ObliqueSliceViewer.vue
+index 492acff..f672578 100644
+--- a/src/components/ObliqueSliceViewer.vue
++++ b/src/components/ObliqueSliceViewer.vue
+@@ -62,6 +62,7 @@
+             :view-id="viewId"
+             :view-direction="viewDirection"
+           ></reslice-cursor-tool>
++          <oblique-ruler :view-id="viewId" />
+           <slot></slot>
+         </vtk-slice-view>
+       </div>
+@@ -72,6 +73,7 @@
+ <script setup lang="ts">
+ import { useResetViewsEvents } from '@/src/components/tools/ResetViews.vue';
+ import ResliceCursorTool from '@/src/components/tools/ResliceCursorTool.vue';
++import ObliqueRuler from '@/src/components/tools/ObliqueRuler.vue';
+ import VtkBaseObliqueSliceRepresentation from '@/src/components/vtk/VtkBaseObliqueSliceRepresentation.vue';
+ import VtkImageOutlineRepresentation from '@/src/components/vtk/VtkImageOutlineRepresentation.vue';
+ import VtkSliceView from '@/src/components/vtk/VtkSliceView.vue';
 diff --git a/src/components/ObliqueViewer.vue b/src/components/ObliqueViewer.vue
 index 44f972c..d0dd8d1 100644
 --- a/src/components/ObliqueViewer.vue
@@ -1148,6 +1214,139 @@ index 6a0c0cb..3624729 100644
 +    <span style="font-weight: 600; font-size: 15px; white-space: nowrap">Al Shrooouk Scan · Online Viewer</span>
 +  </div>
  </template>
+diff --git a/src/components/tools/ObliqueRuler.vue b/src/components/tools/ObliqueRuler.vue
+new file mode 100644
+index 0000000..c74a531
+--- /dev/null
++++ b/src/components/tools/ObliqueRuler.vue
+@@ -0,0 +1,127 @@
++<script setup lang="ts">
++// ShScan: ruler for the tiltable (oblique) views, where VolView's own
++// annotation tools are not available (Mohamed Said, 10 Nov 2026).
++// Points are kept in world (patient mm) coordinates, so lengths stay correct
++// at any tilt; a measurement shows only while its plane is on screen.
++import { inject, onMounted, onBeforeUnmount, reactive, ref, computed } from 'vue';
++import { VtkViewContext } from '@/src/components/vtk/context';
++import { useToolStore } from '@/src/store/tools';
++import { Tools } from '@/src/store/tools/types';
++
++const props = defineProps<{ viewId: string }>();
++const view = inject(VtkViewContext);
++if (!view) throw new Error('No VtkView');
++const toolStore = useToolStore();
++const active = computed(() => toolStore.currentTool === Tools.Ruler);
++
++type V3 = [number, number, number];
++type M = { a: V3; b: V3 | null; n: V3; d: number };
++// shared across remounts, per view
++const store: Record<string, M[]> = ((globalThis as any).__shscanRulers ||= reactive({}));
++const list = computed<M[]>(() => (store[props.viewId] ||= []));
++
++const svg = ref<SVGSVGElement | null>(null);
++const tick = ref(0);
++let raf = 0;
++let lastKey = '';
++function loop() {
++  const cam = view!.renderer.getActiveCamera();
++  const size = view!.renderWindowView.getSize();
++  const key = `${cam.getMTime()}|${size[0]}x${size[1]}`;
++  if (key !== lastKey) { lastKey = key; tick.value++; }
++  raf = requestAnimationFrame(loop);
++}
++onMounted(() => { raf = requestAnimationFrame(loop); });
++onBeforeUnmount(() => cancelAnimationFrame(raf));
++
++function plane(): { n: V3; d: number; fp: V3 } {
++  const cam = view!.renderer.getActiveCamera();
++  const n = cam.getDirectionOfProjection() as V3;
++  const fp = cam.getFocalPoint() as V3;
++  return { n, d: n[0] * fp[0] + n[1] * fp[1] + n[2] * fp[2], fp };
++}
++const dpr = () => window.devicePixelRatio || 1;
++function toScreen(p: V3) {
++  const size = view!.renderWindowView.getSize();
++  const [x, y] = view!.renderWindowView.worldToDisplay(p[0], p[1], p[2], view!.renderer);
++  return [x / dpr(), (size[1] - y) / dpr()];
++}
++function toWorld(ev: PointerEvent): V3 {
++  const r = svg.value!.getBoundingClientRect();
++  const size = view!.renderWindowView.getSize();
++  const { fp } = plane();
++  const z = view!.renderWindowView.worldToDisplay(fp[0], fp[1], fp[2], view!.renderer)[2];
++  const x = (ev.clientX - r.left) * dpr(), y = size[1] - (ev.clientY - r.top) * dpr();
++  return view!.renderWindowView.displayToWorld(x, y, z, view!.renderer) as V3;
++}
++const sameplane = (m: M) => {
++  const { n, d } = plane();
++  const dot = Math.abs(n[0] * m.n[0] + n[1] * m.n[1] + n[2] * m.n[2]);
++  return dot > 0.999 && Math.abs(Math.abs(d) - Math.abs(m.d)) < 0.5;
++};
++const shown = computed(() => {
++  void tick.value;
++  return list.value
++    .map((m, i) => ({ m, i }))
++    .filter(({ m }) => sameplane(m))
++    .map(({ m, i }) => {
++      const a = toScreen(m.a), b = m.b ? toScreen(m.b) : null;
++      const mm = m.b ? Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1], m.b[2] - m.a[2]) : 0;
++      return { i, a, b, label: `${mm.toFixed(1)} mm` };
++    });
++});
++
++let drag: { i: number; end: 'a' | 'b' } | null = null;
++function down(ev: PointerEvent) {
++  if (!active.value) return;
++  ev.stopPropagation(); ev.preventDefault();
++  const r = svg.value!.getBoundingClientRect();
++  const px = ev.clientX - r.left, py = ev.clientY - r.top;
++  for (const s of shown.value) {
++    for (const end of ['a', 'b'] as const) {
++      const q = end === 'a' ? s.a : s.b; if (!q) continue;
++      if (Math.hypot(q[0] - px, q[1] - py) < 10) {
++        if (ev.button === 2) { list.value.splice(s.i, 1); tick.value++; return; }
++        drag = { i: s.i, end }; svg.value!.setPointerCapture(ev.pointerId); return;
++      }
++    }
++  }
++  if (ev.button !== 0) return;
++  const w = toWorld(ev);
++  const open = shown.value.find((s) => !s.b);
++  if (open) list.value[open.i].b = w;
++  else { const { n, d } = plane(); list.value.push({ a: w, b: null, n, d }); }
++  tick.value++;
++}
++function move(ev: PointerEvent) {
++  if (!drag) return; ev.stopPropagation();
++  list.value[drag.i][drag.end] = toWorld(ev); tick.value++;
++}
++function up() { drag = null; }
++</script>
++
++<template>
++  <svg
++    ref="svg"
++    class="oblique-ruler"
++    :style="{ pointerEvents: active ? 'all' : 'none', cursor: active ? 'crosshair' : 'default' }"
++    @pointerdown="down"
++    @pointermove="move"
++    @pointerup="up"
++    @contextmenu.prevent
++  >
++    <g v-for="s in shown" :key="s.i">
++      <line v-if="s.b" :x1="s.a[0]" :y1="s.a[1]" :x2="s.b[0]" :y2="s.b[1]" stroke="#ffeb3b" stroke-width="2" />
++      <circle :cx="s.a[0]" :cy="s.a[1]" r="4.5" fill="#ffeb3b" />
++      <circle v-if="s.b" :cx="s.b[0]" :cy="s.b[1]" r="4.5" fill="#ffeb3b" />
++      <g v-if="s.b">
++        <rect :x="(s.a[0] + s.b[0]) / 2 + 6" :y="(s.a[1] + s.b[1]) / 2 - 15" width="70" height="20" rx="3" fill="rgba(0,0,0,0.65)" />
++        <text :x="(s.a[0] + s.b[0]) / 2 + 10" :y="(s.a[1] + s.b[1]) / 2" fill="#ffeb3b" font-size="14" font-weight="bold">{{ s.label }}</text>
++      </g>
++    </g>
++  </svg>
++</template>
++
++<style scoped>
++.oblique-ruler { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; }
++</style>
 diff --git a/src/components/tools/ResetViews.vue b/src/components/tools/ResetViews.vue
 index b9b2c90..5e65570 100644
 --- a/src/components/tools/ResetViews.vue

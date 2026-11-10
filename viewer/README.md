@@ -16,6 +16,9 @@ What the patch adds:
   panoramic left/right; the cross-sections follow it).
 - Default layout "Four Up (tilt)": axial, coronal, sagittal with tiltable
   axis lines, plus the 3D volume. The original Oblique layout is still there.
+- Ruler works in the tilt views (src/components/tools/ObliqueRuler.vue);
+  "Tilt axes: ON/OFF" in the top bar switches to the normal views where every
+  VolView tool works.
 
 Rebuild:
     git clone https://github.com/Kitware/VolView && cd VolView && git checkout 66543cf
