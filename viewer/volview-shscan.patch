@@ -58,16 +58,16 @@ index ac71948..25acba0 100644
    </closeable-dialog>
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..b3a055f
+index 0000000..ea880c3
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,528 @@
+@@ -0,0 +1,588 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
 +// volume. Everything is computed on the CPU from the voxel data VolView has
 +// already loaded, in index space (CBCT voxels are isotropic in-plane).
-+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
++import { ref, shallowRef, markRaw, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 +import { useCurrentImage } from '@/src/composables/useCurrentImage';
 +
 +const emit = defineEmits(['close']);
@@ -79,7 +79,7 @@ index 0000000..b3a055f
 +  sx: number; sz: number; flipX: boolean; flipY: boolean; topIsK0: boolean;
 +  lo: number; hi: number;
 +};
-+const vol = ref<Vol | null>(null);
++const vol = shallowRef<Vol | null>(null);
 +const status = ref('');
 +
 +function loadVolume() {
@@ -98,7 +98,7 @@ index 0000000..b3a055f
 +  sample.sort((a, b) => a - b);
 +  const lo = sample[Math.floor(sample.length * 0.02)];
 +  const hi = sample[Math.floor(sample.length * 0.997)];
-+  vol.value = { data, nx, ny, nz, sx: sp[0], sz: sp[2], flipX: d[0] < 0, flipY: d[4] < 0, topIsK0, lo, hi };
++  vol.value = markRaw({ data, nx, ny, nz, sx: sp[0], sz: sp[2], flipX: d[0] < 0, flipY: d[4] < 0, topIsK0, lo, hi });
 +  win.value = Math.round(hi - lo);
 +  lev.value = Math.round((hi + lo) / 2);
 +  axialK.value = Math.round(nz * 0.5);
@@ -271,12 +271,14 @@ index 0000000..b3a055f
 +function drawAxial() {
 +  const v = vol.value; const cv = axialCv.value; if (!v || !cv) return;
 +  const k = Math.max(0, Math.min(v.nz - 1, axialK.value));
-+  const buf = new Float32Array(v.nx * v.ny);
-+  for (let y = 0; y < v.ny; y++)
-+    for (let x = 0; x < v.nx; x++) {
-+      const { i, j } = axToIdx(v, x, y);
-+      buf[y * v.nx + x] = v.data[k * v.nx * v.ny + j * v.nx + i];
-+    }
++  const { nx, ny, data, flipX, flipY } = v;
++  const buf = new Float32Array(nx * ny);
++  const base = k * nx * ny;
++  for (let y = 0; y < ny; y++) {
++    const j = flipY ? ny - 1 - y : y, row = base + j * nx, out = y * nx;
++    if (flipX) for (let x = 0; x < nx; x++) buf[out + x] = data[row + nx - 1 - x];
++    else for (let x = 0; x < nx; x++) buf[out + x] = data[row + x];
++  }
 +  const r = blit(cv, 'ax', toImage(buf, v.nx, v.ny)); if (!r) return;
 +  const { ctx, f, dpr } = r;
 +  const c = curve.value;
@@ -318,25 +320,67 @@ index 0000000..b3a055f
 +  ctx.fillText('A', cv.width / 2, 16 * dpr); ctx.fillText('R', 6 * dpr, cv.height / 2);
 +}
 +
-+let panoBuf: { buf: Float32Array; w: number; h: number } | null = null;
-+function buildPano() {
-+  const v = vol.value, c = curve.value; panoBuf = null;
-+  if (!v || !c) return;
-+  const w = c.N, h = v.nz;
++let panoBuf: { buf: Float32Array; w: number; h: number } | null = null; // processed
++let panoRaw: { buf: Float32Array; w: number; h: number; key: string } | null = null; // before filters
++let panoImg: ImageData | null = null;
++// Build the raw panoramic. Bilinear taps are worked out once per (s, t)
++// and reused for every slice, so the inner loop is plain array reads.
++function buildPanoRaw(preview = false) {
++  const v = vol.value, c = curve.value;
++  if (!v || !c) { panoRaw = null; return; }
 +  const half = Math.max(0, Math.round(slabMm.value / v.sx / 2));
-+  const buf = new Float32Array(w * h);
-+  for (let r = 0; r < h; r++) {
-+    const k = kOfRow(v, r);
-+    for (let s = 0; s < w; s++) {
-+      let acc = 0, mx = -Infinity, cnt = 0;
-+      for (let t = -half; t <= half; t++) {
-+        const val = voxel(v, c.xs[s] + c.nxv[s] * t, c.ys[s] + c.nyv[s] * t, k);
-+        acc += val; cnt++; if (val > mx) mx = val;
-+      }
-+      buf[r * w + s] = slabMip.value ? mx : acc / cnt;
++  const key = `${c.N}|${c.xs[0]}|${c.xs[c.N - 1]}|${c.ys[(c.N / 2) | 0]}|${archPts.value.length}|${half}|${slabMip.value}|${preview}`;
++  if (panoRaw && panoRaw.key === key) return;
++  const { data, nx, ny, nz } = v;
++  const lo = v.lo, plane = nx * ny;
++  const tStep = preview ? Math.max(1, Math.round(half / 3)) : 1; // fewer slab samples while dragging
++  const rStep = preview ? 2 : 1;
++  const w = c.N, h = nz;
++  // taps: for each (s, t) -> 4 offsets + 4 weights (offset -1 = outside)
++  const ts: number[] = [];
++  for (let t = -half; t <= half; t += tStep) ts.push(t);
++  const T = ts.length, M = w * T;
++  const o00 = new Int32Array(M), o10 = new Int32Array(M), o01 = new Int32Array(M), o11 = new Int32Array(M);
++  const w00 = new Float32Array(M), w10 = new Float32Array(M), w01 = new Float32Array(M), w11 = new Float32Array(M);
++  for (let sI = 0; sI < w; sI++)
++    for (let q = 0; q < T; q++) {
++      const m = sI * T + q, t = ts[q];
++      const x = c.xs[sI] + c.nxv[sI] * t, y = c.ys[sI] + c.nyv[sI] * t;
++      if (x < 0 || y < 0 || x > nx - 1 || y > ny - 1) { o00[m] = -1; continue; }
++      const i0 = Math.floor(x), j0 = Math.floor(y), i1 = Math.min(i0 + 1, nx - 1), j1 = Math.min(j0 + 1, ny - 1);
++      const fi = x - i0, fj = y - j0;
++      o00[m] = j0 * nx + i0; o10[m] = j0 * nx + i1; o01[m] = j1 * nx + i0; o11[m] = j1 * nx + i1;
++      w00[m] = (1 - fi) * (1 - fj); w10[m] = fi * (1 - fj); w01[m] = (1 - fi) * fj; w11[m] = fi * fj;
 +    }
++  const mip = slabMip.value;
++  const buf = new Float32Array(w * h);
++  for (let r = 0; r < h; r += rStep) {
++    const base = (v.topIsK0 ? r : nz - 1 - r) * plane;
++    const row = r * w;
++    for (let sI = 0; sI < w; sI++) {
++      let acc = 0, mx = -1e30;
++      const m0 = sI * T;
++      for (let q = 0; q < T; q++) {
++        const m = m0 + q;
++        let val = lo;
++        if (o00[m] >= 0)
++          val = data[base + o00[m]] * w00[m] + data[base + o10[m]] * w10[m] + data[base + o01[m]] * w01[m] + data[base + o11[m]] * w11[m];
++        acc += val; if (val > mx) mx = val;
++      }
++      buf[row + sI] = mip ? mx : acc / T;
++    }
++    if (rStep === 2 && r + 1 < h) buf.copyWithin(row + w, row, row + w);
 +  }
-+  panoBuf = { buf: process(buf, w, h), w, h };
++  panoRaw = { buf, w, h, key };
++  panoBuf = null;
++}
++function buildPano(preview = false) {
++  if (!curve.value || !vol.value) { panoRaw = null; panoBuf = null; panoImg = null; return; }
++  buildPanoRaw(preview);
++  if (!panoRaw) return;
++  // filters are skipped while dragging; applied once the change settles
++  panoBuf = preview ? { buf: panoRaw.buf, w: panoRaw.w, h: panoRaw.h } : { buf: process(panoRaw.buf, panoRaw.w, panoRaw.h), w: panoRaw.w, h: panoRaw.h };
++  panoImg = null;
 +}
 +function drawPano() {
 +  const v = vol.value, cv = panoCv.value, c = curve.value;
@@ -348,7 +392,8 @@ index 0000000..b3a055f
 +    ctx.fillText('Draw the arch on the axial view (click along the teeth, left to right).', 16, 30);
 +    return;
 +  }
-+  const r = blit(cv, 'pano', toImage(panoBuf.buf, panoBuf.w, panoBuf.h), v.sz / v.sx); if (!r) return;
++  if (!panoImg) panoImg = toImage(panoBuf.buf, panoBuf.w, panoBuf.h);
++  const r = blit(cv, 'pano', panoImg, v.sz / v.sx); if (!r) return;
 +  const { ctx, f, dpr } = r;
 +  if (sSel.value != null) {
 +    const [x] = toCanvas(f, sSel.value, 0);
@@ -412,17 +457,30 @@ index 0000000..b3a055f
 +  });
 +}
 +
-+function redrawAll(rebuild = true) {
-+  if (rebuild) buildPano();
-+  drawAxial(); drawPano(); drawCross();
-+}
 +let pending = 0;
-+function schedule(rebuild = true) {
++let settle: any = 0;
++let dragging = false;
++// level 2 = rebuild panoramic geometry, 1 = re-run filters, 0 = redraw only
++function schedule(level = 0) {
 +  cancelAnimationFrame(pending);
-+  pending = requestAnimationFrame(() => redrawAll(rebuild));
++  pending = requestAnimationFrame(() => {
++    if (level === 2) {
++      buildPano(true); // quick preview first
++      clearTimeout(settle);
++      settle = setTimeout(() => { if (!dragging) { buildPano(false); drawPano(); drawCross(); } }, 250);
++    } else if (level === 1) {
++      clearTimeout(settle);
++      settle = setTimeout(() => { buildPano(false); drawPano(); drawCross(); }, 120);
++    } else if (level === -1) {
++      panoImg = null; // window/level or invert: remap only
++    }
++    drawAxial(); drawPano(); drawCross();
++  });
 +}
-+watch([archPts, slabMm, slabMip, sharpen, denoise, invert, win, lev], () => schedule(true), { deep: true });
-+watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure], () => schedule(false), { deep: true });
++watch([archPts, slabMm, slabMip], () => schedule(2), { deep: true });
++watch([sharpen, denoise], () => schedule(1));
++watch([invert, win, lev], () => schedule(-1));
++watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure], () => schedule(0), { deep: true });
 +
 +// ---------------------------------------------------------------- input
 +let dragIdx = -1;
@@ -433,7 +491,7 @@ index 0000000..b3a055f
 +  const f = fits.ax; const tol = 10 / f.s;
 +  const near = archPts.value.findIndex((q) => Math.hypot(q.i - i, q.j - j) < tol);
 +  if (e.button === 2) { if (near >= 0) archPts.value.splice(near, 1); return; }
-+  if (near >= 0) { dragIdx = near; return; }
++  if (near >= 0) { dragIdx = near; dragging = true; return; }
 +  if (mode.value === 'arch') archPts.value.push({ i, j });
 +}
 +function axialMove(e: MouseEvent) {
@@ -441,7 +499,9 @@ index 0000000..b3a055f
 +  const p = fromEvent(cv, 'ax', e); if (!p) return;
 +  const { i, j } = axToIdx(v, p[0], p[1]); archPts.value[dragIdx] = { i, j };
 +}
-+function axialUp() { dragIdx = -1; }
++function axialUp() {
++  if (dragIdx >= 0) { dragIdx = -1; dragging = false; schedule(2); }
++}
 +function axialWheel(e: WheelEvent) {
 +  const v = vol.value; if (!v) return; e.preventDefault();
 +  axialK.value = Math.max(0, Math.min(v.nz - 1, axialK.value + (e.deltaY > 0 ? 1 : -1) * (v.topIsK0 ? 1 : -1)));
@@ -495,15 +555,15 @@ index 0000000..b3a055f
 +  const a = document.createElement('a'); a.download = 'panoramic.png'; a.href = cv.toDataURL('image/png'); a.click();
 +}
 +
-+const onResize = () => schedule(false);
++const onResize = () => schedule(0);
 +onMounted(async () => {
 +  loadVolume();
 +  await nextTick();
 +  window.addEventListener('resize', onResize);
-+  schedule(true);
++  schedule(2);
 +});
 +onBeforeUnmount(() => window.removeEventListener('resize', onResize));
-+watch(currentImageData, () => { loadVolume(); schedule(true); });
++watch(currentImageData, () => { loadVolume(); schedule(2); });
 +
 +const modes = [
 +  { key: 'arch', label: 'Draw arch', icon: 'mdi-vector-curve' },
