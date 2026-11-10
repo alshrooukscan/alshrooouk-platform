@@ -104,10 +104,10 @@ index 2923ea1..c013b9a 100644
  
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..eb4de8f
+index 0000000..1a71a7d
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,739 @@
+@@ -0,0 +1,749 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -257,8 +257,14 @@ index 0000000..eb4de8f
 +
 +// Catmull-Rom through the arch points, resampled every 1 voxel of arc length.
 +const curve = computed(() => {
-+  const P = archPts.value;
++  // Always run the panoramic from the patient's right to their left (shown on
++  // the viewer's left), whichever way the arch was drawn (Mohamed Said,
++  // 10 Nov 2026). +x in patient space is the patient's left.
++  let P = archPts.value;
 +  if (P.length < 2) return null;
++  const v0 = vol.value;
++  const wx = (q: { i: number }) => (v0 && v0.flipX ? -q.i : q.i);
++  if (wx(P[0]) > wx(P[P.length - 1])) P = [...P].reverse();
 +  const dense: [number, number][] = [];
 +  const at = (n: number) => P[Math.max(0, Math.min(P.length - 1, n))];
 +  for (let n = 0; n < P.length - 1; n++) {
@@ -573,6 +579,10 @@ index 0000000..eb4de8f
 +  });
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
 +  drawMeasure(ctx, f, dpr, 'pano', v);
++  // side markers: patient right on the left, as on a panoramic film
++  ctx.font = `bold ${16 * dpr}px sans-serif`; ctx.fillStyle = '#ffeb3b';
++  ctx.fillText('R', f.ox + 8 * dpr, f.oy + f.h * f.ax * f.s - 10 * dpr);
++  ctx.fillText('L', f.ox + f.w * f.s - 20 * dpr, f.oy + f.h * f.ax * f.s - 10 * dpr);
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
 +  ctx.fillText(`Panoramic · slab ${slabMm.value} mm ${slabMip.value ? '(MIP)' : ''} · length ${(c.N * v.sx).toFixed(0)} mm`, 8 * dpr, 18 * dpr);
 +}
