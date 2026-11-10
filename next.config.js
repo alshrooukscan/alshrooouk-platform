@@ -18,6 +18,9 @@ const nextConfig = {
     return [
       { source: "/viewer", destination: "https://shscan-viewer-test.vercel.app/viewer/" },
       { source: "/viewer/:path*", destination: "https://shscan-viewer-test.vercel.app/viewer/:path*" },
+      // Next drops the trailing slash (/viewer/ -> /viewer), so the viewer's
+      // relative itk/ paths resolve to /itk; send those to the viewer too.
+      { source: "/itk/:path*", destination: "https://shscan-viewer-test.vercel.app/viewer/itk/:path*" },
     ];
   },
   async headers() {
