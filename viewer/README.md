@@ -12,8 +12,10 @@ What the patch adds:
 - "Panoramic & Nerve" workspace (src/components/DentalWorkspace.vue):
   arch drawing on axial, panoramic with slab/MIP, three cross-sections,
   right/left nerve tracing, mm measurement, sharpen/denoise/invert/W-L,
-  save panoramic as PNG, panoramic tilt (buccal/lingual, front/back, left/right).
-- Opens in the Oblique layout so every 2D view can be tilted.
+  save panoramic as PNG, cross-section tilt (drag the green line on the
+  panoramic left/right; the cross-sections follow it).
+- Default layout "Four Up (tilt)": axial, coronal, sagittal with tiltable
+  axis lines, plus the 3D volume. The original Oblique layout is still there.
 
 Rebuild:
     git clone https://github.com/Kitware/VolView && cd VolView && git checkout 66543cf

@@ -58,10 +58,10 @@ index ac71948..25acba0 100644
    </closeable-dialog>
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..c091597
+index 0000000..3ff8cb4
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,645 @@
+@@ -0,0 +1,692 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -125,6 +125,12 @@ index 0000000..c091597
 +const tiltFB = ref(0);
 +const tiltLR = ref(0);
 +const archK = ref<number | null>(null); // axial slice the arch was drawn on (tilt pivot)
++// Cross-section tilt (Mohamed Said, 10 Nov 2026): the cross-section line on
++// the panoramic leans left/right (mesio-distal) around the point clicked, and
++// the cross-sections follow it, e.g. to line up with a tooth or implant axis.
++const csTilt = ref(0);
++const csPivot = ref<number | null>(null); // panoramic row of the pivot
++
 +const archPts = ref<{ i: number; j: number }[]>([]);
 +const sSel = ref<number | null>(null); // index along the curve for cross-sections
 +type NP = { s: number; t: number; z: number }; // z = panoramic row
@@ -297,7 +303,8 @@ index 0000000..c091597
 +      const s = Math.round(sSel.value), half = csHalfMm.value / v.sx;
 +      const gap = csGapMm.value / v.sx;
 +      [-gap, 0, gap].forEach((dg, idx) => {
-+        const ss = Math.max(0, Math.min(c.N - 1, Math.round(s + dg)));
++        const rA = v.topIsK0 ? k : v.nz - 1 - k;
++        const ss = Math.max(0, Math.min(c.N - 1, Math.round(sAt(v, s + dg, rA))));
 +        const [a1, b1] = idxToAx(v, c.xs[ss] - c.nxv[ss] * half, c.ys[ss] - c.nyv[ss] * half);
 +        const [a2, b2] = idxToAx(v, c.xs[ss] + c.nxv[ss] * half, c.ys[ss] + c.nyv[ss] * half);
 +        const [p1, q1] = toCanvas(f, a1, b1), [p2, q2] = toCanvas(f, a2, b2);
@@ -342,6 +349,9 @@ index 0000000..c091597
 +const pivotRow = (v: Vol) => { const k = archK.value ?? Math.round(v.nz / 2); return v.topIsK0 ? k : v.nz - 1 - k; };
 +// Buccal/lingual offset (in-plane voxels) of the panoramic surface at row r.
 +const surfOffset = (v: Vol, r: number) => Math.tan((tiltBL.value * Math.PI) / 180) * (r - pivotRow(v)) * (v.sz / v.sx);
++const pivotOf = (v: Vol) => csPivot.value ?? v.nz / 2;
++// curve position of the cross-section plane at panoramic row r
++const sAt = (v: Vol, s0: number, r: number) => s0 + Math.tan((csTilt.value * Math.PI) / 180) * (r - pivotOf(v)) * (v.sz / v.sx);
 +const rowK = (v: Vol, r: number) => { const rr = Math.max(0, Math.min(v.nz - 1, Math.round(r))); return v.topIsK0 ? rr : v.nz - 1 - rr; };
 +
 +let panoBuf: { buf: Float32Array; w: number; h: number } | null = null; // processed
@@ -434,8 +444,23 @@ index 0000000..c091597
 +  const r = blit(cv, 'pano', panoImg, v.sz / v.sx); if (!r) return;
 +  const { ctx, f, dpr } = r;
 +  if (sSel.value != null) {
-+    const [x] = toCanvas(f, sSel.value, 0);
-+    ctx.strokeStyle = '#7CFC00'; ctx.lineWidth = 1.5 * dpr; ctx.beginPath(); ctx.moveTo(x, f.oy); ctx.lineTo(x, f.oy + f.h * f.ax * f.s); ctx.stroke();
++    const gap = csGapMm.value / v.sx;
++    [-gap, gap, 0].forEach((dg) => {
++      const [x0, y0] = toCanvas(f, sAt(v, sSel.value! + dg, 0), 0);
++      const [x1, y1] = toCanvas(f, sAt(v, sSel.value! + dg, v.nz - 1), v.nz - 1);
++      ctx.strokeStyle = dg ? 'rgba(124,252,0,0.45)' : '#7CFC00'; ctx.lineWidth = (dg ? 1 : 2) * dpr;
++      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
++      if (!dg) {
++        // handles: drag either end to tilt, the middle dot is the pivot
++        ctx.fillStyle = '#7CFC00';
++        [[x0 + (x1 - x0) * 0.1, y0 + (y1 - y0) * 0.1], [x0 + (x1 - x0) * 0.9, y0 + (y1 - y0) * 0.9]].forEach(([hx, hy]) => {
++          ctx.beginPath(); ctx.arc(hx, hy, 6 * dpr, 0, Math.PI * 2); ctx.fill();
++        });
++        const [px, py] = toCanvas(f, sSel.value!, pivotOf(v));
++        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, 4 * dpr, 0, Math.PI * 2); ctx.fill();
++        if (csTilt.value) { ctx.font = `${12 * dpr}px sans-serif`; ctx.fillText(`${csTilt.value.toFixed(0)}°`, px + 8 * dpr, py - 8 * dpr); }
++      }
++    });
 +  }
 +  (['R', 'L'] as const).forEach((side) => {
 +    const P = [...nerves.value[side]].sort((a, b) => a.s - b.s); if (!P.length) return;
@@ -453,10 +478,12 @@ index 0000000..c091597
 +  const half = Math.round(csHalfMm.value / v.sx); const w = half * 2 + 1, h = v.nz;
 +  const buf = new Float32Array(w * h);
 +  const ss = Math.max(0, Math.min(c.N - 1, Math.round(s)));
-+  const dk = tiltRows(v, c)[ss];
++  const dks = tiltRows(v, c);
 +  for (let r = 0; r < h; r++) {
-+    const k = rowK(v, r + dk);
-+    for (let x = 0; x < w; x++) { const t = x - half; buf[r * w + x] = voxel(v, c.xs[ss] + c.nxv[ss] * t, c.ys[ss] + c.nyv[ss] * t, k); }
++    // a tilted cross-section takes each row from a different point on the curve
++    const sr = Math.max(0, Math.min(c.N - 1, Math.round(sAt(v, s, r))));
++    const k = rowK(v, r + dks[sr]);
++    for (let x = 0; x < w; x++) { const t = x - half; buf[r * w + x] = voxel(v, c.xs[sr] + c.nxv[sr] * t, c.ys[sr] + c.nyv[sr] * t, k); }
 +  }
 +  return { buf: process(buf, w, h), w, h, half, ss };
 +}
@@ -476,7 +503,9 @@ index 0000000..c091597
 +    const r = blit(cv, `cs${idx}`, toImage(cs.buf, cs.w, cs.h), v.sz / v.sx); if (!r) return;
 +    const { ctx, f, dpr } = r;
 +    (['R', 'L'] as const).forEach((side) => {
-+      const nz = nerveAt(nerves.value[side], cs.ss); if (!nz) return;
++      let nz = nerveAt(nerves.value[side], cs.ss); if (!nz) return;
++      // on a tilted cross-section, look the nerve up where the plane meets its height
++      if (csTilt.value) { const n2 = nerveAt(nerves.value[side], sAt(v, s, nz.z)); if (n2) nz = n2; else return; }
 +      const [x, y] = toCanvas(f, nz.t + cs.half, nz.z);
 +      ctx.strokeStyle = NERVE_COL[side]; ctx.lineWidth = 2 * dpr;
 +      ctx.beginPath(); ctx.arc(x, y, Math.max(3 * dpr, (nerveDiaMm.value / v.sx / 2) * f.s), 0, Math.PI * 2); ctx.stroke();
@@ -525,7 +554,7 @@ index 0000000..c091597
 +watch([archPts, slabMm, slabMip, tiltBL, tiltFB, tiltLR], () => schedule(2), { deep: true });
 +watch([sharpen, denoise], () => schedule(1));
 +watch([invert, win, lev], () => schedule(-1));
-+watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure], () => schedule(0), { deep: true });
++watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure, csTilt, csPivot], () => schedule(0), { deep: true });
 +
 +// ---------------------------------------------------------------- input
 +let dragIdx = -1;
@@ -555,6 +584,7 @@ index 0000000..c091597
 +  axialK.value = Math.max(0, Math.min(v.nz - 1, axialK.value + (e.deltaY > 0 ? 1 : -1) * (v.topIsK0 ? 1 : -1)));
 +}
 +function panoClick(e: MouseEvent) {
++  if (tiltMoved) { tiltMoved = false; return; }
 +  const cv = panoCv.value, c = curve.value, v = vol.value; if (!cv || !c || !v) return;
 +  const p = fromEvent(cv, 'pano', e); if (!p) return;
 +  const s = Math.max(0, Math.min(c.N - 1, p[0])), z = Math.max(0, Math.min(v.nz - 1, p[1]));
@@ -564,11 +594,33 @@ index 0000000..c091597
 +    sSel.value = s;
 +  } else {
 +    sSel.value = s;
++    csPivot.value = z;
 +    axialK.value = Math.round(kOfRow(v, z));
 +  }
 +}
++// drag an end of the green line on the panoramic to tilt the cross-sections
++let tiltDrag = false, tiltMoved = false;
++function panoDown(e: MouseEvent) {
++  const cv = panoCv.value, v = vol.value; if (!cv || !v || sSel.value == null) return;
++  const p = fromEvent(cv, 'pano', e); if (!p) return;
++  const f = fits.pano;
++  const lineS = sAt(v, sSel.value, p[1]);
++  const nearLine = Math.abs(lineS - p[0]) * f.s < 10 * (window.devicePixelRatio || 1);
++  const nearPivot = Math.abs(p[1] - pivotOf(v)) * f.s * f.ax < 25 * (window.devicePixelRatio || 1);
++  if (nearLine && !nearPivot) { tiltDrag = true; tiltMoved = false; e.preventDefault(); }
++}
++function panoMove(e: MouseEvent) {
++  if (!tiltDrag) return; const cv = panoCv.value, v = vol.value; if (!cv || !v || sSel.value == null) return;
++  const p = fromEvent(cv, 'pano', e); if (!p) return;
++  const dy = (p[1] - pivotOf(v)) * (v.sz / v.sx); if (Math.abs(dy) < 1) return;
++  const deg = (Math.atan((p[0] - sSel.value) / dy) * 180) / Math.PI;
++  csTilt.value = Math.max(-60, Math.min(60, Math.round(deg)));
++  tiltMoved = true;
++}
++function panoUp() { tiltDrag = false; }
 +function panoWheel(e: WheelEvent) {
 +  const c = curve.value; if (!c || sSel.value == null) return; e.preventDefault();
++  if (e.shiftKey) { csTilt.value = Math.max(-60, Math.min(60, csTilt.value + (e.deltaY > 0 ? 1 : -1))); return; }
 +  sSel.value = Math.max(0, Math.min(c.N - 1, sSel.value + (e.deltaY > 0 ? 1 : -1)));
 +}
 +function csClick(e: MouseEvent) {
@@ -582,7 +634,7 @@ index 0000000..c091597
 +  }
 +  if (mode.value === 'nerveR' || mode.value === 'nerveL') {
 +    const side = mode.value === 'nerveR' ? 'R' : 'L';
-+    const s = Math.round(sSel.value);
++    const s = Math.round(sAt(v, sSel.value, p[1]));
 +    const list = nerves.value[side];
 +    const near = list.findIndex((q) => Math.abs(q.s - s) <= 2 / v.sx);
 +    const pt = { s, t: p[0] - half, z: p[1] };
@@ -596,7 +648,7 @@ index 0000000..c091597
 +  else archPts.value.pop();
 +}
 +function clearAll() {
-+  archPts.value = []; archK.value = null; nerves.value = { R: [], L: [] }; sSel.value = null; measure.value = { a: null, b: null };
++  archPts.value = []; archK.value = null; csTilt.value = 0; csPivot.value = null; nerves.value = { R: [], L: [] }; sSel.value = null; measure.value = { a: null, b: null };
 +}
 +function savePng() {
 +  const cv = panoCv.value; if (!cv) return;
@@ -622,7 +674,7 @@ index 0000000..c091597
 +] as const;
 +const hint = computed(() => ({
 +  arch: 'Click along the middle of the teeth on the axial view, from one side to the other. Drag a point to move it, right-click to remove it. Scroll to change the axial slice.',
-+  pick: 'Click the panoramic to show cross-sections there. Scroll over the panoramic to move them.',
++  pick: 'Click the panoramic to show cross-sections there. Scroll to move them. Drag an end of the green line (or Shift+scroll) to tilt it left/right; the cross-sections follow the tilt.',
 +  nerveR: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (red).',
 +  nerveL: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (orange).',
 +  measure: 'Click two points on the middle cross-section to measure in mm.',
@@ -666,21 +718,16 @@ index 0000000..c091597
 +          <div class="lbl">Cross-section gap {{ csGapMm }} mm · width {{ csHalfMm * 2 }} mm</div>
 +          <v-slider v-model="csGapMm" :min="0.5" :max="5" :step="0.5" hide-details density="compact" />
 +          <v-slider v-model="csHalfMm" :min="8" :max="30" :step="1" hide-details density="compact" />
-+          <div class="lbl d-flex align-center">Panoramic tilt
-+            <v-btn size="x-small" variant="text" class="ml-2" @click="tiltBL = 0; tiltFB = 0; tiltLR = 0">Reset</v-btn>
++          <div class="lbl d-flex align-center">Cross-section tilt {{ csTilt }}°
++            <v-btn size="x-small" variant="text" class="ml-2" @click="csTilt = 0">Reset</v-btn>
 +          </div>
-+          <div class="lbl">Buccal / lingual {{ tiltBL }}°</div>
-+          <v-slider v-model="tiltBL" :min="-30" :max="30" :step="1" hide-details density="compact" />
-+          <div class="lbl">Front / back {{ tiltFB }}°</div>
-+          <v-slider v-model="tiltFB" :min="-30" :max="30" :step="1" hide-details density="compact" />
-+          <div class="lbl">Left / right {{ tiltLR }}°</div>
-+          <v-slider v-model="tiltLR" :min="-30" :max="30" :step="1" hide-details density="compact" />
++          <v-slider v-model="csTilt" :min="-60" :max="60" :step="1" hide-details density="compact" />
 +          <div class="lbl">Nerve diameter {{ nerveDiaMm }} mm</div>
 +          <v-slider v-model="nerveDiaMm" :min="1" :max="5" :step="0.5" hide-details density="compact" />
 +        </div>
 +      </div>
 +      <div class="dw-right">
-+        <canvas ref="panoCv" class="cv pano" @click="panoClick" @wheel="panoWheel" />
++        <canvas ref="panoCv" class="cv pano" @mousedown="panoDown" @mousemove="panoMove" @mouseup="panoUp" @mouseleave="panoUp" @click="panoClick" @wheel="panoWheel" />
 +        <div class="dw-cs">
 +          <canvas :ref="(el) => (csCvs[0].value = el as any)" class="cv" />
 +          <canvas :ref="(el) => (csCvs[1].value = el as any)" class="cv sel" @click="csClick" />
@@ -707,8 +754,84 @@ index 0000000..c091597
 +.dw-cs .sel { outline: 2px solid #7CFC00; outline-offset: -2px; cursor: crosshair; }
 +.cv { display: block; width: 100%; height: 100%; background: #000; }
 +</style>
+diff --git a/src/components/ObliqueViewer.vue b/src/components/ObliqueViewer.vue
+index 44f972c..d0dd8d1 100644
+--- a/src/components/ObliqueViewer.vue
++++ b/src/components/ObliqueViewer.vue
+@@ -1,5 +1,20 @@
+ <template>
+-  <div class="oblique-grid">
++  <div v-if="isStandard" class="oblique-grid">
++    <!-- ShScan standard: axial | coronal / sagittal | 3D, all 2D views tiltable -->
++    <div class="d-flex">
++      <ObliqueSliceViewer :view-id="`${viewId}-axial`" outline-type="ObliqueAxial" view-direction="Superior" view-up="Anterior" />
++    </div>
++    <div class="d-flex">
++      <ObliqueSliceViewer :view-id="`${viewId}-coronal`" outline-type="ObliqueCoronal" view-direction="Posterior" view-up="Superior" />
++    </div>
++    <div class="d-flex">
++      <ObliqueSliceViewer :view-id="`${viewId}-sagittal`" outline-type="ObliqueSagittal" view-direction="Right" view-up="Superior" />
++    </div>
++    <div class="d-flex">
++      <VolumeViewer v-if="volumeViewId" :view-id="volumeViewId" style="flex: 1 1 0; min-width: 0; width: 100%" />
++    </div>
++  </div>
++  <div v-else class="oblique-grid">
+     <div class="d-flex">
+       <ObliqueSliceViewer
+         :view-id="`${viewId}-coronal`"
+@@ -56,7 +71,9 @@
+ </template>
+ 
+ <script setup lang="ts">
+-import { provide, toRef } from 'vue';
++import { provide, toRef, computed, ref, watch } from 'vue';
++import VolumeViewer from '@/src/components/VolumeViewer.vue';
++import { useViewStore } from '@/src/store/views';
+ import { WindowingViewContext } from '@/src/composables/useWindowingConfig';
+ import MultiObliqueSliceViewer from '@/src/components/MultiObliqueSliceViewer.vue';
+ import ObliqueSliceViewer from '@/src/components/ObliqueSliceViewer.vue';
+@@ -74,6 +91,29 @@ provide(WindowingViewContext, toRef(props, 'viewId'));
+ 
+ const { currentImageID } = useCurrentImage();
+ 
++// ShScan standard layout: a real 3D volume view in the fourth cell.
++const viewStore = useViewStore();
++const isStandard = computed(() => !!(viewStore.getView(props.viewId)?.options as any)?.standard);
++const volumeViewId = ref<string | null>(null);
++watch(
++  isStandard,
++  (on) => {
++    if (on && !volumeViewId.value) {
++      volumeViewId.value = viewStore.addView({
++        name: 'Volume',
++        type: '3D',
++        dataID: currentImageID.value ?? null,
++        options: { viewDirection: 'Posterior', viewUp: 'Superior' },
++      } as any);
++    }
++  },
++  { immediate: true }
++);
++watch(currentImageID, (id) => {
++  if (volumeViewId.value) viewStore.setDataForView(volumeViewId.value, id ?? null);
++});
++
++
+ // initialize the reslice cursor store
+ useResliceCursorStore();
+ </script>
+@@ -96,3 +136,8 @@ useResliceCursorStore();
+   min-height: 0;
+ }
+ </style>
++<style scoped>
++/* ShScan standard layout: let the 3D view fill its cell */
++.oblique-grid :deep(.volume-viewer-container) { flex: 1 1 0; min-width: 0; grid-template-columns: 1fr !important; }
++.oblique-grid :deep(.volume-viewer-container > .vtk-container) { flex: 1 1 auto; width: 100%; min-width: 0; }
++</style>
 diff --git a/src/components/SliceViewerOverlay.vue b/src/components/SliceViewerOverlay.vue
-index e8c156a..0399336 100644
+index e8c156a..8f28e47 100644
 --- a/src/components/SliceViewerOverlay.vue
 +++ b/src/components/SliceViewerOverlay.vue
 @@ -45,13 +45,19 @@ const LOCKED_ORIENTATION_SUFFIXES = [
@@ -719,7 +842,7 @@ index e8c156a..0399336 100644
 +// slice counter (it does not apply to a tilted plane).
 +const obliqueName = computed(() => {
 +  const m = viewId.value.match(/-(coronal|sagittal|axial)$/);
-+  return m ? m[1][0].toUpperCase() + m[1].slice(1) + ' (tilt: drag the colored lines)' : '';
++  return m ? m[1][0].toUpperCase() + m[1].slice(1) + '' : '';
 +});
  </script>
  
@@ -993,28 +1116,20 @@ index b9b2c90..5e65570 100644
  export default defineComponent({
    components: {
 diff --git a/src/config.ts b/src/config.ts
-index 0730fcf..7b27926 100644
+index 0730fcf..fd621aa 100644
 --- a/src/config.ts
 +++ b/src/config.ts
 @@ -81,6 +81,9 @@ export const getAvailableViews = () => {
  };
  
  export const DefaultNamedLayouts: Record<string, LayoutConfig> = {
-+  // ShScan: open in the tilt-able (oblique) layout so every 2D view can be
-+  // rotated by dragging its axis lines (Mohamed Said, 10 Nov 2026).
-+  Oblique: [['oblique']],
++  // ShScan: the default four views carry tiltable axis lines
++  // (Mohamed Said, 10 Nov 2026).
++  'Four Up (tilt)': [['standard']],
    'Four Up': [
      ['axial', 'coronal'],
      ['sagittal', 'volume'],
-@@ -97,7 +100,6 @@ export const DefaultNamedLayouts: Record<string, LayoutConfig> = {
-   },
-   'Axial Only': [['axial']],
-   '3D Only': [['volume']],
--  Oblique: [['oblique']],
-   '3D Primary': {
-     direction: 'row',
-     items: [
-@@ -189,12 +191,12 @@ export const TOOL_COLORS = [
+@@ -189,12 +192,12 @@ export const TOOL_COLORS = [
  export const STROKE_WIDTH_ANNOTATION_TOOL_DEFAULT = 1;
  
  export const DEFAULT_PRESET_BY_MODALITY: Record<string, string> = {
@@ -1105,6 +1220,41 @@ index e4a05af..68c8051 100644
        const path = dirname(file.name);
        const fileEntry = zip.file(file.name);
        if (fileEntry) {
+diff --git a/src/store/views.ts b/src/store/views.ts
+index 481b782..fd66fae 100644
+--- a/src/store/views.ts
++++ b/src/store/views.ts
+@@ -461,6 +461,7 @@ export const useViewStore = defineStore('view', () => {
+     currentLayoutName,
+     getView,
+     getAllViews,
++    addView, // ShScan: the standard layout registers its own 3D view
+     getViewsForData,
+     replaceView,
+     setLayout,
+diff --git a/src/utils/layoutParsing.ts b/src/utils/layoutParsing.ts
+index 5872fb9..408364d 100644
+--- a/src/utils/layoutParsing.ts
++++ b/src/utils/layoutParsing.ts
+@@ -9,6 +9,7 @@ const viewString = z.enum([
+   'volume',
+   'oblique',
+   'enface',
++  'standard',
+ ]);
+ 
+ const view2D = z.object({
+@@ -107,6 +108,10 @@ const stringToViewInfoInit = (str: ViewString): ViewInfoInit => {
+       return { name: 'En face', type: 'EnFace', dataID: null, options: {} };
+     case 'oblique':
+       return { name: 'Oblique', type: 'Oblique', dataID: null, options: {} };
++    // ShScan: the normal four views (axial, coronal, sagittal, 3D) with
++    // tiltable axis lines in every 2D view.
++    case 'standard':
++      return { name: 'Standard', type: 'Oblique', dataID: null, options: { standard: true } as any };
+     default:
+       throw new Error(`Unknown view string: ${str}`);
+   }
 diff --git a/src/vtk/ColorMaps.ts b/src/vtk/ColorMaps.ts
 index c467774..167be52 100644
 --- a/src/vtk/ColorMaps.ts
