@@ -20,6 +20,13 @@ What the patch adds:
   "Tilt axes: ON/OFF" in the top bar switches to the normal views where every
   VolView tool works.
 
+Redesign (11 Nov 2026, "Clinical Midnight"): dark theme in brand navy/gold,
+IBM Plex fonts, new top bar (patient, tabs MPR / Panoramic & Implant / 3D,
+Tilt on/off, Image menu). Window/level: right-drag with the W/L tool
+(up/down brightness, left/right contrast), all views or only the dragged
+one (src/shscan/state.ts). Sharpen applies to every 2D view and the
+panoramic tab (SVG convolution filter on the view canvases).
+
 Rebuild:
     git clone https://github.com/Kitware/VolView && cd VolView && git checkout 66543cf
     git apply ../volview-shscan.patch && cp ../shscan-logo.png src/assets/

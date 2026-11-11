@@ -1,10 +1,19 @@
 diff --git a/index.html b/index.html
-index d460585..532ed87 100644
+index d460585..c94405f 100644
 --- a/index.html
 +++ b/index.html
-@@ -5,7 +5,7 @@
+@@ -4,8 +4,16 @@
+     <meta charset="utf-8" />
      <meta http-equiv="X-UA-Compatible" content="IE=edge" />
      <meta name="viewport" content="width=device-width,initial-scale=1.0" />
++    <link rel="preconnect" href="https://fonts.googleapis.com" />
++    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
++    <style>
++      /* ShScan look (Clinical Midnight) */
++      html, body, .v-application, .v-application .text-body-1, .v-application .text-body-2, .v-btn { font-family: 'IBM Plex Sans', system-ui, sans-serif !important; letter-spacing: normal; }
++      .v-btn { text-transform: none !important; }
++      .v-application { background: #0A0D14 !important; }
++    </style>
      <link rel="icon" href="/favicon.ico" />
 -    <title>VolView</title>
 +    <title>Al Shrooouk Scan · Online Viewer</title>
@@ -16,68 +25,195 @@ new file mode 100644
 index 0000000..98c668b
 Binary files /dev/null and b/src/assets/shscan-logo.png differ
 diff --git a/src/components/AppBar.vue b/src/components/AppBar.vue
-index ac71948..ab6d8d4 100644
+index ac71948..e64cc16 100644
 --- a/src/components/AppBar.vue
 +++ b/src/components/AppBar.vue
-@@ -6,6 +6,25 @@ import AboutBox from '@/src/components/AboutBox.vue';
- import VolViewFullLogo from '@/src/components/icons/VolViewFullLogo.vue';
- import VolViewLogo from '@/src/components/icons/VolViewLogo.vue';
+@@ -1,49 +1,132 @@
+ <script setup>
+-import { ref } from 'vue';
++// ShScan top bar (redesign approved by Mohamed Said, 11 Nov 2026):
++// logo, patient, the three tabs (MPR / Panoramic & Implant / 3D), tilt on/off,
++// window-level scope, sharpen, and the original help/about buttons.
++import { ref, computed, watch } from 'vue';
+ import { useDisplay } from 'vuetify';
+ import CloseableDialog from '@/src/components/CloseableDialog.vue';
+ import AboutBox from '@/src/components/AboutBox.vue';
+-import VolViewFullLogo from '@/src/components/icons/VolViewFullLogo.vue';
+-import VolViewLogo from '@/src/components/icons/VolViewLogo.vue';
++import logoUrl from '@/src/assets/shscan-logo.png';
  import { useKeyboardShortcutsStore } from '@/src/store/keyboard-shortcuts';
 +import DentalWorkspace from '@/src/components/DentalWorkspace.vue';
-+import { useImageStore } from '@/src/store/datasets-images';
-+import { computed } from 'vue';
-+const imageStore = useImageStore();
-+const hasImage = computed(() => (imageStore.idList || []).length > 0);
-+const dentalOpen = ref(false);
-+// ShScan: tilt axes on/off. On = four views with tiltable axis lines (ruler
-+// works); off = VolView's normal four views where every tool works.
 +import { useViewStore } from '@/src/store/views';
-+const viewStore = useViewStore();
-+const tiltOn = computed(() => viewStore.currentLayoutName === 'Four Up (tilt)');
 +import { useCurrentImage } from '@/src/composables/useCurrentImage';
-+const { currentImageID: tiltImageID } = useCurrentImage('global');
-+function toggleTilt() {
-+  const id = tiltImageID.value;
-+  viewStore.switchToNamedLayout(tiltOn.value ? 'Four Up' : 'Four Up (tilt)');
-+  // new views start empty; show the same scan in all of them
-+  if (id) viewStore.setDataForAllViews(id);
++import { useDICOMStore } from '@/src/store/datasets-dicom';
++import { wlScope, sharpenAmount, installSharpen } from '@/src/shscan/state';
+ 
+-const emit = defineEmits(['click:left-menu']);
++installSharpen();
+ 
++const emit = defineEmits(['click:left-menu']);
+ const { mobile } = useDisplay();
+ const aboutBoxDialog = ref(false);
+ const keyboardStore = useKeyboardShortcutsStore();
++const viewStore = useViewStore();
++const { currentImageID } = useCurrentImage('global');
++
++// patient line from the DICOM header
++const dicom = useDICOMStore();
++const patient = computed(() => {
++  const p = Object.values(dicom.patientInfo || {})[0];
++  const st = Object.values(dicom.studyInfo || {})[0];
++  const raw = p?.PatientName || '';
++  const name = raw.replace(/\^+/g, ' ').trim();
++  const d = st?.StudyDate || '';
++  const date = d.length === 8 ? `${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)}` : d;
++  const initials = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
++  return { name, date, initials };
++});
++
++// tabs
++const tab = ref('mpr');
++const tiltOn = ref(true);
++function showLayout(name) {
++  const id = currentImageID.value;
++  viewStore.switchToNamedLayout(name);
++  if (id) viewStore.setDataForAllViews(id); // new views start empty
 +}
++function pickTab(t) {
++  tab.value = t;
++  if (t === 'mpr') showLayout(tiltOn.value ? 'Four Up (tilt)' : 'Four Up');
++  if (t === '3d') showLayout('3D Only');
++}
++function toggleTilt() {
++  tiltOn.value = !tiltOn.value;
++  tab.value = 'mpr';
++  showLayout(tiltOn.value ? 'Four Up (tilt)' : 'Four Up');
++}
++watch(
++  () => viewStore.currentLayoutName,
++  (n) => {
++    if (n === 'Four Up (tilt)') tiltOn.value = true;
++    else if (n === 'Four Up') tiltOn.value = false;
++  }
++);
++const tabs = [
++  { key: 'mpr', label: 'MPR' },
++  { key: 'pano', label: 'Panoramic & Implant' },
++  { key: '3d', label: '3D' },
++];
+ </script>
  
- const emit = defineEmits(['click:left-menu']);
- 
-@@ -21,6 +40,24 @@ const keyboardStore = useKeyboardShortcutsStore();
-       <vol-view-logo v-if="mobile" />
-       <vol-view-full-logo v-else />
-     </v-toolbar-title>
-+    <v-btn
-+      :color="tiltOn ? 'primary' : undefined"
-+      :variant="tiltOn ? 'flat' : 'outlined'"
-+      class="mr-2"
-+      prepend-icon="mdi-axis-arrow"
-+      @click="toggleTilt"
-+    >
-+      Tilt axes: {{ tiltOn ? 'ON' : 'OFF' }}
-+    </v-btn>
-+    <v-btn
-+      color="#c9a227"
-+      variant="flat"
-+      class="mr-2"
-+      prepend-icon="mdi-tooth-outline"
-+      @click="dentalOpen = true"
-+    >
-+      Panoramic &amp; Nerve
-+    </v-btn>
-     <v-btn
-       variant="text"
-       icon
-@@ -44,6 +81,7 @@ const keyboardStore = useKeyboardShortcutsStore();
+ <template>
+-  <v-app-bar app clipped-left :height="48">
+-    <v-btn icon="mdi-menu" @click="emit('click:left-menu')" />
+-    <v-toolbar-title class="d-flex flex-row align-center mt-3">
+-      <vol-view-logo v-if="mobile" />
+-      <vol-view-full-logo v-else />
+-    </v-toolbar-title>
+-    <v-btn
+-      variant="text"
+-      icon
+-      :rounded="0"
+-      class="toolbar-button"
+-      @click="keyboardStore.settingsOpen = !keyboardStore.settingsOpen"
+-    >
+-      <v-icon icon="mdi-keyboard"></v-icon>
+-      <v-tooltip activator="parent" location="bottom">
+-        Keyboard Shortcuts
+-      </v-tooltip>
++  <v-app-bar app clipped-left :height="56" flat class="shs-bar">
++    <v-btn icon="mdi-menu" variant="text" aria-label="Data and settings panel" @click="emit('click:left-menu')" />
++    <div class="d-flex align-center mr-4" style="gap: 10px">
++      <img :src="logoUrl" alt="Al Shrooouk Scan" class="shs-logo" />
++      <div v-if="!mobile" class="shs-title">Al Shrooouk <span>Viewer</span></div>
++    </div>
++    <div v-if="patient.name && !mobile" class="shs-patient mr-4">
++      <div class="shs-avatar">{{ patient.initials }}</div>
++      <div class="d-flex flex-column" style="line-height: 1.2">
++        <span class="shs-pname">{{ patient.name }}</span>
++        <span class="shs-pmeta">CBCT{{ patient.date ? ' · ' + patient.date : '' }}</span>
++      </div>
++    </div>
++    <nav class="shs-tabs" aria-label="Viewer tabs">
++      <button
++        v-for="t in tabs"
++        :key="t.key"
++        type="button"
++        :class="['shs-tab', { on: tab === t.key }]"
++        @click="pickTab(t.key)"
++      >
++        {{ t.label }}
++      </button>
++    </nav>
++    <v-spacer />
++    <template v-if="tab !== 'pano'">
++      <button type="button" :class="['shs-chip', { on: tiltOn && tab === 'mpr' }]" title="Tiltable axis lines in the 2D views" @click="toggleTilt">
++        <v-icon icon="mdi-axis-arrow" size="16" /> Tilt {{ tiltOn ? 'ON' : 'OFF' }}
++      </button>
++    </template>
++    <v-menu :close-on-content-click="false" location="bottom end">
++      <template #activator="{ props: mp }">
++        <button type="button" class="shs-chip" v-bind="mp" title="Brightness, contrast and sharpness">
++          <v-icon icon="mdi-tune-variant" size="16" /> Image
++        </button>
++      </template>
++      <v-card class="shs-menu" min-width="300">
++        <div class="shs-mlabel">Window / Level (W/L tool, right-drag)</div>
++        <div class="shs-mhint">Drag up/down = brightness · left/right = contrast</div>
++        <v-btn-toggle v-model="wlScope" mandatory density="compact" variant="outlined" divided color="primary" class="mb-4">
++          <v-btn value="all" size="small">All views</v-btn>
++          <v-btn value="one" size="small">Only the view I drag</v-btn>
++        </v-btn-toggle>
++        <div class="shs-mlabel">Sharpen {{ sharpenAmount.toFixed(1) }}</div>
++        <v-slider v-model="sharpenAmount" :min="0" :max="3" :step="0.1" hide-details density="compact" color="primary" />
++        <div class="shs-mhint">Applies to every 2D view and the panoramic tab.</div>
++      </v-card>
++    </v-menu>
++    <v-btn variant="text" icon aria-label="Keyboard shortcuts" @click="keyboardStore.settingsOpen = !keyboardStore.settingsOpen">
++      <v-icon icon="mdi-keyboard-outline"></v-icon>
++      <v-tooltip activator="parent" location="bottom">Keyboard Shortcuts</v-tooltip>
+     </v-btn>
+-    <v-btn
+-      variant="text"
+-      icon
+-      :rounded="0"
+-      class="toolbar-button"
+-      @click="aboutBoxDialog = !aboutBoxDialog"
+-    >
++    <v-btn variant="text" icon aria-label="About" @click="aboutBoxDialog = !aboutBoxDialog">
+       <v-icon icon="mdi-information-outline"></v-icon>
        <v-tooltip activator="parent" location="bottom">About</v-tooltip>
      </v-btn>
    </v-app-bar>
-+  <dental-workspace v-if="dentalOpen" @close="dentalOpen = false" />
++  <dental-workspace v-if="tab === 'pano'" embedded @close="pickTab('mpr')" />
    <closeable-dialog v-model="aboutBoxDialog">
      <about-box />
    </closeable-dialog>
+@@ -51,7 +134,21 @@ const keyboardStore = useKeyboardShortcutsStore();
+ 
+ <style src="@/src/components/styles/utils.css"></style>
+ <style scoped>
+-.toolbar-button {
+-  min-height: 100%; /* fill toolbar height */
+-}
++.shs-bar { background: #0E121B !important; border-bottom: 1px solid #1B2232; }
++.shs-logo { height: 32px; width: auto; background: #fff; border-radius: 8px; padding: 2px 5px; }
++.shs-title { font-weight: 600; font-size: 14px; white-space: nowrap; }
++.shs-title span { color: #8A93A6; font-weight: 400; }
++.shs-patient { display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 6px; border-radius: 999px; background: #151B28; border: 1px solid #1F2738; }
++.shs-avatar { width: 28px; height: 28px; border-radius: 999px; background: #27214D; color: #E4D6A9; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
++.shs-pname { font-size: 13px; font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++.shs-pmeta { font-size: 11px; color: #8A93A6; }
++.shs-tabs { display: flex; gap: 4px; padding: 4px; background: #121826; border-radius: 10px; border: 1px solid #1B2232; }
++.shs-tab { padding: 7px 14px; border-radius: 7px; color: #AEB5C4; font-size: 13px; background: transparent; border: none; cursor: pointer; white-space: nowrap; font-family: inherit; }
++.shs-tab:hover { color: #fff; }
++.shs-tab.on { background: #27214D; color: #fff; font-weight: 600; }
++.shs-chip { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; margin-right: 8px; border-radius: 8px; border: 1px solid #1F2738; background: #151B28; color: #E7EAF0; font-size: 13px; cursor: pointer; font-family: inherit; white-space: nowrap; }
++.shs-chip.on { background: #1A1640; border-color: #3A3270; color: #C9B8FF; }
++.shs-menu { padding: 16px; background: #0E121B !important; border: 1px solid #1F2738; }
++.shs-mlabel { font-size: 12px; font-weight: 600; color: #E7EAF0; margin-bottom: 4px; }
++.shs-mhint { font-size: 11px; color: #8A93A6; margin-bottom: 8px; }
+ </style>
 diff --git a/src/components/ControlsStripTools.vue b/src/components/ControlsStripTools.vue
 index 2923ea1..c013b9a 100644
 --- a/src/components/ControlsStripTools.vue
@@ -104,10 +240,10 @@ index 2923ea1..c013b9a 100644
  
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..8cbe57c
+index 0000000..f2bc6f8
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,828 @@
+@@ -0,0 +1,852 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -117,6 +253,8 @@ index 0000000..8cbe57c
 +import { useCurrentImage } from '@/src/composables/useCurrentImage';
 +
 +const emit = defineEmits(['close']);
++const props = defineProps<{ embedded?: boolean }>();
++import { sharpenAmount } from '@/src/shscan/state';
 +const { currentImageData } = useCurrentImage('global');
 +
 +// ---------------------------------------------------------------- volume
@@ -158,7 +296,8 @@ index 0000000..8cbe57c
 +const lev = ref(500);
 +const slabMm = ref(10);
 +const slabMip = ref(false);
-+const sharpen = ref(0.6);
++// shared with the top bar's Sharpen (Mohamed Said, 11 Nov 2026)
++const sharpen = sharpenAmount;
 +const denoise = ref(true);
 +const invert = ref(false);
 +const csGapMm = ref(1);
@@ -266,7 +405,7 @@ index 0000000..8cbe57c
 +  for (const h of [...(hits[key] || [])].reverse()) {
 +    const inside = h.w != null ? dx >= h.x && dx <= h.x + h.w! && dy >= h.y && dy <= h.y + h.h! : Math.hypot(h.x - dx, h.y - dy) < tol;
 +    if (!inside) continue;
-+    if (e.button === 2) { measures.value = measures.value.filter((x) => x !== h.m); return true; }
++    if (e.button === 2) { measures.value = measures.value.filter((x) => x !== h.m); rightConsumed = true; return true; }
 +    mDrag = { m: h.m, part: h.part, grab: [dx, dy], start: h.part === 'lo' ? [...h.m.lo] as P2 : h.part === 'lo2' ? [...h.m.lo2] as P2 : undefined };
 +    return true;
 +  }
@@ -603,7 +742,7 @@ index 0000000..8cbe57c
 +    const ctx = cv.getContext('2d')!; cv.width = cv.clientWidth; cv.height = cv.clientHeight;
 +    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
 +    ctx.fillStyle = '#aaa'; ctx.font = '14px sans-serif';
-+    ctx.fillText('Draw the arch on the axial view (click along the teeth, left to right).', 16, 30);
++    ctx.fillText('Draw the arch on the axial view: click along the teeth from one side to the other.', 16, 30);
 +    return;
 +  }
 +  if (!panoImg) panoImg = toImage(panoBuf.buf, panoBuf.w, panoBuf.h);
@@ -727,7 +866,7 @@ index 0000000..8cbe57c
 +  const { i, j } = axToIdx(v, p[0], p[1]);
 +  const f = fits.ax; const tol = 10 / f.s;
 +  const near = archPts.value.findIndex((q) => Math.hypot(q.i - i, q.j - j) < tol);
-+  if (e.button === 2) { if (near >= 0) archPts.value.splice(near, 1); return; }
++  if (e.button === 2) { if (near >= 0) { archPts.value.splice(near, 1); rightConsumed = true; } return; }
 +  if (near >= 0) { dragIdx = near; dragging = true; return; }
 +  if (mode.value === 'arch') {
 +    if (!archPts.value.length) archK.value = axialK.value;
@@ -843,6 +982,26 @@ index 0000000..8cbe57c
 +onBeforeUnmount(() => { window.removeEventListener('resize', onResize); window.removeEventListener('keydown', onKey, true); });
 +watch(currentImageData, () => { loadVolume(); schedule(2); });
 +
++// Right-drag on any image = window/level for all images here (Mohamed Said,
++// 11 Nov 2026): up/down brightness, left/right contrast. A right-click on a
++// point still deletes that point.
++let rightConsumed = false;
++function wlDown(e: MouseEvent) {
++  if (e.button !== 2) return;
++  if (rightConsumed) { rightConsumed = false; return; }
++  if (!(e.target instanceof HTMLCanvasElement)) return;
++  e.preventDefault();
++  const x0 = e.clientX, y0 = e.clientY, w0 = win.value, l0 = lev.value;
++  const span = Math.max(200, (vol.value?.hi ?? 3000) - (vol.value?.lo ?? 0));
++  const move = (ev: MouseEvent) => {
++    const k = span / 400; // full image range per ~400 px of drag
++    lev.value = Math.round(l0 + (ev.clientY - y0) * k);
++    win.value = Math.max(10, Math.round(w0 + (ev.clientX - x0) * k));
++  };
++  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
++  window.addEventListener('mousemove', move);
++  window.addEventListener('mouseup', up);
++}
 +const modes = [
 +  { key: 'arch', label: 'Draw arch', icon: 'mdi-vector-curve' },
 +  { key: 'pick', label: 'Cross-sections', icon: 'mdi-view-column' },
@@ -860,9 +1019,9 @@ index 0000000..8cbe57c
 +</script>
 +
 +<template>
-+  <div class="dw">
++  <div :class="['dw', { embedded: props.embedded }]">
 +    <div class="dw-bar">
-+      <strong class="mr-4">Panoramic &amp; Nerve</strong>
++      <strong v-if="!props.embedded" class="mr-4">Panoramic &amp; Nerve</strong>
 +      <v-btn-toggle v-model="mode" mandatory density="compact" color="primary" variant="outlined" divided>
 +        <v-btn v-for="m in modes" :key="m.key" :value="m.key" size="small">
 +          <v-icon :icon="m.icon" start :color="m.key === 'nerveR' ? '#ff4d4d' : m.key === 'nerveL' ? '#ffb020' : undefined" />{{ m.label }}
@@ -876,10 +1035,10 @@ index 0000000..8cbe57c
 +      <v-btn size="small" variant="text" prepend-icon="mdi-delete-outline" @click="clearAll">Clear</v-btn>
 +      <v-btn size="small" variant="text" prepend-icon="mdi-download" @click="savePng">Save panoramic</v-btn>
 +      <v-spacer />
-+      <v-btn icon="mdi-close" variant="text" @click="emit('close')" />
++      <v-btn v-if="!props.embedded" icon="mdi-close" variant="text" aria-label="Close" @click="emit('close')" />
 +    </div>
 +    <div class="dw-hint">{{ status || hint }}</div>
-+    <div class="dw-body">
++    <div class="dw-body" @mousedown="wlDown" @contextmenu.prevent>
 +      <div class="dw-left">
 +        <canvas ref="axialCv" class="cv" @mousedown="axialDown" @mousemove="axialMove" @mouseup="axialUp" @mouseleave="axialUp" @wheel="axialWheel" @contextmenu.prevent />
 +        <div class="dw-ctrl">
@@ -921,25 +1080,35 @@ index 0000000..8cbe57c
 +</template>
 +
 +<style scoped>
-+.dw { position: fixed; inset: 0; z-index: 3000; background: #111; color: #eee; display: flex; flex-direction: column; }
-+.dw-bar { display: flex; align-items: center; padding: 6px 10px; gap: 6px; background: #1c1b22; flex-wrap: wrap; }
-+.dw-hint { font-size: 12px; color: #bbb; padding: 4px 12px; background: #17161c; }
++.dw { position: fixed; inset: 0; z-index: 3000; background: #0A0D14; color: #E7EAF0; display: flex; flex-direction: column; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
++.dw.embedded { top: 56px; z-index: 1005; }
++.dw-bar { display: flex; align-items: center; padding: 8px 12px; gap: 6px; background: #0E121B; border-bottom: 1px solid #1B2232; flex-wrap: wrap; }
++.dw-hint { font-size: 12px; color: #8A93A6; padding: 6px 14px; background: #0E121B; border-bottom: 1px solid #1B2232; }
 +.dw-body { flex: 1; display: flex; min-height: 0; }
-+.dw-left { width: 34%; display: flex; flex-direction: column; border-right: 1px solid #333; min-height: 0; }
++.dw-left { width: 34%; display: flex; flex-direction: column; border-right: 1px solid #1B2232; min-height: 0; background: #0E121B; }
 +.dw-left .cv { flex: 1; min-height: 200px; }
 +.dw-ctrl { padding: 6px 12px; overflow-y: auto; max-height: 48%; }
 +.lbl { font-size: 11px; color: #aaa; margin-top: 4px; }
 +.dw-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-+.pano { flex: 1.1; min-height: 0; border-bottom: 1px solid #333; cursor: crosshair; }
++.pano { flex: 1.1; min-height: 0; border-bottom: 1px solid #1B2232; cursor: crosshair; }
 +.dw-cs { flex: 1; display: flex; min-height: 0; }
-+.dw-cs .cv { flex: 1; min-width: 0; border-right: 1px solid #333; }
++.dw-cs .cv { flex: 1; min-width: 0; border-right: 1px solid #1B2232; }
 +.dw-cs .sel { outline: 2px solid #7CFC00; outline-offset: -2px; cursor: crosshair; }
 +.cv { display: block; width: 100%; height: 100%; background: #000; }
 +</style>
 diff --git a/src/components/ObliqueSliceViewer.vue b/src/components/ObliqueSliceViewer.vue
-index 492acff..f672578 100644
+index 492acff..3d6122f 100644
 --- a/src/components/ObliqueSliceViewer.vue
 +++ b/src/components/ObliqueSliceViewer.vue
+@@ -33,7 +33,7 @@
+             :manipulator-constructor="
+               vtkMouseCameraTrackballZoomToMouseManipulator
+             "
+-            :manipulator-props="{ button: 3 }"
++            :manipulator-props="{ button: currentTool === Tools.WindowLevel ? -1 : 3 }"
+           ></vtk-mouse-interaction-manipulator>
+           <vtk-slice-view-window-manipulator
+             :view-id="viewId"
 @@ -62,6 +62,7 @@
              :view-id="viewId"
              :view-direction="viewDirection"
@@ -956,6 +1125,15 @@ index 492acff..f672578 100644
  import VtkBaseObliqueSliceRepresentation from '@/src/components/vtk/VtkBaseObliqueSliceRepresentation.vue';
  import VtkImageOutlineRepresentation from '@/src/components/vtk/VtkImageOutlineRepresentation.vue';
  import VtkSliceView from '@/src/components/vtk/VtkSliceView.vue';
+@@ -123,7 +125,7 @@ useViewAnimationListener(vtkView, viewId, 'Oblique');
+ // active tool
+ const { currentTool } = storeToRefs(useToolStore());
+ const windowingManipulatorProps = computed(() =>
+-  currentTool.value === Tools.WindowLevel ? { button: 1 } : { button: -1 }
++  currentTool.value === Tools.WindowLevel ? { button: 3 } : { button: -1 }
+ );
+ 
+ // base image
 diff --git a/src/components/ObliqueViewer.vue b/src/components/ObliqueViewer.vue
 index 44f972c..d0dd8d1 100644
 --- a/src/components/ObliqueViewer.vue
@@ -1032,6 +1210,31 @@ index 44f972c..d0dd8d1 100644
 +.oblique-grid :deep(.volume-viewer-container) { flex: 1 1 0; min-width: 0; grid-template-columns: 1fr !important; }
 +.oblique-grid :deep(.volume-viewer-container > .vtk-container) { flex: 1 1 auto; width: 100%; min-width: 0; }
 +</style>
+diff --git a/src/components/SliceViewer.vue b/src/components/SliceViewer.vue
+index 68406ed..358907b 100644
+--- a/src/components/SliceViewer.vue
++++ b/src/components/SliceViewer.vue
+@@ -69,6 +69,11 @@
+             :image-id="currentImageID"
+             :manipulator-config="windowingManipulatorProps"
+           ></vtk-slice-view-window-manipulator>
++          <vtk-slice-view-window-manipulator
++            :view-id="viewId"
++            :image-id="currentImageID"
++            :manipulator-config="windowingManipulatorProps.button === 3 ? { button: 1 } : { button: -1 }"
++          ></vtk-slice-view-window-manipulator>
+           <slice-viewer-overlay
+             :view-id="viewId"
+             :image-id="currentImageID"
+@@ -239,7 +244,7 @@ const { slice: currentSlice, range: sliceRange } = useSliceConfig(
+ 
+ const windowingManipulatorProps = computed(() => {
+   if (currentTool.value !== Tools.WindowLevel) return { button: -1 };
+-  return { button: 1 };
++  return { button: 3 }; // ShScan: right-drag (left-drag added below)
+ });
+ 
+ onVTKEvent(currentImageData, 'onModified', () => {
 diff --git a/src/components/SliceViewerOverlay.vue b/src/components/SliceViewerOverlay.vue
 index e8c156a..8f28e47 100644
 --- a/src/components/SliceViewerOverlay.vue
@@ -1450,6 +1653,69 @@ index b9b2c90..5e65570 100644
  
  export default defineComponent({
    components: {
+diff --git a/src/components/vtk/VtkSliceViewNavigation.vue b/src/components/vtk/VtkSliceViewNavigation.vue
+index 5734556..cb76086 100644
+--- a/src/components/vtk/VtkSliceViewNavigation.vue
++++ b/src/components/vtk/VtkSliceViewNavigation.vue
+@@ -31,6 +31,6 @@ const { currentTool } = storeToRefs(useToolStore());
+   />
+   <vtk-mouse-interaction-manipulator
+     :manipulator-constructor="vtkMouseCameraTrackballZoomToMouseManipulator"
+-    :manipulator-props="{ button: 3, scrollEnabled: !!scrollZoom }"
++    :manipulator-props="{ button: currentTool === Tools.WindowLevel ? -1 : 3, scrollEnabled: !!scrollZoom }"
+   />
+ </template>
+diff --git a/src/components/vtk/VtkSliceViewWindowManipulator.vue b/src/components/vtk/VtkSliceViewWindowManipulator.vue
+index 91ae46c..3d1176a 100644
+--- a/src/components/vtk/VtkSliceViewWindowManipulator.vue
++++ b/src/components/vtk/VtkSliceViewWindowManipulator.vue
+@@ -12,6 +12,8 @@ import vtkMouseRangeManipulator, {
+ import vtkInteractorStyleManipulator from '@kitware/vtk.js/Interaction/Style/InteractorStyleManipulator';
+ import type { Vector2 } from '@kitware/vtk.js/types';
+ import { inject, toRefs, computed, watch } from 'vue';
++import { useViewStore } from '@/src/store/views';
++import { wlScope } from '@/src/shscan/state';
+ 
+ type Props = {
+   viewId: string;
+@@ -62,9 +64,22 @@ const widthRange = computed((): Vector2 => {
+   return [1e-12, Math.max(1e-12, max - min || 1)];
+ });
+ 
+-for (const [direction, field, range] of [
+-  ['horizontal', 'level', wlConfig.range],
+-  ['vertical', 'width', widthRange],
++// ShScan (Mohamed Said, 11 Nov 2026): up/down = brightness (level, drag up
++// = brighter), left/right = contrast (width). With "All views" every open
++// view of this scan follows.
++const windowingStore = useWindowingStore();
++const viewStore = useViewStore();
++function propagate(field: 'level' | 'width', v: number) {
++  if (wlScope.value !== 'all' || !imageId.value) return;
++  const ids = new Set<string>(viewStore.viewIDs);
++  ids.forEach((id) => {
++    if (id === wlConfig.viewID.value) return;
++    windowingStore.updateConfig(id, imageId.value!, { [field]: v }, true);
++  });
++}
++for (const [direction, field, range, scale] of [
++  ['vertical', 'level', wlConfig.range, -1],
++  ['horizontal', 'width', widthRange, 1],
+ ] as const) {
+   const value = useMouseRangeManipulatorListener(
+     rangeManipulator,
+@@ -72,9 +87,10 @@ for (const [direction, field, range] of [
+     range,
+     wlStep,
+     wlConfig[field].value,
+-    1,
++    scale,
+     () => {
+       wlConfig[field].value = value.value;
++      propagate(field, value.value);
+     }
+   );
+   watch(
 diff --git a/src/config.ts b/src/config.ts
 index 0730fcf..fd621aa 100644
 --- a/src/config.ts
@@ -1555,6 +1821,91 @@ index e4a05af..68c8051 100644
        const path = dirname(file.name);
        const fileEntry = zip.file(file.name);
        if (fileEntry) {
+diff --git a/src/plugins/vuetify.js b/src/plugins/vuetify.js
+index ff3db22..258f6db 100644
+--- a/src/plugins/vuetify.js
++++ b/src/plugins/vuetify.js
+@@ -22,9 +22,18 @@ const vuetify = createVuetify({
+     themes: {
+       [DarkTheme]: {
+         dark: true,
++        // ShScan "Clinical Midnight": near-black ground, brand navy for
++        // selection, brand gold for the main action.
+         colors: {
+-          'selection-bg-color': '#01579b',
+-          'selection-border-color': '#01579b',
++          background: '#0A0D14',
++          surface: '#0E121B',
++          'surface-bright': '#151B28',
++          'surface-variant': '#1B2232',
++          primary: '#A98B4D',
++          secondary: '#27214D',
++          info: '#8AB4FF',
++          'selection-bg-color': '#27214D',
++          'selection-border-color': '#A98B4D',
+         },
+       },
+       [LightTheme]: {
+@@ -48,6 +57,7 @@ const theme = useLocalStorage(ThemeStorageKey, DefaultTheme);
+ if (theme.value !== DarkTheme && theme.value !== LightTheme) {
+   theme.value = DefaultTheme;
+ }
+-vuetify.theme.change(theme.value);
++// ShScan: the viewer always uses the dark clinical theme
++vuetify.theme.change(DarkTheme);
+ 
+ export default vuetify;
+diff --git a/src/shscan/state.ts b/src/shscan/state.ts
+new file mode 100644
+index 0000000..f29f7b0
+--- /dev/null
++++ b/src/shscan/state.ts
+@@ -0,0 +1,45 @@
++// ShScan shared viewer settings (Mohamed Said, 11 Nov 2026).
++import { ref, watch } from 'vue';
++import { Tools } from '@/src/store/tools/types';
++
++// Window/level: right-drag with the W/L tool. 'all' = every view follows,
++// 'one' = only the view being dragged.
++export const wlScope = ref<'all' | 'one'>('all');
++
++// Sharpen, 0..3, applied to every image on screen (and the panoramic tab).
++export const sharpenAmount = ref(0);
++
++// Is the W/L tool on? (right button is zoom otherwise)
++export const isWL = (tool: unknown) => tool === Tools.WindowLevel;
++
++let installed = false;
++export function installSharpen() {
++  if (installed || typeof document === 'undefined') return;
++  installed = true;
++  const ns = 'http://www.w3.org/2000/svg';
++  const svg = document.createElementNS(ns, 'svg');
++  svg.setAttribute('width', '0');
++  svg.setAttribute('height', '0');
++  svg.setAttribute('aria-hidden', 'true');
++  svg.style.position = 'absolute';
++  const filter = document.createElementNS(ns, 'filter');
++  filter.setAttribute('id', 'shscan-sharpen');
++  const conv = document.createElementNS(ns, 'feConvolveMatrix');
++  conv.setAttribute('order', '3');
++  conv.setAttribute('preserveAlpha', 'true');
++  filter.appendChild(conv);
++  svg.appendChild(filter);
++  document.body.appendChild(svg);
++  const style = document.createElement('style');
++  document.head.appendChild(style);
++  watch(
++    sharpenAmount,
++    (a) => {
++      const k = Math.max(0, a);
++      conv.setAttribute('kernelMatrix', `0 ${-k} 0 ${-k} ${1 + 4 * k} ${-k} 0 ${-k} 0`);
++      // 2D views only (the 3D render is left as is)
++      style.textContent = k > 0 ? '.vtk-container canvas { filter: url(#shscan-sharpen); } .volume-viewer-container canvas { filter: none !important; }' : '';
++    },
++    { immediate: true }
++  );
++}
 diff --git a/src/store/views.ts b/src/store/views.ts
 index 481b782..fd66fae 100644
 --- a/src/store/views.ts
