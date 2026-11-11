@@ -26,6 +26,11 @@ Tilt on/off, Image menu). Window/level: right-drag with the W/L tool
 (up/down brightness, left/right contrast), all views or only the dragged
 one (src/shscan/state.ts). Sharpen applies to every 2D view and the
 panoramic tab (SVG convolution filter on the view canvases).
+Also: right panel (Bone/Teeth/Soft tissue/Auto looks, brightness, contrast,
+sharpen, measurement list), status strip, colored view tags, 3D look chips,
+double-click a view to enlarge it. Panoramic tab: step rail with progress,
+five cross-sections, mm scale under the panoramic, measurement panel with
+implant-T distance to the traced nerve.
 
 Rebuild:
     git clone https://github.com/Kitware/VolView && cd VolView && git checkout 66543cf

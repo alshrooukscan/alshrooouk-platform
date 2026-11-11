@@ -25,10 +25,10 @@ new file mode 100644
 index 0000000..98c668b
 Binary files /dev/null and b/src/assets/shscan-logo.png differ
 diff --git a/src/components/AppBar.vue b/src/components/AppBar.vue
-index ac71948..e64cc16 100644
+index ac71948..05727d9 100644
 --- a/src/components/AppBar.vue
 +++ b/src/components/AppBar.vue
-@@ -1,49 +1,132 @@
+@@ -1,49 +1,140 @@
  <script setup>
 -import { ref } from 'vue';
 +// ShScan top bar (redesign approved by Mohamed Said, 11 Nov 2026):
@@ -43,6 +43,8 @@ index ac71948..e64cc16 100644
 +import logoUrl from '@/src/assets/shscan-logo.png';
  import { useKeyboardShortcutsStore } from '@/src/store/keyboard-shortcuts';
 +import DentalWorkspace from '@/src/components/DentalWorkspace.vue';
++import ShscanSidePanel from '@/src/components/ShscanSidePanel.vue';
++import ShscanStatusBar from '@/src/components/ShscanStatusBar.vue';
 +import { useViewStore } from '@/src/store/views';
 +import { useCurrentImage } from '@/src/composables/useCurrentImage';
 +import { useDICOMStore } from '@/src/store/datasets-dicom';
@@ -185,11 +187,17 @@ index ac71948..e64cc16 100644
        <v-tooltip activator="parent" location="bottom">About</v-tooltip>
      </v-btn>
    </v-app-bar>
++  <v-navigation-drawer v-if="!mobile" location="end" permanent :width="280" class="shs-drawer">
++    <shscan-side-panel />
++  </v-navigation-drawer>
++  <v-footer app :height="28" class="pa-0 shs-footer">
++    <shscan-status-bar />
++  </v-footer>
 +  <dental-workspace v-if="tab === 'pano'" embedded @close="pickTab('mpr')" />
    <closeable-dialog v-model="aboutBoxDialog">
      <about-box />
    </closeable-dialog>
-@@ -51,7 +134,21 @@ const keyboardStore = useKeyboardShortcutsStore();
+@@ -51,7 +142,23 @@ const keyboardStore = useKeyboardShortcutsStore();
  
  <style src="@/src/components/styles/utils.css"></style>
  <style scoped>
@@ -197,6 +205,8 @@ index ac71948..e64cc16 100644
 -  min-height: 100%; /* fill toolbar height */
 -}
 +.shs-bar { background: #0E121B !important; border-bottom: 1px solid #1B2232; }
++.shs-drawer { background: #0E121B !important; border-left: 1px solid #1B2232 !important; }
++.shs-footer { background: #0E121B !important; min-height: 28px; }
 +.shs-logo { height: 32px; width: auto; background: #fff; border-radius: 8px; padding: 2px 5px; }
 +.shs-title { font-weight: 600; font-size: 14px; white-space: nowrap; }
 +.shs-title span { color: #8A93A6; font-weight: 400; }
@@ -240,10 +250,10 @@ index 2923ea1..c013b9a 100644
  
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..f2bc6f8
+index 0000000..278d6ac
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,852 @@
+@@ -0,0 +1,927 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -340,7 +350,7 @@ index 0000000..f2bc6f8
 +const measureKind = ref<'line' | 'cross'>('line');
 +const measures = ref<Meas[]>([]);
 +const measure = measures; // kept for the redraw watcher
-+const csAt = (key: string) => (key === 'pano' || sSel.value == null ? null : Math.round(sSel.value + (Number(key.slice(2)) - 1) * (csGapMm.value / (vol.value?.sx || 1))));
++const csAt = (key: string) => (key === 'pano' || sSel.value == null ? null : Math.round(sSel.value + (Number(key.slice(2)) - CS_MID) * (csGapMm.value / (vol.value?.sx || 1))));
 +const visibleMeas = (key: string) => measures.value.filter((m) => m.key === key && (m.at == null || m.at === csAt(key)));
 +// width line ends of a cross, in image coordinates
 +function crossEnds(m: Meas, v: Vol): { c: P2; h1: P2; h2: P2 } | null {
@@ -389,7 +399,36 @@ index 0000000..f2bc6f8
 +    }
 +  });
 +}
-+// mouse handling for measure mode on any canvas (pano, cs0, cs1, cs2)
++// Measurement list for the side panel; an implant T on a cross-section also
++// reports the gap from its bottom point to each traced nerve there.
++const measList = computed(() => {
++  const v = vol.value, c = curve.value; void sSel.value;
++  if (!v) return [] as { label: string; value: string; extra?: string }[];
++  return measures.value.filter((m) => m.b).map((m, i) => {
++    const where = m.key === 'pano' ? 'Panoramic' : `Cross-section ${m.at != null ? (m.at * v.sx).toFixed(1) + ' mm' : ''}`;
++    const h = mmLen(v, m.a, m.b!);
++    if (m.kind !== 'cross') return { label: `${i + 1}. Line · ${where}`, value: `${h.toFixed(1)} mm` };
++    let extra = '';
++    if (m.key !== 'pano' && m.at != null && c) {
++      const half = Math.round(csHalfMm.value / v.sx);
++      const low = m.a[1] > m.b![1] ? m.a : m.b!; // lower point = apex
++      (['R', 'L'] as const).forEach((side) => {
++        const nz = nerveAt(nerves.value[side], m.at!); if (!nz) return;
++        const d = Math.hypot((nz.t + half - low[0]) * v.sx, (nz.z - low[1]) * v.sz) - nerveDiaMm.value / 2;
++        extra += `${extra ? ' · ' : ''}to nerve ${side} ${Math.max(0, d).toFixed(1)} mm`;
++      });
++    }
++    return { label: `${i + 1}. Implant T · ${where}`, value: `${h.toFixed(1)} × ${(m.w * 2).toFixed(1)}`, extra };
++  });
++});
++const steps = computed(() => [
++  { key: 'arch', label: 'Arch', icon: 'mdi-vector-curve', done: archPts.value.length >= 2 },
++  { key: 'pick', label: 'Sections', icon: 'mdi-view-column', done: sSel.value != null },
++  { key: 'nerveR', label: 'Nerve R', icon: 'mdi-sine-wave', done: nerves.value.R.length >= 2, color: '#ff4d4d' },
++  { key: 'nerveL', label: 'Nerve L', icon: 'mdi-sine-wave', done: nerves.value.L.length >= 2, color: '#ffb020' },
++  { key: 'measure', label: 'Measure', icon: 'mdi-ruler', done: measures.value.some((m) => m.b) },
++]);
++// mouse handling for measure mode on any canvas (pano, cs0..cs4)
 +let mDrag: { m: Meas; part: Hit['part']; grab?: P2; start?: P2 } | null = null;
 +function canvasOf(key: string) { return key === 'pano' ? panoCv.value : csCvs[Number(key.slice(2))].value; }
 +function devPos(cv: HTMLCanvasElement, e: MouseEvent): P2 {
@@ -412,7 +451,7 @@ index 0000000..f2bc6f8
 +  if (e.button !== 0) return true;
 +  const open = visibleMeas(key).find((m) => !m.b);
 +  if (open) open.b = [p[0], p[1]];
-+  else measures.value.push({ key, at: csAt(key), kind: measureKind.value, a: [p[0], p[1]], b: null, w: 3, t: 0.5, lo: measureKind.value === 'cross' ? [-85, 20] : [40, -9], lo2: [14, -26] });
++  else measures.value.push({ key, at: csAt(key), kind: measureKind.value, a: [p[0], p[1]], b: null, w: 3, t: 0.5, lo: measureKind.value === 'cross' ? [12, 24] : [40, -9], lo2: [14, -26] });
 +  return true;
 +}
 +function measureMove(key: string, e: MouseEvent) {
@@ -438,7 +477,11 @@ index 0000000..f2bc6f8
 +
 +const axialCv = ref<HTMLCanvasElement | null>(null);
 +const panoCv = ref<HTMLCanvasElement | null>(null);
-+const csCvs = [ref<HTMLCanvasElement | null>(null), ref<HTMLCanvasElement | null>(null), ref<HTMLCanvasElement | null>(null)];
++// five cross-sections, the middle one is the selected one (redesign, 11 Nov 2026)
++const CS_N = 5, CS_MID = 2;
++const csIdx = Array.from({ length: CS_N }, (_, i) => i);
++const csCvs = csIdx.map(() => ref<HTMLCanvasElement | null>(null));
++const csOffsets = () => csIdx.map((i) => i - CS_MID);
 +
 +// ---------------------------------------------------------------- helpers
 +function voxel(v: Vol, i: number, j: number, k: number) {
@@ -607,13 +650,13 @@ index 0000000..f2bc6f8
 +    if (sSel.value != null) {
 +      const s = Math.round(sSel.value), half = csHalfMm.value / v.sx;
 +      const gap = csGapMm.value / v.sx;
-+      [-gap, 0, gap].forEach((dg, idx) => {
++      csOffsets().map((o) => o * gap).forEach((dg, idx) => {
 +        const rA = v.topIsK0 ? k : v.nz - 1 - k;
 +        const ss = Math.max(0, Math.min(c.N - 1, Math.round(sAt(v, s + dg, rA))));
 +        const [a1, b1] = idxToAx(v, c.xs[ss] - c.nxv[ss] * half, c.ys[ss] - c.nyv[ss] * half);
 +        const [a2, b2] = idxToAx(v, c.xs[ss] + c.nxv[ss] * half, c.ys[ss] + c.nyv[ss] * half);
 +        const [p1, q1] = toCanvas(f, a1, b1), [p2, q2] = toCanvas(f, a2, b2);
-+        ctx.strokeStyle = idx === 1 ? '#7CFC00' : 'rgba(124,252,0,0.5)'; ctx.lineWidth = (idx === 1 ? 2 : 1) * dpr;
++        ctx.strokeStyle = idx === CS_MID ? '#7CFC00' : 'rgba(124,252,0,0.45)'; ctx.lineWidth = (idx === CS_MID ? 2 : 1) * dpr;
 +        ctx.beginPath(); ctx.moveTo(p1, q1); ctx.lineTo(p2, q2); ctx.stroke();
 +      });
 +    }
@@ -750,7 +793,7 @@ index 0000000..f2bc6f8
 +  const { ctx, f, dpr } = r;
 +  if (sSel.value != null) {
 +    const gap = csGapMm.value / v.sx;
-+    [-gap, gap, 0].forEach((dg) => {
++    [...csOffsets().filter((o) => o !== 0), 0].map((o) => o * gap).forEach((dg) => {
 +      const [x0, y0] = toCanvas(f, sAt(v, sSel.value! + dg, 0), 0);
 +      const [x1, y1] = toCanvas(f, sAt(v, sSel.value! + dg, v.nz - 1), v.nz - 1);
 +      ctx.strokeStyle = dg ? 'rgba(124,252,0,0.45)' : '#7CFC00'; ctx.lineWidth = (dg ? 1 : 2) * dpr;
@@ -777,6 +820,19 @@ index 0000000..f2bc6f8
 +  });
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
 +  drawMeasure(ctx, f, dpr, 'pano', v);
++  // mm scale along the arch, every 10 mm (like the Romexis panoramic)
++  {
++    const base = f.oy + f.h * f.ax * f.s;
++    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1 * dpr;
++    ctx.font = `${10 * dpr}px 'IBM Plex Mono', monospace`;
++    const total = panoBuf ? panoBuf.w * v.sx : 0;
++    for (let mm = 0; mm <= total; mm += 5) {
++      const [x] = toCanvas(f, mm / v.sx, 0);
++      const big = mm % 10 === 0;
++      ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, base - (big ? 8 : 4) * dpr); ctx.stroke();
++      if (big && mm > 0 && mm < total - 4) ctx.fillText(String(mm), x + 2 * dpr, base - 10 * dpr);
++    }
++  }
 +  // side markers: patient right on the left, as on a panoramic film
 +  ctx.font = `bold ${16 * dpr}px sans-serif`; ctx.fillStyle = '#ffeb3b';
 +  ctx.fillText('R', f.ox + 8 * dpr, f.oy + f.h * f.ax * f.s - 10 * dpr);
@@ -809,7 +865,7 @@ index 0000000..f2bc6f8
 +      return;
 +    }
 +    const gap = csGapMm.value / v.sx;
-+    const s = sSel.value + (idx - 1) * gap;
++    const s = sSel.value + (idx - CS_MID) * gap;
 +    const cs = csSample(v, c, s);
 +    const r = blit(cv, `cs${idx}`, toImage(cs.buf, cs.w, cs.h), v.sz / v.sx); if (!r) return;
 +    const { ctx, f, dpr } = r;
@@ -829,7 +885,7 @@ index 0000000..f2bc6f8
 +      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]);
 +    }
 +    ctx.fillStyle = '#fff'; ctx.font = `${11 * dpr}px sans-serif`;
-+    ctx.fillText(`${(cs.ss * v.sx).toFixed(1)} mm${idx === 1 ? ' (selected)' : ''}`, 6 * dpr, 16 * dpr);
++    ctx.fillText(`${(cs.ss * v.sx).toFixed(1)} mm${idx === CS_MID ? ' (selected)' : ''}`, 6 * dpr, 16 * dpr);
 +  });
 +}
 +
@@ -929,8 +985,8 @@ index 0000000..f2bc6f8
 +  sSel.value = Math.max(0, Math.min(c.N - 1, sSel.value + (e.deltaY > 0 ? 1 : -1)));
 +}
 +function csClick(e: MouseEvent) {
-+  const cv = csCvs[1].value, c = curve.value, v = vol.value; if (!cv || !c || !v || sSel.value == null) return;
-+  const p = fromEvent(cv, 'cs1', e); if (!p) return;
++  const cv = csCvs[CS_MID].value, c = curve.value, v = vol.value; if (!cv || !c || !v || sSel.value == null) return;
++  const p = fromEvent(cv, `cs${CS_MID}`, e); if (!p) return;
 +  const half = Math.round(csHalfMm.value / v.sx);
 +  if (mode.value === 'measure') return; // handled on mousedown
 +  if (mode.value === 'nerveR' || mode.value === 'nerveL') {
@@ -1022,11 +1078,7 @@ index 0000000..f2bc6f8
 +  <div :class="['dw', { embedded: props.embedded }]">
 +    <div class="dw-bar">
 +      <strong v-if="!props.embedded" class="mr-4">Panoramic &amp; Nerve</strong>
-+      <v-btn-toggle v-model="mode" mandatory density="compact" color="primary" variant="outlined" divided>
-+        <v-btn v-for="m in modes" :key="m.key" :value="m.key" size="small">
-+          <v-icon :icon="m.icon" start :color="m.key === 'nerveR' ? '#ff4d4d' : m.key === 'nerveL' ? '#ffb020' : undefined" />{{ m.label }}
-+        </v-btn>
-+      </v-btn-toggle>
++      <span class="dw-step-title">{{ modes.find((m) => m.key === mode)?.label }}</span>
 +      <v-btn-toggle v-if="mode === 'measure'" v-model="measureKind" mandatory density="compact" variant="outlined" divided class="ml-2" color="#c9a227">
 +        <v-btn value="line" size="small">Line</v-btn>
 +        <v-btn value="cross" size="small">Implant T</v-btn>
@@ -1039,56 +1091,89 @@ index 0000000..f2bc6f8
 +    </div>
 +    <div class="dw-hint">{{ status || hint }}</div>
 +    <div class="dw-body" @mousedown="wlDown" @contextmenu.prevent>
++      <nav class="dw-rail" aria-label="Steps">
++        <button v-for="st in steps" :key="st.key" type="button" :class="['dw-step', { on: mode === st.key }]" @click="mode = st.key as any">
++          <span v-if="st.done" class="dw-done" aria-label="done">✓</span>
++          <v-icon :icon="st.icon" size="20" :color="st.color" />
++          <span>{{ st.label }}</span>
++        </button>
++      </nav>
 +      <div class="dw-left">
 +        <canvas ref="axialCv" class="cv" @mousedown="axialDown" @mousemove="axialMove" @mouseup="axialUp" @mouseleave="axialUp" @wheel="axialWheel" @contextmenu.prevent />
 +        <div class="dw-ctrl">
 +          <div class="lbl">Axial slice</div>
-+          <v-slider v-if="vol" v-model="axialK" :min="0" :max="vol.nz - 1" :step="1" hide-details density="compact" />
++          <v-slider v-if="vol" v-model="axialK" :min="0" :max="vol.nz - 1" :step="1" hide-details density="compact" color="primary" />
 +          <div class="lbl">Window / Level</div>
-+          <v-slider v-model="win" :min="50" :max="6000" :step="10" hide-details density="compact" />
-+          <v-slider v-model="lev" :min="-1500" :max="4000" :step="10" hide-details density="compact" />
++          <v-slider v-model="win" :min="50" :max="6000" :step="10" hide-details density="compact" color="primary" />
++          <v-slider v-model="lev" :min="-1500" :max="4000" :step="10" hide-details density="compact" color="primary" />
 +          <div class="lbl">Panoramic slab {{ slabMm }} mm</div>
-+          <v-slider v-model="slabMm" :min="0" :max="30" :step="1" hide-details density="compact" />
++          <v-slider v-model="slabMm" :min="0" :max="30" :step="1" hide-details density="compact" color="primary" />
 +          <div class="lbl">Sharpen {{ sharpen.toFixed(1) }}</div>
-+          <v-slider v-model="sharpen" :min="0" :max="3" :step="0.1" hide-details density="compact" />
++          <v-slider v-model="sharpen" :min="0" :max="3" :step="0.1" hide-details density="compact" color="primary" />
 +          <div class="d-flex flex-wrap" style="gap: 4px 12px">
-+            <v-checkbox v-model="denoise" label="Reduce noise" hide-details density="compact" />
-+            <v-checkbox v-model="slabMip" label="MIP slab" hide-details density="compact" />
-+            <v-checkbox v-model="invert" label="Invert" hide-details density="compact" />
++            <v-checkbox v-model="denoise" label="Reduce noise" hide-details density="compact" color="primary" />
++            <v-checkbox v-model="slabMip" label="MIP slab" hide-details density="compact" color="primary" />
++            <v-checkbox v-model="invert" label="Invert" hide-details density="compact" color="primary" />
 +          </div>
 +          <div class="lbl">Cross-section gap {{ csGapMm }} mm · width {{ csHalfMm * 2 }} mm</div>
-+          <v-slider v-model="csGapMm" :min="0.5" :max="5" :step="0.5" hide-details density="compact" />
-+          <v-slider v-model="csHalfMm" :min="8" :max="30" :step="1" hide-details density="compact" />
++          <v-slider v-model="csGapMm" :min="0.5" :max="5" :step="0.5" hide-details density="compact" color="primary" />
++          <v-slider v-model="csHalfMm" :min="8" :max="30" :step="1" hide-details density="compact" color="primary" />
 +          <div class="lbl d-flex align-center">Cross-section tilt {{ csTilt }}°
 +            <v-btn size="x-small" variant="text" class="ml-2" @click="csTilt = 0">Reset</v-btn>
 +          </div>
-+          <v-slider v-model="csTilt" :min="-60" :max="60" :step="1" hide-details density="compact" />
++          <v-slider v-model="csTilt" :min="-60" :max="60" :step="1" hide-details density="compact" color="primary" />
 +          <div class="lbl">Nerve diameter {{ nerveDiaMm }} mm</div>
-+          <v-slider v-model="nerveDiaMm" :min="1" :max="5" :step="0.5" hide-details density="compact" />
++          <v-slider v-model="nerveDiaMm" :min="1" :max="5" :step="0.5" hide-details density="compact" color="primary" />
 +        </div>
 +      </div>
 +      <div class="dw-right">
 +        <canvas ref="panoCv" class="cv pano" @contextmenu.prevent @mousedown="panoDown" @mousemove="panoMove" @mouseup="panoUp" @mouseleave="panoUp" @click="panoClick" @wheel="panoWheel" />
 +        <div class="dw-cs">
-+          <canvas v-for="ci in [0, 1, 2]" :key="ci" :ref="(el) => (csCvs[ci].value = el as any)" :class="ci === 1 ? 'cv sel' : 'cv'"
++          <canvas v-for="ci in csIdx" :key="ci" :ref="(el) => (csCvs[ci].value = el as any)" :class="ci === CS_MID ? 'cv sel' : 'cv'"
 +            @mousedown="(e) => measureDown(`cs${ci}`, e)" @mousemove="(e) => measureMove(`cs${ci}`, e)" @mouseup="measureUp" @mouseleave="measureUp"
-+            @click="ci === 1 ? csClick($event) : undefined" @contextmenu.prevent />
++            @click="ci === CS_MID ? csClick($event) : undefined" @contextmenu.prevent />
 +        </div>
 +      </div>
++      <aside class="dw-side">
++        <div class="dw-h">MEASUREMENTS</div>
++        <div v-if="!measList.length" class="dw-empty">Pick Measure, then Line or Implant T. An implant T on a cross-section shows its distance to the traced nerve.</div>
++        <div v-for="(m, i) in measList" :key="i" class="dw-row">
++          <div class="d-flex justify-space-between"><span>{{ m.label }}</span><span class="dw-mono">{{ m.value }}</span></div>
++          <div v-if="m.extra" class="dw-extra">{{ m.extra }}</div>
++        </div>
++        <div class="dw-h mt-4">PROGRESS</div>
++        <div v-for="st in steps" :key="st.key" class="dw-prog"><span>{{ st.label }}</span><span :style="{ color: st.done ? '#6FCF97' : '#6B7487' }">{{ st.done ? 'Done' : 'Not yet' }}</span></div>
++        <div style="flex: 1"></div>
++        <div class="dw-tip">← → move cross-sections (Shift = 5) · ↑ ↓ axial slice · right-drag = brightness / contrast · right-click a point deletes it</div>
++      </aside>
 +    </div>
 +  </div>
 +</template>
 +
 +<style scoped>
 +.dw { position: fixed; inset: 0; z-index: 3000; background: #0A0D14; color: #E7EAF0; display: flex; flex-direction: column; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
-+.dw.embedded { top: 56px; z-index: 1005; }
++.dw.embedded { top: 56px; bottom: 28px; z-index: 1900; }
++.dw-step-title { font-weight: 600; font-size: 14px; margin-right: 6px; }
++.dw-rail { width: 72px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; background: #0E121B; border-right: 1px solid #1B2232; }
++.dw-step { position: relative; width: 56px; height: 58px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #AEB5C4; font-size: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; font-family: inherit; }
++.dw-step:hover { background: #151B28; }
++.dw-step.on { background: #27214D; color: #E4D6A9; border-color: #3A3270; }
++.dw-done { position: absolute; top: 3px; right: 5px; font-size: 10px; color: #6FCF97; }
++.dw-side { width: 260px; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #0E121B; border-left: 1px solid #1B2232; overflow-y: auto; }
++.dw-h { font-size: 11px; color: #8A93A6; letter-spacing: 0.8px; font-weight: 600; }
++.dw-empty { font-size: 12px; color: #8A93A6; line-height: 1.5; }
++.dw-row { padding: 9px 10px; border-radius: 8px; background: #121826; font-size: 12px; }
++.dw-mono { font-family: 'IBM Plex Mono', monospace; color: #FFE066; }
++.dw-extra { margin-top: 4px; font-size: 11px; color: #6FCF97; }
++.dw-prog { display: flex; justify-content: space-between; font-size: 12px; color: #AEB5C4; }
++.dw-tip { padding: 10px; border-radius: 10px; background: #151B28; border: 1px solid #1F2738; font-size: 11px; color: #AEB5C4; line-height: 1.5; }
 +.dw-bar { display: flex; align-items: center; padding: 8px 12px; gap: 6px; background: #0E121B; border-bottom: 1px solid #1B2232; flex-wrap: wrap; }
 +.dw-hint { font-size: 12px; color: #8A93A6; padding: 6px 14px; background: #0E121B; border-bottom: 1px solid #1B2232; }
 +.dw-body { flex: 1; display: flex; min-height: 0; }
-+.dw-left { width: 34%; display: flex; flex-direction: column; border-right: 1px solid #1B2232; min-height: 0; background: #0E121B; }
++.dw-left { width: 27%; display: flex; flex-direction: column; border-right: 1px solid #1B2232; min-height: 0; background: #0E121B; }
 +.dw-left .cv { flex: 1; min-height: 200px; }
 +.dw-ctrl { padding: 6px 12px; overflow-y: auto; max-height: 48%; }
-+.lbl { font-size: 11px; color: #aaa; margin-top: 4px; }
++.lbl { font-size: 11px; color: #8A93A6; margin-top: 4px; }
 +.dw-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 +.pano { flex: 1.1; min-height: 0; border-bottom: 1px solid #1B2232; cursor: crosshair; }
 +.dw-cs { flex: 1; display: flex; min-height: 0; }
@@ -1135,32 +1220,25 @@ index 492acff..3d6122f 100644
  
  // base image
 diff --git a/src/components/ObliqueViewer.vue b/src/components/ObliqueViewer.vue
-index 44f972c..d0dd8d1 100644
+index 44f972c..c509031 100644
 --- a/src/components/ObliqueViewer.vue
 +++ b/src/components/ObliqueViewer.vue
-@@ -1,5 +1,20 @@
+@@ -1,5 +1,13 @@
  <template>
 -  <div class="oblique-grid">
-+  <div v-if="isStandard" class="oblique-grid">
-+    <!-- ShScan standard: axial | coronal / sagittal | 3D, all 2D views tiltable -->
-+    <div class="d-flex">
-+      <ObliqueSliceViewer :view-id="`${viewId}-axial`" outline-type="ObliqueAxial" view-direction="Superior" view-up="Anterior" />
-+    </div>
-+    <div class="d-flex">
-+      <ObliqueSliceViewer :view-id="`${viewId}-coronal`" outline-type="ObliqueCoronal" view-direction="Posterior" view-up="Superior" />
-+    </div>
-+    <div class="d-flex">
-+      <ObliqueSliceViewer :view-id="`${viewId}-sagittal`" outline-type="ObliqueSagittal" view-direction="Right" view-up="Superior" />
-+    </div>
-+    <div class="d-flex">
-+      <VolumeViewer v-if="volumeViewId" :view-id="volumeViewId" style="flex: 1 1 0; min-width: 0; width: 100%" />
++  <div v-if="isStandard" :class="['oblique-grid', 'shs-std', { maxed: maxCell >= 0 }]">
++    <!-- ShScan standard: axial | coronal / sagittal | 3D, all 2D views
++         tiltable; double-click a view to enlarge it, again to go back -->
++    <div v-for="(c, i) in stdCells" :key="c.key" :class="['d-flex', { max: maxCell === i }]" @dblclick="maxCell = maxCell === i ? -1 : i">
++      <ObliqueSliceViewer v-if="c.dir" :view-id="`${viewId}-${c.key}`" :outline-type="c.outline" :view-direction="c.dir" :view-up="c.up" />
++      <VolumeViewer v-else-if="volumeViewId" :view-id="volumeViewId" style="flex: 1 1 0; min-width: 0; width: 100%" />
 +    </div>
 +  </div>
 +  <div v-else class="oblique-grid">
      <div class="d-flex">
        <ObliqueSliceViewer
          :view-id="`${viewId}-coronal`"
-@@ -56,7 +71,9 @@
+@@ -56,7 +64,9 @@
  </template>
  
  <script setup lang="ts">
@@ -1171,7 +1249,7 @@ index 44f972c..d0dd8d1 100644
  import { WindowingViewContext } from '@/src/composables/useWindowingConfig';
  import MultiObliqueSliceViewer from '@/src/components/MultiObliqueSliceViewer.vue';
  import ObliqueSliceViewer from '@/src/components/ObliqueSliceViewer.vue';
-@@ -74,6 +91,29 @@ provide(WindowingViewContext, toRef(props, 'viewId'));
+@@ -74,6 +84,36 @@ provide(WindowingViewContext, toRef(props, 'viewId'));
  
  const { currentImageID } = useCurrentImage();
  
@@ -1179,6 +1257,13 @@ index 44f972c..d0dd8d1 100644
 +const viewStore = useViewStore();
 +const isStandard = computed(() => !!(viewStore.getView(props.viewId)?.options as any)?.standard);
 +const volumeViewId = ref<string | null>(null);
++const maxCell = ref(-1);
++const stdCells = [
++  { key: 'axial', outline: 'ObliqueAxial', dir: 'Superior', up: 'Anterior' },
++  { key: 'coronal', outline: 'ObliqueCoronal', dir: 'Posterior', up: 'Superior' },
++  { key: 'sagittal', outline: 'ObliqueSagittal', dir: 'Right', up: 'Superior' },
++  { key: 'volume', outline: '', dir: '', up: '' },
++] as const;
 +watch(
 +  isStandard,
 +  (on) => {
@@ -1201,14 +1286,178 @@ index 44f972c..d0dd8d1 100644
  // initialize the reslice cursor store
  useResliceCursorStore();
  </script>
-@@ -96,3 +136,8 @@ useResliceCursorStore();
+@@ -96,3 +136,11 @@ useResliceCursorStore();
    min-height: 0;
  }
  </style>
 +<style scoped>
 +/* ShScan standard layout: let the 3D view fill its cell */
++.shs-std { background-color: #1B2232; gap: 4px; padding: 4px; }
++.shs-std.maxed > div:not(.max) { display: none !important; }
++.shs-std.maxed > div.max { grid-column: 1 / -1; grid-row: 1 / -1; }
 +.oblique-grid :deep(.volume-viewer-container) { flex: 1 1 0; min-width: 0; grid-template-columns: 1fr !important; }
 +.oblique-grid :deep(.volume-viewer-container > .vtk-container) { flex: 1 1 auto; width: 100%; min-width: 0; }
++</style>
+diff --git a/src/components/ShscanSidePanel.vue b/src/components/ShscanSidePanel.vue
+new file mode 100644
+index 0000000..a27744b
+--- /dev/null
++++ b/src/components/ShscanSidePanel.vue
+@@ -0,0 +1,109 @@
++<script setup lang="ts">
++// ShScan right-hand panel (redesign, 11 Nov 2026): one-click image looks,
++// brightness / contrast / sharpen for every view, and the list of
++// measurements on this scan.
++import { computed } from 'vue';
++import { useViewStore } from '@/src/store/views';
++import { useWindowingStore } from '@/src/store/view-configs/windowing';
++import { useCurrentImage } from '@/src/composables/useCurrentImage';
++import { useRulerStore } from '@/src/store/tools/rulers';
++import { sharpenAmount } from '@/src/shscan/state';
++
++const viewStore = useViewStore();
++const wl = useWindowingStore();
++const rulerStore = useRulerStore();
++const { currentImageID } = useCurrentImage('global');
++
++const viewIds = computed(() => viewStore.viewIDs as string[]);
++const firstView = computed(() => viewIds.value.find((id) => wl.getConfig(id, currentImageID.value || '')) ?? viewIds.value[0]);
++const cfg = computed(() => (currentImageID.value && firstView.value ? wl.getConfig(firstView.value, currentImageID.value) : null));
++const range = computed<[number, number]>(() => (currentImageID.value && firstView.value ? wl.getRange(firstView.value, currentImageID.value) : [0, 1]));
++
++function setAll(patch: { width?: number; level?: number }) {
++  const img = currentImageID.value; if (!img) return;
++  viewIds.value.forEach((id) => wl.updateConfig(id, img, patch, true));
++}
++const looks = [
++  { key: 'bone', label: 'Bone', width: 2000, level: 500 },
++  { key: 'teeth', label: 'Teeth', width: 3200, level: 1100 },
++  { key: 'soft', label: 'Soft tissue', width: 450, level: 50 },
++];
++function applyLook(l: { width: number; level: number }) { setAll({ width: l.width, level: l.level }); }
++function autoLook() {
++  const img = currentImageID.value; if (!img) return;
++  viewIds.value.forEach((id) => wl.resetConfig(id, img));
++}
++const activeLook = computed(() => {
++  const c = cfg.value; if (!c) return '';
++  const l = looks.find((x) => Math.abs((c.width ?? 0) - x.width) < 1 && Math.abs((c.level ?? 0) - x.level) < 1);
++  return l?.key ?? '';
++});
++const level = computed({
++  get: () => cfg.value?.level ?? 0,
++  set: (v: number) => setAll({ level: v }),
++});
++const width = computed({
++  get: () => cfg.value?.width ?? 1,
++  set: (v: number) => setAll({ width: v }),
++});
++const span = computed(() => Math.max(10, range.value[1] - range.value[0]));
++
++// measurements: VolView rulers (straight views) + tilt-view rulers
++const measurements = computed(() => {
++  const out: { label: string; value: string }[] = [];
++  (rulerStore.rulerIDs as string[]).forEach((id, i) => {
++    const len = (rulerStore.lengthByID as Record<string, number>)[id];
++    if (len != null) out.push({ label: `Ruler ${i + 1}`, value: `${len.toFixed(1)} mm` });
++  });
++  const tilt = ((globalThis as any).__shscanRulers || {}) as Record<string, any[]>;
++  Object.entries(tilt).forEach(([vid, list]) => {
++    const plane = (vid.match(/-(axial|coronal|sagittal)$/)?.[1] || 'view');
++    (list || []).forEach((m) => {
++      if (!m.b) return;
++      const d = Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1], m.b[2] - m.a[2]);
++      out.push({ label: `Ruler · ${plane[0].toUpperCase()}${plane.slice(1)} (tilt)`, value: `${d.toFixed(1)} mm` });
++    });
++  });
++  return out;
++});
++</script>
++
++<template>
++  <div class="shs-panel">
++    <div class="shs-h">IMAGE</div>
++    <div class="shs-grid">
++      <button v-for="l in looks" :key="l.key" type="button" :class="['shs-b', { on: activeLook === l.key }]" @click="applyLook(l)">{{ l.label }}</button>
++      <button type="button" class="shs-b" @click="autoLook">Auto</button>
++    </div>
++
++    <label class="shs-l">Brightness
++      <v-slider v-model="level" :min="range[0]" :max="range[1]" :step="1" hide-details density="compact" color="primary" :reverse="true" />
++    </label>
++    <label class="shs-l">Contrast
++      <v-slider v-model="width" :min="1" :max="span" :step="1" hide-details density="compact" color="primary" :reverse="true" />
++    </label>
++    <label class="shs-l">Sharpen {{ sharpenAmount.toFixed(1) }}
++      <v-slider v-model="sharpenAmount" :min="0" :max="3" :step="0.1" hide-details density="compact" color="primary" />
++    </label>
++
++    <div class="shs-h mt-4">MEASUREMENTS</div>
++    <div v-if="!measurements.length" class="shs-empty">No measurements yet. Pick the ruler on the left and click two points.</div>
++    <div v-for="(m, i) in measurements" :key="i" class="shs-row"><span>{{ m.label }}</span><span class="shs-mono">{{ m.value }}</span></div>
++
++    <div style="flex: 1"></div>
++    <div class="shs-tip">Tip: drag a colored line to tilt · double-click a view to enlarge it · with the W/L tool, right-drag: up/down brightness, left/right contrast.</div>
++  </div>
++</template>
++
++<style scoped>
++.shs-panel { height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #0E121B; color: #E7EAF0; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow-y: auto; }
++.shs-h { font-size: 11px; color: #8A93A6; letter-spacing: 0.8px; font-weight: 600; }
++.shs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
++.shs-b { padding: 8px; border-radius: 8px; border: 1px solid #1F2738; background: #121826; color: #C9CFDA; font-size: 12px; cursor: pointer; font-family: inherit; }
++.shs-b.on { border-color: #A98B4D; background: rgba(169,139,77,0.14); color: #E4D6A9; }
++.shs-l { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #AEB5C4; }
++.shs-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 10px; border-radius: 8px; background: #121826; font-size: 12px; }
++.shs-mono { font-family: 'IBM Plex Mono', monospace; color: #FFE066; }
++.shs-empty { font-size: 12px; color: #8A93A6; line-height: 1.5; }
++.shs-tip { padding: 12px; border-radius: 10px; background: #151B28; border: 1px solid #1F2738; font-size: 12px; color: #AEB5C4; line-height: 1.5; }
++</style>
+diff --git a/src/components/ShscanStatusBar.vue b/src/components/ShscanStatusBar.vue
+new file mode 100644
+index 0000000..ab8e710
+--- /dev/null
++++ b/src/components/ShscanStatusBar.vue
+@@ -0,0 +1,40 @@
++<script setup lang="ts">
++// ShScan status strip (redesign, 11 Nov 2026): W/L, voxel size, scan size.
++import { computed } from 'vue';
++import { useViewStore } from '@/src/store/views';
++import { useWindowingStore } from '@/src/store/view-configs/windowing';
++import { useCurrentImage } from '@/src/composables/useCurrentImage';
++import { sharpenAmount, wlScope } from '@/src/shscan/state';
++
++const viewStore = useViewStore();
++const wl = useWindowingStore();
++const { currentImageID, currentImageData, isImageLoading } = useCurrentImage('global') as any;
++
++const wlText = computed(() => {
++  const img = currentImageID.value; const vid = (viewStore.viewIDs as string[])[0];
++  if (!img || !vid) return '';
++  const c = wl.getConfig(vid, img);
++  return c ? `W ${Math.round(c.width ?? 0)} · L ${Math.round(c.level ?? 0)}` : '';
++});
++const geom = computed(() => {
++  const im: any = currentImageData.value; if (!im) return null;
++  const sp = im.getSpacing(), d = im.getDimensions();
++  return { voxel: `${sp[0].toFixed(2)} mm`, size: `${d[0]}×${d[1]}×${d[2]}` };
++});
++</script>
++
++<template>
++  <div class="shs-status">
++    <span v-if="wlText">{{ wlText }}</span>
++    <span>W/L: {{ wlScope === 'all' ? 'all views' : 'one view' }}</span>
++    <span v-if="sharpenAmount > 0">Sharpen {{ sharpenAmount.toFixed(1) }}</span>
++    <span v-if="geom">Voxel {{ geom.voxel }}</span>
++    <span v-if="geom">{{ geom.size }}</span>
++    <span style="flex: 1"></span>
++    <span :style="{ color: isImageLoading ? '#E4D6A9' : '#6FCF97' }">{{ currentImageID ? (isImageLoading ? 'Loading scan…' : 'Scan loaded') : 'No scan' }}</span>
++  </div>
++</template>
++
++<style scoped>
++.shs-status { display: flex; align-items: center; gap: 20px; height: 28px; padding: 0 16px; border-top: 1px solid #1B2232; background: #0E121B; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A93A6; width: 100%; }
 +</style>
 diff --git a/src/components/SliceViewer.vue b/src/components/SliceViewer.vue
 index 68406ed..358907b 100644
@@ -1236,15 +1485,32 @@ index 68406ed..358907b 100644
  
  onVTKEvent(currentImageData, 'onModified', () => {
 diff --git a/src/components/SliceViewerOverlay.vue b/src/components/SliceViewerOverlay.vue
-index e8c156a..8f28e47 100644
+index e8c156a..3f6c578 100644
 --- a/src/components/SliceViewerOverlay.vue
 +++ b/src/components/SliceViewerOverlay.vue
-@@ -45,13 +45,19 @@ const LOCKED_ORIENTATION_SUFFIXES = [
+@@ -1,4 +1,5 @@
+ <script setup lang="ts">
++import { useViewStore } from '@/src/store/views';
+ import { inject, toRefs } from 'vue';
+ import ViewOverlayGrid from '@/src/components/ViewOverlayGrid.vue';
+ import { useSliceConfig } from '@/src/composables/useSliceConfig';
+@@ -45,13 +46,30 @@ const LOCKED_ORIENTATION_SUFFIXES = [
  const isLockedOrientationView = computed(() =>
    LOCKED_ORIENTATION_SUFFIXES.some((suffix) => viewId.value.includes(suffix))
  );
 +// ShScan: oblique views show their plane name, not the series name, and no
 +// slice counter (it does not apply to a tilted plane).
++// view name for the tag: oblique plane name, or the regular view's name
++const viewLabel = computed(() => {
++  if (obliqueName.value) return obliqueName.value.toUpperCase();
++  const n = (useViewStore().getView(viewId.value)?.name || '').toLowerCase();
++  if (/axial|coronal|sagittal/.test(n)) return n.toUpperCase();
++  return metadata.value?.name ?? '';
++});
++const tagClass = computed(() => {
++  const l = viewLabel.value.toLowerCase();
++  return l.includes('axial') ? 'ax' : l.includes('coronal') ? 'co' : l.includes('sagittal') ? 'sa' : '';
++});
 +const obliqueName = computed(() => {
 +  const m = viewId.value.match(/-(coronal|sagittal|axial)$/);
 +  return m ? m[1][0].toUpperCase() + m[1].slice(1) + '' : '';
@@ -1256,11 +1522,11 @@ index e8c156a..8f28e47 100644
      <template v-slot:top-left>
        <div class="annotation-cell">
 -        <span>{{ metadata.name }}</span>
-+        <span>{{ obliqueName || metadata.name }}</span>
++        <span :class="['shs-vtag', tagClass]">{{ viewLabel }}</span>
        </div>
      </template>
      <template v-slot:top-center>
-@@ -66,7 +72,7 @@ const isLockedOrientationView = computed(() =>
+@@ -66,7 +84,7 @@ const isLockedOrientationView = computed(() =>
      </template>
      <template v-slot:bottom-left>
        <div class="annotation-cell">
@@ -1269,6 +1535,70 @@ index e8c156a..8f28e47 100644
            <span class="slice-label">
              Slice: {{ slice - sliceRange[0] + 1 }}/{{
                sliceRange[1] - sliceRange[0] + 1
+@@ -92,3 +110,9 @@ const isLockedOrientationView = computed(() =>
+ </template>
+ 
+ <style scoped src="@/src/components/styles/vtk-view.css"></style>
++<style scoped>
++.shs-vtag { padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; background: rgba(255,255,255,0.08); color: #E7EAF0; }
++.shs-vtag.ax { background: rgba(66,133,244,0.18); color: #8AB4FF; }
++.shs-vtag.co { background: rgba(239,83,80,0.16); color: #FF8A80; }
++.shs-vtag.sa { background: rgba(255,202,40,0.16); color: #FFD95A; }
++</style>
+diff --git a/src/components/VolumeViewer.vue b/src/components/VolumeViewer.vue
+index 54a8d33..64db6df 100644
+--- a/src/components/VolumeViewer.vue
++++ b/src/components/VolumeViewer.vue
+@@ -49,7 +49,7 @@
+                 Reset Camera
+               </v-tooltip>
+             </v-btn>
+-            <span class="ml-3">{{ currentImageMetadata.name }}</span>
++            <span class="ml-3 shs-tag3d">3D</span>
+           </div>
+         </template>
+         <template #top-right>
+@@ -57,6 +57,18 @@
+             <span>{{ presetName }}</span>
+           </div>
+         </template>
++        <template #bottom-left>
++          <!-- ShScan: one-click 3D looks -->
++          <div class="annotation-cell pointer-events-all shs-chips" @click.stop>
++            <button
++              v-for="c in chips3d"
++              :key="c.preset"
++              type="button"
++              :class="['shs-chip3d', { on: coloringConfig?.transferFunction.preset === c.preset }]"
++              @click="currentImageID && coloringStore.setColorPreset(viewId, currentImageID, c.preset)"
++            >{{ c.label }}</button>
++          </div>
++        </template>
+         <template #bottom-right>
+           <div class="annotation-cell" @click.stop>
+             <ViewTypeSwitcher :view-id="viewId" :image-id="currentImageID" />
+@@ -137,6 +149,12 @@ const coloringStore = useVolumeColoringStore();
+ const coloringConfig = computed(() =>
+   coloringStore.getConfig(viewId.value, currentImageID.value)
+ );
++const chips3d = [
++  { label: 'Bone & teeth', preset: 'CBCT-Dental' },
++  { label: 'Soft tissue', preset: 'CT-Soft-Tissue' },
++  { label: 'Airway', preset: 'CT-Air' },
++  { label: 'X-ray', preset: 'CT-X-ray' },
++];
+ const presetName = computed(
+   () => coloringConfig.value?.transferFunction.preset.replace(/-/g, ' ') ?? ''
+ );
+@@ -150,4 +168,8 @@ const presetName = computed(
+   background-color: black;
+   grid-template-columns: auto;
+ }
++.shs-tag3d { padding: 3px 8px; border-radius: 6px; background: rgba(169,139,77,0.22); color: #E4D6A9; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }
++.shs-chips { display: flex; gap: 6px; flex-wrap: wrap; }
++.shs-chip3d { padding: 5px 10px; border-radius: 999px; border: 1px solid #2A3245; background: rgba(10,13,20,0.7); color: #C9CFDA; font-size: 11px; cursor: pointer; font-family: inherit; }
++.shs-chip3d.on { border-color: #A98B4D; background: rgba(169,139,77,0.2); color: #E4D6A9; }
+ </style>
 diff --git a/src/components/icons/VolViewFullLogo.vue b/src/components/icons/VolViewFullLogo.vue
 index d06f2ee..3624729 100644
 --- a/src/components/icons/VolViewFullLogo.vue
