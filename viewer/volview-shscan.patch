@@ -104,10 +104,10 @@ index 2923ea1..c013b9a 100644
  
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..1a71a7d
+index 0000000..8cbe57c
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,749 @@
+@@ -0,0 +1,828 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -181,59 +181,118 @@ index 0000000..1a71a7d
 +const sSel = ref<number | null>(null); // index along the curve for cross-sections
 +type NP = { s: number; t: number; z: number }; // z = panoramic row
 +const nerves = ref<{ R: NP[]; L: NP[] }>({ R: [], L: [] });
-+// Measurements (Mohamed Said, 10 Nov 2026): as many as needed, on the
-+// panoramic or any cross-section; every point can be dragged like the arch
-+// points, right-click a point to delete that measurement. Cross-section
-+// measurements belong to the cross-section position they were made on.
-+type Meas = { key: string; at: number | null; a: [number, number]; b: [number, number] | null };
++// Measurements (Mohamed Said, 10-11 Nov 2026): as many as needed, on the
++// panoramic or any cross-section. Two kinds:
++//   line  - two points
++//   cross - implant "T": a height line plus a width line centred on it, both
++//           adjustable on their own (drag the ends, or the centre dot to slide
++//           the width line along the height line)
++// Points are small so they don't hide the image; labels sit off the line on a
++// leader and can be dragged out of the way. Right-click a point to delete.
++// Cross-section measurements belong to the cross-section position they were
++// made on.
++type P2 = [number, number];
++type Meas = {
++  key: string; at: number | null; kind: 'line' | 'cross';
++  a: P2; b: P2 | null;
++  w: number; t: number; // cross: half-width (mm) and where it sits on a->b
++  lo: P2; lo2: P2;      // label offsets (CSS px) for the line/height and the width
++};
++const measureKind = ref<'line' | 'cross'>('line');
 +const measures = ref<Meas[]>([]);
 +const measure = measures; // kept for the redraw watcher
 +const csAt = (key: string) => (key === 'pano' || sSel.value == null ? null : Math.round(sSel.value + (Number(key.slice(2)) - 1) * (csGapMm.value / (vol.value?.sx || 1))));
 +const visibleMeas = (key: string) => measures.value.filter((m) => m.key === key && (m.at == null || m.at === csAt(key)));
++// width line ends of a cross, in image coordinates
++function crossEnds(m: Meas, v: Vol): { c: P2; h1: P2; h2: P2 } | null {
++  if (!m.b) return null;
++  const c: P2 = [m.a[0] + (m.b[0] - m.a[0]) * m.t, m.a[1] + (m.b[1] - m.a[1]) * m.t];
++  const ux = (m.b[0] - m.a[0]) * v.sx, uy = (m.b[1] - m.a[1]) * v.sz;
++  const L = Math.hypot(ux, uy) || 1;
++  const px = -uy / L, py = ux / L; // perpendicular, in mm
++  return { c, h1: [c[0] - (px * m.w) / v.sx, c[1] - (py * m.w) / v.sz], h2: [c[0] + (px * m.w) / v.sx, c[1] + (py * m.w) / v.sz] };
++}
++const mmLen = (v: Vol, a: P2, b: P2) => Math.hypot((b[0] - a[0]) * v.sx, (b[1] - a[1]) * v.sz);
++type Hit = { m: Meas; part: 'a' | 'b' | 'h' | 'c' | 'lo' | 'lo2'; x: number; y: number; w?: number; h?: number };
++const hits: Record<string, Hit[]> = {};
 +function drawMeasure(ctx: CanvasRenderingContext2D, f: Fit, dpr: number, key: string, v: Vol) {
++  const H: Hit[] = (hits[key] = []);
++  const dot = (x: number, y: number, r = 2.5) => { ctx.beginPath(); ctx.arc(x, y, r * dpr, 0, Math.PI * 2); ctx.fill(); };
++  const seg = (x1: number, y1: number, x2: number, y2: number) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
++  const label = (m: Meas, which: 'lo' | 'lo2', mx: number, my: number, text: string) => {
++    const off = m[which];
++    const lx = mx + off[0] * dpr, ly = my + off[1] * dpr;
++    ctx.font = `bold ${12 * dpr}px sans-serif`;
++    const tw = ctx.measureText(text).width, bw = tw + 10 * dpr, bh = 18 * dpr;
++    ctx.strokeStyle = 'rgba(255,235,59,0.7)'; ctx.lineWidth = 1 * dpr; seg(mx, my, lx, ly + bh / 2);
++    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(lx, ly, bw, bh);
++    ctx.fillStyle = '#ffeb3b'; ctx.fillText(text, lx + 5 * dpr, ly + 13 * dpr);
++    H.push({ m, part: which, x: lx, y: ly, w: bw, h: bh });
++  };
 +  visibleMeas(key).forEach((m) => {
++    ctx.fillStyle = '#ffeb3b'; ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1.5 * dpr;
 +    const [ax, ay] = toCanvas(f, m.a[0], m.a[1]);
-+    ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(ax, ay, 4.5 * dpr, 0, Math.PI * 2); ctx.fill();
++    dot(ax, ay); H.push({ m, part: 'a', x: ax, y: ay });
 +    if (!m.b) return;
 +    const [bx, by] = toCanvas(f, m.b[0], m.b[1]);
-+    ctx.beginPath(); ctx.arc(bx, by, 4.5 * dpr, 0, Math.PI * 2); ctx.fill();
-+    ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-+    // columns are 1 voxel of arc length (panoramic) or of width (cross-section); rows are slices
-+    const mm = Math.hypot((m.b[0] - m.a[0]) * v.sx, (m.b[1] - m.a[1]) * v.sz);
-+    const label = `${mm.toFixed(1)} mm`;
-+    ctx.font = `bold ${14 * dpr}px sans-serif`;
-+    const tw = ctx.measureText(label).width;
-+    const lx = (ax + bx) / 2 + 8 * dpr, ly = (ay + by) / 2;
-+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(lx - 4 * dpr, ly - 15 * dpr, tw + 8 * dpr, 20 * dpr);
-+    ctx.fillStyle = '#ffeb3b'; ctx.fillText(label, lx, ly);
++    dot(bx, by); H.push({ m, part: 'b', x: bx, y: by });
++    ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1.5 * dpr; seg(ax, ay, bx, by);
++    label(m, 'lo', (ax + bx) / 2, (ay + by) / 2, `${mmLen(v, m.a, m.b).toFixed(1)} mm`);
++    if (m.kind === 'cross') {
++      const e = crossEnds(m, v)!;
++      const [cx, cy] = toCanvas(f, e.c[0], e.c[1]);
++      const [x1, y1] = toCanvas(f, e.h1[0], e.h1[1]), [x2, y2] = toCanvas(f, e.h2[0], e.h2[1]);
++      ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1.5 * dpr; seg(x1, y1, x2, y2);
++      ctx.fillStyle = '#ffeb3b'; dot(x1, y1); dot(x2, y2);
++      ctx.fillStyle = '#fff'; dot(cx, cy, 2);
++      H.push({ m, part: 'h', x: x1, y: y1 }, { m, part: 'h', x: x2, y: y2 }, { m, part: 'c', x: cx, y: cy });
++      label(m, 'lo2', x2, y2, `${(m.w * 2).toFixed(1)} mm`);
++    }
 +  });
 +}
 +// mouse handling for measure mode on any canvas (pano, cs0, cs1, cs2)
-+let mDrag: { m: Meas; end: 'a' | 'b' } | null = null;
++let mDrag: { m: Meas; part: Hit['part']; grab?: P2; start?: P2 } | null = null;
 +function canvasOf(key: string) { return key === 'pano' ? panoCv.value : csCvs[Number(key.slice(2))].value; }
++function devPos(cv: HTMLCanvasElement, e: MouseEvent): P2 {
++  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
++  return [(e.clientX - r.left) * d, (e.clientY - r.top) * d];
++}
 +function measureDown(key: string, e: MouseEvent) {
 +  if (mode.value !== 'measure') return false;
 +  const cv = canvasOf(key); if (!cv) return false;
 +  const p = fromEvent(cv, key, e); if (!p) return false;
-+  const f = fits[key]; const tol = 10 * (window.devicePixelRatio || 1);
-+  const near = (q: [number, number]) => Math.hypot((q[0] - p[0]) * f.s, (q[1] - p[1]) * f.s * f.ax) < tol;
-+  for (const m of visibleMeas(key)) {
-+    for (const end of ['a', 'b'] as const) {
-+      const q = m[end]; if (!q || !near(q)) continue;
-+      if (e.button === 2) { measures.value = measures.value.filter((x) => x !== m); return true; }
-+      mDrag = { m, end }; return true;
-+    }
++  const [dx, dy] = devPos(cv, e);
++  const tol = 8 * (window.devicePixelRatio || 1);
++  for (const h of [...(hits[key] || [])].reverse()) {
++    const inside = h.w != null ? dx >= h.x && dx <= h.x + h.w! && dy >= h.y && dy <= h.y + h.h! : Math.hypot(h.x - dx, h.y - dy) < tol;
++    if (!inside) continue;
++    if (e.button === 2) { measures.value = measures.value.filter((x) => x !== h.m); return true; }
++    mDrag = { m: h.m, part: h.part, grab: [dx, dy], start: h.part === 'lo' ? [...h.m.lo] as P2 : h.part === 'lo2' ? [...h.m.lo2] as P2 : undefined };
++    return true;
 +  }
 +  if (e.button !== 0) return true;
 +  const open = visibleMeas(key).find((m) => !m.b);
 +  if (open) open.b = [p[0], p[1]];
-+  else measures.value.push({ key, at: csAt(key), a: [p[0], p[1]], b: null });
++  else measures.value.push({ key, at: csAt(key), kind: measureKind.value, a: [p[0], p[1]], b: null, w: 3, t: 0.5, lo: measureKind.value === 'cross' ? [-85, 20] : [40, -9], lo2: [14, -26] });
 +  return true;
 +}
 +function measureMove(key: string, e: MouseEvent) {
-+  if (!mDrag) return; const cv = canvasOf(key); if (!cv) return;
++  if (!mDrag) return; const cv = canvasOf(key), v = vol.value; if (!cv || !v) return;
 +  const p = fromEvent(cv, key, e); if (!p) return;
-+  mDrag.m[mDrag.end] = [p[0], p[1]];
++  const m = mDrag.m, d = window.devicePixelRatio || 1;
++  if (mDrag.part === 'a' || mDrag.part === 'b') m[mDrag.part] = [p[0], p[1]];
++  else if (mDrag.part === 'lo' || mDrag.part === 'lo2') {
++    const [dx, dy] = devPos(cv, e);
++    m[mDrag.part] = [mDrag.start![0] + (dx - mDrag.grab![0]) / d, mDrag.start![1] + (dy - mDrag.grab![1]) / d];
++  } else if (m.b && mDrag.part === 'h') {
++    const e2 = crossEnds(m, v)!;
++    m.w = Math.max(0.2, mmLen(v, e2.c, [p[0], p[1]]));
++  } else if (m.b && mDrag.part === 'c') {
++    // slide the width line along the height line
++    const ux = (m.b[0] - m.a[0]) * v.sx, uy = (m.b[1] - m.a[1]) * v.sz;
++    const qx = (p[0] - m.a[0]) * v.sx, qy = (p[1] - m.a[1]) * v.sz;
++    m.t = Math.max(0, Math.min(1, (qx * ux + qy * uy) / (ux * ux + uy * uy || 1)));
++  }
 +  measures.value = [...measures.value];
 +}
 +function measureUp() { mDrag = null; }
@@ -561,10 +620,10 @@ index 0000000..1a71a7d
 +        // handles: drag either end to tilt, the middle dot is the pivot
 +        ctx.fillStyle = '#7CFC00';
 +        [[x0 + (x1 - x0) * 0.1, y0 + (y1 - y0) * 0.1], [x0 + (x1 - x0) * 0.9, y0 + (y1 - y0) * 0.9]].forEach(([hx, hy]) => {
-+          ctx.beginPath(); ctx.arc(hx, hy, 6 * dpr, 0, Math.PI * 2); ctx.fill();
++          ctx.beginPath(); ctx.arc(hx, hy, 4 * dpr, 0, Math.PI * 2); ctx.fill();
 +        });
 +        const [px, py] = toCanvas(f, sSel.value!, pivotOf(v));
-+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, 4 * dpr, 0, Math.PI * 2); ctx.fill();
++        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, 3 * dpr, 0, Math.PI * 2); ctx.fill();
 +        if (csTilt.value) { ctx.font = `${12 * dpr}px sans-serif`; ctx.fillText(`${csTilt.value.toFixed(0)}°`, px + 8 * dpr, py - 8 * dpr); }
 +      }
 +    });
@@ -575,7 +634,7 @@ index 0000000..1a71a7d
 +    ctx.lineWidth = Math.max(2, (nerveDiaMm.value / v.sx) * f.s) ; ctx.globalAlpha = 0.55; ctx.lineCap = 'round';
 +    ctx.beginPath(); P.forEach((p, n) => { const [x, y] = toCanvas(f, p.s, p.z); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
 +    ctx.globalAlpha = 1;
-+    P.forEach((p) => { const [x, y] = toCanvas(f, p.s, p.z); ctx.beginPath(); ctx.arc(x, y, 3.5 * dpr, 0, Math.PI * 2); ctx.fill(); });
++    P.forEach((p) => { const [x, y] = toCanvas(f, p.s, p.z); ctx.beginPath(); ctx.arc(x, y, 2.5 * dpr, 0, Math.PI * 2); ctx.fill(); });
 +  });
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
 +  drawMeasure(ctx, f, dpr, 'pano', v);
@@ -765,7 +824,23 @@ index 0000000..1a71a7d
 +  window.addEventListener('resize', onResize);
 +  schedule(2);
 +});
-+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
++// Arrow keys (Mohamed Said, 11 Nov 2026): left/right move the cross-sections
++// along the arch (Shift = 5 steps), up/down change the axial slice.
++function onKey(e: KeyboardEvent) {
++  const t = e.target as HTMLElement | null;
++  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
++  const v = vol.value, c = curve.value; if (!v) return;
++  const step = e.shiftKey ? 5 : 1;
++  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && c && sSel.value != null) {
++    sSel.value = Math.max(0, Math.min(c.N - 1, sSel.value + (e.key === 'ArrowRight' ? step : -step)));
++    e.preventDefault(); e.stopPropagation();
++  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
++    axialK.value = Math.max(0, Math.min(v.nz - 1, axialK.value + (e.key === 'ArrowUp' ? 1 : -1) * step * (v.topIsK0 ? -1 : 1)));
++    e.preventDefault(); e.stopPropagation();
++  }
++}
++onMounted(() => window.addEventListener('keydown', onKey, true));
++onBeforeUnmount(() => { window.removeEventListener('resize', onResize); window.removeEventListener('keydown', onKey, true); });
 +watch(currentImageData, () => { loadVolume(); schedule(2); });
 +
 +const modes = [
@@ -780,7 +855,7 @@ index 0000000..1a71a7d
 +  pick: 'Click the panoramic to show cross-sections there. Scroll to move them. Drag an end of the green line (or Shift+scroll) to tilt it left/right; the cross-sections follow the tilt.',
 +  nerveR: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (red).',
 +  nerveL: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (orange).',
-+  measure: 'Click two points on the panoramic or any cross-section to measure in mm. Add as many measurements as you need. Drag a yellow point to move it; right-click a point to delete that measurement.',
++  measure: 'Line: click two points. Implant T: click the top and bottom of the height, a width line appears in the middle; drag its ends to set the width and the white dot to slide it. Drag any point or label to move it; right-click a point to delete. Arrow keys move the cross-sections.',
 +}[mode.value]));
 +</script>
 +
@@ -792,6 +867,10 @@ index 0000000..1a71a7d
 +        <v-btn v-for="m in modes" :key="m.key" :value="m.key" size="small">
 +          <v-icon :icon="m.icon" start :color="m.key === 'nerveR' ? '#ff4d4d' : m.key === 'nerveL' ? '#ffb020' : undefined" />{{ m.label }}
 +        </v-btn>
++      </v-btn-toggle>
++      <v-btn-toggle v-if="mode === 'measure'" v-model="measureKind" mandatory density="compact" variant="outlined" divided class="ml-2" color="#c9a227">
++        <v-btn value="line" size="small">Line</v-btn>
++        <v-btn value="cross" size="small">Implant T</v-btn>
 +      </v-btn-toggle>
 +      <v-btn size="small" variant="text" class="ml-2" prepend-icon="mdi-undo" @click="undo">Undo</v-btn>
 +      <v-btn size="small" variant="text" prepend-icon="mdi-delete-outline" @click="clearAll">Clear</v-btn>
@@ -1226,7 +1305,7 @@ index 6a0c0cb..3624729 100644
  </template>
 diff --git a/src/components/tools/ObliqueRuler.vue b/src/components/tools/ObliqueRuler.vue
 new file mode 100644
-index 0000000..c74a531
+index 0000000..16fe182
 --- /dev/null
 +++ b/src/components/tools/ObliqueRuler.vue
 @@ -0,0 +1,127 @@
@@ -1344,8 +1423,8 @@ index 0000000..c74a531
 +  >
 +    <g v-for="s in shown" :key="s.i">
 +      <line v-if="s.b" :x1="s.a[0]" :y1="s.a[1]" :x2="s.b[0]" :y2="s.b[1]" stroke="#ffeb3b" stroke-width="2" />
-+      <circle :cx="s.a[0]" :cy="s.a[1]" r="4.5" fill="#ffeb3b" />
-+      <circle v-if="s.b" :cx="s.b[0]" :cy="s.b[1]" r="4.5" fill="#ffeb3b" />
++      <circle :cx="s.a[0]" :cy="s.a[1]" r="2.5" fill="#ffeb3b" />
++      <circle v-if="s.b" :cx="s.b[0]" :cy="s.b[1]" r="2.5" fill="#ffeb3b" />
 +      <g v-if="s.b">
 +        <rect :x="(s.a[0] + s.b[0]) / 2 + 6" :y="(s.a[1] + s.b[1]) / 2 - 15" width="70" height="20" rx="3" fill="rgba(0,0,0,0.65)" />
 +        <text :x="(s.a[0] + s.b[0]) / 2 + 10" :y="(s.a[1] + s.b[1]) / 2" fill="#ffeb3b" font-size="14" font-weight="bold">{{ s.label }}</text>
