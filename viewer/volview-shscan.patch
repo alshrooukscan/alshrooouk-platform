@@ -250,10 +250,10 @@ index 2923ea1..c013b9a 100644
  
 diff --git a/src/components/DentalWorkspace.vue b/src/components/DentalWorkspace.vue
 new file mode 100644
-index 0000000..278d6ac
+index 0000000..0d1faa7
 --- /dev/null
 +++ b/src/components/DentalWorkspace.vue
-@@ -0,0 +1,927 @@
+@@ -0,0 +1,1214 @@
 +<script setup lang="ts">
 +// Al Shrooouk Scan: dental workspace (panoramic curve, cross-sections, nerve
 +// tracing, measurements and image processing) built on the loaded CBCT
@@ -265,6 +265,8 @@ index 0000000..278d6ac
 +const emit = defineEmits(['close']);
 +const props = defineProps<{ embedded?: boolean }>();
 +import { sharpenAmount } from '@/src/shscan/state';
++import { useDICOMStore } from '@/src/store/datasets-dicom';
++import logoUrl from '@/src/assets/shscan-logo.png';
 +const { currentImageData } = useCurrentImage('global');
 +
 +// ---------------------------------------------------------------- volume
@@ -300,7 +302,7 @@ index 0000000..278d6ac
 +}
 +
 +// ---------------------------------------------------------------- state
-+const mode = ref<'arch' | 'pick' | 'nerveR' | 'nerveL' | 'measure'>('arch');
++const mode = ref<'arch' | 'pick' | 'nerveR' | 'nerveL' | 'implant' | 'measure'>('arch');
 +const axialK = ref(0);
 +const win = ref(2000);
 +const lev = ref(500);
@@ -426,6 +428,7 @@ index 0000000..278d6ac
 +  { key: 'pick', label: 'Sections', icon: 'mdi-view-column', done: sSel.value != null },
 +  { key: 'nerveR', label: 'Nerve R', icon: 'mdi-sine-wave', done: nerves.value.R.length >= 2, color: '#ff4d4d' },
 +  { key: 'nerveL', label: 'Nerve L', icon: 'mdi-sine-wave', done: nerves.value.L.length >= 2, color: '#ffb020' },
++  { key: 'implant', label: 'Implant', icon: 'mdi-tooth-outline', done: implants.value.length > 0 },
 +  { key: 'measure', label: 'Measure', icon: 'mdi-ruler', done: measures.value.some((m) => m.b) },
 +]);
 +// mouse handling for measure mode on any canvas (pano, cs0..cs4)
@@ -474,6 +477,151 @@ index 0000000..278d6ac
 +  measures.value = [...measures.value];
 +}
 +function measureUp() { mDrag = null; }
++
++// ---------------------------------------------------------------- implants
++// Implant planning (11 Nov 2026): pick a size, click on a cross-section at
++// the platform; drag the body to move it, the round tip handle to angle it,
++// right-click it to delete. Shown on the panoramic too. Apex-to-nerve and an
++// approximate bone density (Misch classes from the CBCT grey values) feed the
++// side panel and the PDF report.
++type Imp = { id: number; at: number; tooth: string; d: number; L: number; x: number; y: number; ang: number };
++const IMPLANT_SIZES = [
++  { d: 3.0, L: 10 }, { d: 3.3, L: 10 }, { d: 3.5, L: 8 }, { d: 3.5, L: 10 }, { d: 3.5, L: 11.5 }, { d: 3.75, L: 10 },
++  { d: 4.0, L: 8 }, { d: 4.0, L: 10 }, { d: 4.0, L: 11.5 }, { d: 4.5, L: 8 }, { d: 4.5, L: 10 }, { d: 5.0, L: 8 },
++  { d: 5.0, L: 10 }, { d: 5.5, L: 8 }, { d: 6.0, L: 6 },
++];
++const implantSize = ref({ d: 4.0, L: 10 });
++const implants = ref<Imp[]>([]);
++const selImp = ref<number | null>(null);
++let impSeq = 1;
++let reportMode = false;
++// geometry in cross-section image coords (cols = width voxels, rows = slices)
++function impGeom(m: Imp, v: Vol) {
++  const sx = v.sx, sz = v.sz;
++  const ux = Math.sin(m.ang), uy = Math.cos(m.ang); // axis (mm space), 0 = straight down
++  const px = uy, py = -ux; // across
++  const at = (along: number, across: number): P2 => [m.x + (ux * along + px * across) / sx, m.y + (uy * along + py * across) / sz];
++  const r0 = m.d / 2, r1 = (m.d * 0.78) / 2;
++  return {
++    apex: at(m.L, 0),
++    poly: [at(0, -r0), at(0, r0), at(m.L * 0.85, r1), at(m.L, r1 * 0.4), at(m.L, -r1 * 0.4), at(m.L * 0.85, -r1)],
++    threads: Array.from({ length: Math.max(3, Math.floor(m.L / 1.2)) }, (_, i) => { const a = 1 + i * 1.2; const r = a < m.L * 0.85 ? r0 - (r0 - r1) * (a / (m.L * 0.85)) : r1; return [at(a, -r), at(a + 0.5, r)] as [P2, P2]; }).filter((t) => t[0] && t[1]),
++  };
++}
++function impNerveGap(m: Imp, v: Vol) {
++  const half = Math.round(csHalfMm.value / v.sx);
++  const g = impGeom(m, v);
++  let best: { side: string; mm: number } | null = null;
++  (['R', 'L'] as const).forEach((side) => {
++    const nz = nerveAt(nerves.value[side], m.at); if (!nz) return;
++    const nx = nz.t + half, ny = nz.z;
++    // distance from nerve centre to the implant axis segment, in mm
++    const ax = m.x * v.sx, ay = m.y * v.sz, bx = g.apex[0] * v.sx, by = g.apex[1] * v.sz, qx = nx * v.sx, qy = ny * v.sz;
++    const t = Math.max(0, Math.min(1, ((qx - ax) * (bx - ax) + (qy - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2 || 1)));
++    const d = Math.hypot(qx - (ax + (bx - ax) * t), qy - (ay + (by - ay) * t)) - m.d / 2 * (1 - 0.22 * t) - nerveDiaMm.value / 2;
++    if (!best || d < best.mm) best = { side, mm: Math.max(0, d) };
++  });
++  return best as { side: string; mm: number } | null;
++}
++function impDensity(m: Imp, v: Vol) {
++  const c = curve.value; if (!c) return null;
++  const cs = csSampleRaw(v, c, m.at);
++  const g = impGeom(m, v);
++  let sum = 0, n = 0;
++  for (let i = 1; i <= 20; i++) {
++    const f = i / 21; const cx = m.x + (g.apex[0] - m.x) * f, cy = m.y + (g.apex[1] - m.y) * f;
++    for (let k = -2; k <= 2; k++) {
++      const x = Math.round(cx + (k * m.d) / 6 / v.sx), y = Math.round(cy);
++      if (x >= 0 && y >= 0 && x < cs.w && y < cs.h) { sum += cs.buf[y * cs.w + x]; n++; }
++    }
++  }
++  if (!n) return null;
++  const hu = sum / n;
++  const cls = hu > 1250 ? 'D1' : hu > 850 ? 'D2' : hu > 350 ? 'D3' : hu > 150 ? 'D4' : 'D5';
++  return { hu: Math.round(hu), cls };
++}
++const gapColor = (mm: number | undefined) => (mm == null ? '#AEB5C4' : mm < 1 ? '#FF6B6B' : mm < 2 ? '#FFB020' : '#6FCF97');
++function drawImplants(ctx: CanvasRenderingContext2D, f: Fit, dpr: number, key: string, v: Vol) {
++  implants.value.filter((m) => m.at === csAt(key)).forEach((m) => {
++    const g = impGeom(m, v);
++    const gap = impNerveGap(m, v);
++    const pts = g.poly.map((q) => toCanvas(f, q[0], q[1]));
++    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
++    ctx.fillStyle = 'rgba(169,139,77,0.38)'; ctx.fill();
++    ctx.strokeStyle = gap && gap.mm < 2 ? gapColor(gap.mm) : '#E4D6A9'; ctx.lineWidth = (selImp.value === m.id ? 2.2 : 1.5) * dpr; ctx.stroke();
++    ctx.strokeStyle = 'rgba(228,214,169,0.55)'; ctx.lineWidth = 1 * dpr;
++    g.threads.forEach(([a, b]) => { const [x1, y1] = toCanvas(f, a[0], a[1]), [x2, y2] = toCanvas(f, b[0], b[1]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); });
++    const [ax, ay] = toCanvas(f, g.apex[0], g.apex[1]);
++    if (!reportMode) { ctx.fillStyle = '#E4D6A9'; ctx.beginPath(); ctx.arc(ax, ay, 3 * dpr, 0, Math.PI * 2); ctx.fill(); }
++    const [px, py] = toCanvas(f, m.x, m.y);
++    const lines = [`${m.tooth} · Ø${m.d} × ${m.L}`];
++    if (gap) lines.push(`${gap.mm.toFixed(1)} mm to nerve`);
++    ctx.font = `bold ${11 * dpr}px 'IBM Plex Sans', sans-serif`;
++    const tw = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 10 * dpr;
++    let lx = px + 14 * dpr; const ly = py - 30 * dpr;
++    if (lx + tw > ctx.canvas.width - 4 * dpr) lx = Math.max(4 * dpr, px - 14 * dpr - tw);
++    ctx.fillStyle = 'rgba(10,13,20,0.82)'; ctx.fillRect(lx, ly, tw, (lines.length * 15 + 6) * dpr);
++    lines.forEach((t, i) => { ctx.fillStyle = i ? gapColor(gap?.mm) : '#E4D6A9'; ctx.fillText(t, lx + 5 * dpr, ly + (15 * i + 15) * dpr); });
++  });
++}
++function drawImplantsPano(ctx: CanvasRenderingContext2D, f: Fit, dpr: number, v: Vol) {
++  implants.value.forEach((m) => {
++    const g = impGeom(m, v);
++    const w = m.d / v.sx;
++    const [x0, y0] = toCanvas(f, m.at - w / 2, m.y), [x1, y1] = toCanvas(f, m.at + w / 2, g.apex[1]);
++    ctx.fillStyle = 'rgba(169,139,77,0.4)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
++    ctx.strokeStyle = selImp.value === m.id ? '#FFE066' : '#E4D6A9'; ctx.lineWidth = 1.5 * dpr; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
++    ctx.font = `bold ${11 * dpr}px 'IBM Plex Sans', sans-serif`; ctx.fillStyle = '#E4D6A9';
++    ctx.fillText(m.tooth, x0, y0 - 5 * dpr);
++  });
++}
++let iDrag: { m: Imp; kind: 'move' | 'rot'; off: P2 } | null = null;
++function implantDown(key: string, e: MouseEvent) {
++  if (mode.value !== 'implant') return false;
++  const cv = canvasOf(key), v = vol.value; if (!cv || !v || sSel.value == null) return false;
++  const p = fromEvent(cv, key, e); if (!p) return false;
++  const f = fits[key]; const tol = 9 * (window.devicePixelRatio || 1);
++  for (const m of implants.value.filter((q) => q.at === csAt(key))) {
++    const g = impGeom(m, v);
++    const [ax, ay] = toCanvas(f, g.apex[0], g.apex[1]); const [dx, dy] = devPos(cv, e);
++    if (Math.hypot(ax - dx, ay - dy) < tol) {
++      if (e.button === 2) { implants.value = implants.value.filter((q) => q !== m); rightConsumed = true; return true; }
++      iDrag = { m, kind: 'rot', off: [0, 0] }; selImp.value = m.id; return true;
++    }
++    // inside the body? distance to axis (mm) under the radius
++    const qx = p[0] * v.sx, qy = p[1] * v.sz, ax2 = m.x * v.sx, ay2 = m.y * v.sz, bx = g.apex[0] * v.sx, by = g.apex[1] * v.sz;
++    const t = ((qx - ax2) * (bx - ax2) + (qy - ay2) * (by - ay2)) / ((bx - ax2) ** 2 + (by - ay2) ** 2 || 1);
++    if (t >= -0.05 && t <= 1.05 && Math.hypot(qx - (ax2 + (bx - ax2) * t), qy - (ay2 + (by - ay2) * t)) < m.d / 2 + 0.6) {
++      if (e.button === 2) { implants.value = implants.value.filter((q) => q !== m); rightConsumed = true; return true; }
++      iDrag = { m, kind: 'move', off: [p[0] - m.x, p[1] - m.y] }; selImp.value = m.id; return true;
++    }
++  }
++  if (e.button !== 0) return true;
++  const at = csAt(key)!;
++  const m: Imp = { id: impSeq++, at, tooth: `Site ${implants.value.length + 1}`, d: implantSize.value.d, L: implantSize.value.L, x: p[0], y: p[1], ang: 0 };
++  implants.value.push(m); selImp.value = m.id;
++  return true;
++}
++function implantMove(key: string, e: MouseEvent) {
++  if (!iDrag) return false; const cv = canvasOf(key), v = vol.value; if (!cv || !v) return false;
++  const p = fromEvent(cv, key, e); if (!p) return false;
++  const m = iDrag.m;
++  if (iDrag.kind === 'move') { m.x = p[0] - iDrag.off[0]; m.y = p[1] - iDrag.off[1]; }
++  else m.ang = Math.atan2((p[0] - m.x) * v.sx, (p[1] - m.y) * v.sz);
++  implants.value = [...implants.value];
++  return true;
++}
++function implantUp() { iDrag = null; }
++const implantCards = computed(() => {
++  const v = vol.value; void nerves.value; void csHalfMm.value; void nerveDiaMm.value;
++  if (!v) return [];
++  return implants.value.map((m) => {
++    const gap = impNerveGap(m, v);
++    const den = impDensity(m, v);
++    const T = measures.value.find((q) => q.kind === 'cross' && q.b && q.at === m.at);
++    return { m, gap, den, bone: T ? { h: mmLen(v, T.a, T.b!), w: T.w * 2 } : null, angle: Math.round((m.ang * 180) / Math.PI) };
++  });
++});
 +
 +const axialCv = ref<HTMLCanvasElement | null>(null);
 +const panoCv = ref<HTMLCanvasElement | null>(null);
@@ -791,7 +939,7 @@ index 0000000..278d6ac
 +  if (!panoImg) panoImg = toImage(panoBuf.buf, panoBuf.w, panoBuf.h);
 +  const r = blit(cv, 'pano', panoImg, v.sz / v.sx); if (!r) return;
 +  const { ctx, f, dpr } = r;
-+  if (sSel.value != null) {
++  if (sSel.value != null && !reportMode) {
 +    const gap = csGapMm.value / v.sx;
 +    [...csOffsets().filter((o) => o !== 0), 0].map((o) => o * gap).forEach((dg) => {
 +      const [x0, y0] = toCanvas(f, sAt(v, sSel.value! + dg, 0), 0);
@@ -819,6 +967,7 @@ index 0000000..278d6ac
 +    P.forEach((p) => { const [x, y] = toCanvas(f, p.s, p.z); ctx.beginPath(); ctx.arc(x, y, 2.5 * dpr, 0, Math.PI * 2); ctx.fill(); });
 +  });
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
++  drawImplantsPano(ctx, f, dpr, v);
 +  drawMeasure(ctx, f, dpr, 'pano', v);
 +  // mm scale along the arch, every 10 mm (like the Romexis panoramic)
 +  {
@@ -838,7 +987,7 @@ index 0000000..278d6ac
 +  ctx.fillText('R', f.ox + 8 * dpr, f.oy + f.h * f.ax * f.s - 10 * dpr);
 +  ctx.fillText('L', f.ox + f.w * f.s - 20 * dpr, f.oy + f.h * f.ax * f.s - 10 * dpr);
 +  ctx.fillStyle = '#fff'; ctx.font = `${12 * dpr}px sans-serif`;
-+  ctx.fillText(`Panoramic · slab ${slabMm.value} mm ${slabMip.value ? '(MIP)' : ''} · length ${(c.N * v.sx).toFixed(0)} mm`, 8 * dpr, 18 * dpr);
++  if (!reportMode) ctx.fillText(`Panoramic · slab ${slabMm.value} mm ${slabMip.value ? '(MIP)' : ''} · length ${(c.N * v.sx).toFixed(0)} mm`, 8 * dpr, 18 * dpr);
 +}
 +
 +function csSample(v: Vol, c: any, s: number) {
@@ -853,6 +1002,17 @@ index 0000000..278d6ac
 +    for (let x = 0; x < w; x++) { const t = x - half; buf[r * w + x] = voxel(v, c.xs[sr] + c.nxv[sr] * t, c.ys[sr] + c.nyv[sr] * t, k); }
 +  }
 +  return { buf: process(buf, w, h), w, h, half, ss };
++}
++function csSampleRaw(v: Vol, c: any, s: number) {
++  const half = Math.round(csHalfMm.value / v.sx); const w = half * 2 + 1, h = v.nz;
++  const buf = new Float32Array(w * h);
++  const dks = tiltRows(v, c);
++  for (let r = 0; r < h; r++) {
++    const sr = Math.max(0, Math.min(c.N - 1, Math.round(sAt(v, s, r))));
++    const k = rowK(v, r + dks[sr]);
++    for (let x = 0; x < w; x++) { const t = x - half; buf[r * w + x] = voxel(v, c.xs[sr] + c.nxv[sr] * t, c.ys[sr] + c.nyv[sr] * t, k); }
++  }
++  return { buf, w, h };
 +}
 +function drawCross() {
 +  const v = vol.value, c = curve.value;
@@ -877,6 +1037,7 @@ index 0000000..278d6ac
 +      ctx.strokeStyle = NERVE_COL[side]; ctx.lineWidth = 2 * dpr;
 +      ctx.beginPath(); ctx.arc(x, y, Math.max(3 * dpr, (nerveDiaMm.value / v.sx / 2) * f.s), 0, Math.PI * 2); ctx.stroke();
 +    });
++    drawImplants(ctx, f, dpr, `cs${idx}`, v);
 +    drawMeasure(ctx, f, dpr, `cs${idx}`, v);
 +    if (tiltBL.value !== 0) {
 +      // where the leaning panoramic surface cuts this cross-section
@@ -885,7 +1046,7 @@ index 0000000..278d6ac
 +      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]);
 +    }
 +    ctx.fillStyle = '#fff'; ctx.font = `${11 * dpr}px sans-serif`;
-+    ctx.fillText(`${(cs.ss * v.sx).toFixed(1)} mm${idx === CS_MID ? ' (selected)' : ''}`, 6 * dpr, 16 * dpr);
++    ctx.fillText(`${(cs.ss * v.sx).toFixed(1)} mm${idx === CS_MID && !reportMode ? ' (selected)' : ''}`, 6 * dpr, 16 * dpr);
 +  });
 +}
 +
@@ -912,7 +1073,7 @@ index 0000000..278d6ac
 +watch([archPts, slabMm, slabMip, tiltBL, tiltFB, tiltLR], () => schedule(2), { deep: true });
 +watch([sharpen, denoise], () => schedule(1));
 +watch([invert, win, lev], () => schedule(-1));
-+watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure, csTilt, csPivot], () => schedule(0), { deep: true });
++watch([axialK, sSel, nerves, csGapMm, csHalfMm, nerveDiaMm, measure, csTilt, csPivot, implants, selImp], () => schedule(0), { deep: true });
 +
 +// ---------------------------------------------------------------- input
 +let dragIdx = -1;
@@ -1002,10 +1163,11 @@ index 0000000..278d6ac
 +  if (mode.value === 'nerveR') nerves.value.R.pop();
 +  else if (mode.value === 'nerveL') nerves.value.L.pop();
 +  else if (mode.value === 'measure') measures.value.pop();
++  else if (mode.value === 'implant') implants.value.pop();
 +  else archPts.value.pop();
 +}
 +function clearAll() {
-+  archPts.value = []; archK.value = null; csTilt.value = 0; csPivot.value = null; nerves.value = { R: [], L: [] }; sSel.value = null; measures.value = [];
++  archPts.value = []; archK.value = null; csTilt.value = 0; csPivot.value = null; nerves.value = { R: [], L: [] }; sSel.value = null; measures.value = []; implants.value = [];
 +}
 +function savePng() {
 +  const cv = panoCv.value; if (!cv) return;
@@ -1058,11 +1220,107 @@ index 0000000..278d6ac
 +  window.addEventListener('mousemove', move);
 +  window.addEventListener('mouseup', up);
 +}
++// ---------------------------------------------------------------- report
++// "Implant Analysis" report (like the Romexis sheet): overview panoramic,
++// then per implant its cross-section, panoramic detail and the numbers.
++// Opens a print-ready page; the browser's Save as PDF makes the file.
++const dicom = useDICOMStore();
++async function makeReport() {
++  const v = vol.value, c = curve.value;
++  if (!v || !c || !implants.value.length) return;
++  const w = window.open('', '_blank');
++  if (!w) { status.value = 'Allow pop-ups for this site to open the report.'; return; }
++  w.document.write('<p style="font-family:sans-serif;padding:24px">Preparing the implant report…</p>');
++  const keepS = sSel.value, keepSel = selImp.value;
++  reportMode = true; selImp.value = null;
++  const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
++  const shots: { card: any; cs: string; detail: string }[] = [];
++  try {
++    await nextTick(); buildPano(false); drawPano(); await frame();
++    // crop a canvas to the drawn image area (no black letterbox)
++    const crop = (cv: HTMLCanvasElement, f: Fit, x0?: number, x1?: number) => {
++      const a = x0 ?? f.ox, b = x1 ?? f.ox + f.w * f.s, y0 = Math.max(0, f.oy), hh = Math.min(cv.height - y0, f.h * f.ax * f.s);
++      const dc = document.createElement('canvas'); dc.width = Math.max(1, b - a); dc.height = Math.max(1, hh);
++      dc.getContext('2d')!.drawImage(cv, a, y0, b - a, hh, 0, 0, b - a, hh);
++      return dc.toDataURL('image/png');
++    };
++    const pano = crop(panoCv.value!, fits.pano);
++    for (const card of implantCards.value) {
++      sSel.value = card.m.at; await nextTick(); drawPano(); drawCross(); await frame();
++      const cs = crop(csCvs[CS_MID].value!, fits[`cs${CS_MID}`]);
++      // panoramic detail around the implant (±15 mm)
++      const f = fits.pano; const pc = panoCv.value!;
++      const half = (15 / v.sx) * f.s;
++      const [cx] = toCanvas(f, card.m.at, 0);
++      const x0 = Math.max(f.ox, cx - half), x1 = Math.min(f.ox + f.w * f.s, cx + half);
++      shots.push({ card, cs, detail: crop(pc, f, x0, x1) });
++    }
++    const p = Object.values(dicom.patientInfo || {})[0] as any;
++    const st = Object.values(dicom.studyInfo || {})[0] as any;
++    const name = (p?.PatientName || '').replace(/\^+/g, ' ').trim() || '-';
++    const d = st?.StudyDate || '';
++    const date = d.length === 8 ? `${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)}` : d || '-';
++    const today = new Date().toLocaleDateString('en-GB');
++    const esc = (t: string) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[ch]);
++    const cards = shots.map(({ card, cs, detail }) => `
++      <section class="imp">
++        <h2>${esc(card.m.tooth)} <span>Ø${card.m.d} × ${card.m.L} mm</span></h2>
++        <div class="row">
++          <div class="pic pano"><img src="${detail}" alt="Panoramic detail"></div>
++          <div class="pic cs"><img src="${cs}" alt="Cross-section"></div>
++          <table>
++            <tr><th>Implant</th><td>Ø ${card.m.d} mm × ${card.m.L} mm</td></tr>
++            <tr><th>Distance to nerve</th><td class="${card.gap ? (card.gap.mm < 1 ? 'bad' : card.gap.mm < 2 ? 'warn' : 'ok') : ''}">${card.gap ? card.gap.mm.toFixed(1) + ' mm (' + (card.gap.side === 'R' ? 'right' : 'left') + ' canal)' : 'Nerve not traced'}</td></tr>
++            <tr><th>Bone height × width</th><td>${card.bone ? card.bone.h.toFixed(1) + ' × ' + card.bone.w.toFixed(1) + ' mm' : '-'}</td></tr>
++            <tr><th>Bone density</th><td>${card.den ? card.den.cls + ' (≈ ' + card.den.hu + ' HU)' : '-'}</td></tr>
++            <tr><th>Angle</th><td>${card.angle}°</td></tr>
++            <tr><th>Position on arch</th><td>${(card.m.at * v.sx).toFixed(1)} mm</td></tr>
++          </table>
++        </div>
++      </section>`).join('');
++    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Implant Analysis · ${esc(name)}</title>
++      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
++      <style>
++        @page { size: A4; margin: 12mm; }
++        body { font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1a1d24; margin: 0; }
++        header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #A98B4D; padding-bottom: 10px; margin-bottom: 12px; }
++        header img { height: 46px; }
++        header h1 { font-size: 20px; margin: 0; color: #27214D; }
++        header .meta { margin-left: auto; text-align: right; font-size: 12px; color: #555; line-height: 1.5; }
++        .overview { width: 100%; border-radius: 6px; background: #000; }
++        .imp { page-break-inside: avoid; border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
++        .imp h2 { font-size: 16px; margin: 0 0 8px; color: #27214D; }
++        .imp h2 span { font-weight: 400; color: #A98B4D; margin-left: 8px; }
++        .row { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; align-items: start; }
++        .pic { background: #000; border-radius: 6px; overflow: hidden; height: 210px; display: flex; align-items: center; justify-content: center; }
++        .pic img { max-width: 100%; max-height: 100%; }
++        table { border-collapse: collapse; width: 100%; font-size: 12px; }
++        th { text-align: left; color: #666; font-weight: 400; padding: 5px 4px; border-bottom: 1px solid #eee; width: 48%; }
++        td { padding: 5px 4px; border-bottom: 1px solid #eee; font-weight: 600; }
++        .ok { color: #1e7a3c; } .warn { color: #b26b00; } .bad { color: #ba1a1a; }
++        footer { margin-top: 14px; font-size: 10px; color: #888; line-height: 1.5; }
++        .bar { position: fixed; bottom: 14px; right: 14px; } .bar button { padding: 8px 14px; border: none; border-radius: 6px; background: #27214D; color: #fff; font-size: 13px; cursor: pointer; }
++        @media print { .bar { display: none; } }
++      </style></head><body>
++      <div class="bar"><button onclick="window.print()">Save as PDF / Print</button></div>
++      <header><img src="${new URL(logoUrl, window.location.href).href}" alt="Al Shrooouk Scan"><h1>Implant Analysis</h1>
++        <div class="meta"><b>${esc(name)}</b><br>Scan: ${esc(date)} · Report: ${esc(today)}<br>${implants.value.length} implant${implants.value.length > 1 ? 's' : ''} planned</div></header>
++      <img class="overview" src="${pano}" alt="Panoramic with planned implants">
++      ${cards}
++      <footer>Planned on the Al Shrooouk online viewer. Distances are measured on the CBCT; bone density classes (Misch D1 to D5) are estimated from CBCT grey values and are approximate. Final treatment decisions remain with the treating doctor.</footer>
++      <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 600); });<\/script>
++      </body></html>`;
++    w.document.open(); w.document.write(html); w.document.close();
++  } finally {
++    reportMode = false; sSel.value = keepS; selImp.value = keepSel; schedule(0);
++  }
++}
 +const modes = [
 +  { key: 'arch', label: 'Draw arch', icon: 'mdi-vector-curve' },
 +  { key: 'pick', label: 'Cross-sections', icon: 'mdi-view-column' },
 +  { key: 'nerveR', label: 'Nerve right', icon: 'mdi-sine-wave' },
 +  { key: 'nerveL', label: 'Nerve left', icon: 'mdi-sine-wave' },
++  { key: 'implant', label: 'Implant', icon: 'mdi-tooth-outline' },
 +  { key: 'measure', label: 'Measure', icon: 'mdi-ruler' },
 +] as const;
 +const hint = computed(() => ({
@@ -1070,6 +1328,7 @@ index 0000000..278d6ac
 +  pick: 'Click the panoramic to show cross-sections there. Scroll to move them. Drag an end of the green line (or Shift+scroll) to tilt it left/right; the cross-sections follow the tilt.',
 +  nerveR: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (red).',
 +  nerveL: 'Click along the canal on the panoramic. Then click the canal in the middle cross-section to place it exactly (orange).',
++  implant: 'Pick a size on the right, then click a cross-section where the implant platform goes. Drag the implant to move it, drag its round tip to angle it, right-click it to delete. Name the tooth in the list on the right.',
 +  measure: 'Line: click two points. Implant T: click the top and bottom of the height, a width line appears in the middle; drag its ends to set the width and the white dot to slide it. Drag any point or label to move it; right-click a point to delete. Arrow keys move the cross-sections.',
 +}[mode.value]));
 +</script>
@@ -1086,6 +1345,7 @@ index 0000000..278d6ac
 +      <v-btn size="small" variant="text" class="ml-2" prepend-icon="mdi-undo" @click="undo">Undo</v-btn>
 +      <v-btn size="small" variant="text" prepend-icon="mdi-delete-outline" @click="clearAll">Clear</v-btn>
 +      <v-btn size="small" variant="text" prepend-icon="mdi-download" @click="savePng">Save panoramic</v-btn>
++      <v-btn size="small" variant="flat" color="primary" class="ml-2" prepend-icon="mdi-file-document-outline" :disabled="!implants.length" @click="makeReport">Implant report (PDF)</v-btn>
 +      <v-spacer />
 +      <v-btn v-if="!props.embedded" icon="mdi-close" variant="text" aria-label="Close" @click="emit('close')" />
 +    </div>
@@ -1130,12 +1390,30 @@ index 0000000..278d6ac
 +        <canvas ref="panoCv" class="cv pano" @contextmenu.prevent @mousedown="panoDown" @mousemove="panoMove" @mouseup="panoUp" @mouseleave="panoUp" @click="panoClick" @wheel="panoWheel" />
 +        <div class="dw-cs">
 +          <canvas v-for="ci in csIdx" :key="ci" :ref="(el) => (csCvs[ci].value = el as any)" :class="ci === CS_MID ? 'cv sel' : 'cv'"
-+            @mousedown="(e) => measureDown(`cs${ci}`, e)" @mousemove="(e) => measureMove(`cs${ci}`, e)" @mouseup="measureUp" @mouseleave="measureUp"
++            @mousedown="(e) => implantDown(`cs${ci}`, e) || measureDown(`cs${ci}`, e)" @mousemove="(e) => implantMove(`cs${ci}`, e) || measureMove(`cs${ci}`, e)" @mouseup="implantUp(); measureUp()" @mouseleave="implantUp(); measureUp()"
 +            @click="ci === CS_MID ? csClick($event) : undefined" @contextmenu.prevent />
 +        </div>
 +      </div>
 +      <aside class="dw-side">
-+        <div class="dw-h">MEASUREMENTS</div>
++        <div class="dw-h">IMPLANTS</div>
++        <div class="dw-sizes">
++          <button v-for="z in IMPLANT_SIZES" :key="`${z.d}x${z.L}`" type="button"
++            :class="['dw-size', { on: implantSize.d === z.d && implantSize.L === z.L }]"
++            @click="implantSize = z; mode = 'implant'; if (selImp != null) { const m = implants.find((q) => q.id === selImp); if (m) { m.d = z.d; m.L = z.L; implants = [...implants]; } }">Ø{{ z.d }} × {{ z.L }}</button>
++        </div>
++        <div v-if="!implants.length" class="dw-empty">Pick a size, then click on a cross-section where the implant goes.</div>
++        <div v-for="ic in implantCards" :key="ic.m.id" :class="['dw-imp', { on: selImp === ic.m.id }]" @click="selImp = ic.m.id; sSel = ic.m.at">
++          <div class="d-flex align-center" style="gap: 6px">
++            <input v-model="ic.m.tooth" class="dw-tooth" aria-label="Tooth" @click.stop @input="implants = [...implants]" />
++            <span class="dw-mono" style="margin-left: auto">Ø{{ ic.m.d }} × {{ ic.m.L }}</span>
++            <button type="button" class="dw-x" aria-label="Delete implant" @click.stop="implants = implants.filter((q) => q.id !== ic.m.id)">×</button>
++          </div>
++          <div class="dw-kv"><span>To nerve</span><span :style="{ color: gapColor(ic.gap?.mm) }">{{ ic.gap ? ic.gap.mm.toFixed(1) + ' mm (' + ic.gap.side + ')' : 'trace the nerve' }}</span></div>
++          <div class="dw-kv"><span>Bone density</span><span>{{ ic.den ? ic.den.cls + ' · ~' + ic.den.hu + ' HU' : '-' }}</span></div>
++          <div class="dw-kv"><span>Bone H × W</span><span>{{ ic.bone ? ic.bone.h.toFixed(1) + ' × ' + ic.bone.w.toFixed(1) + ' mm' : 'add an Implant T here' }}</span></div>
++          <div class="dw-kv"><span>Angle</span><span>{{ ic.angle }}°</span></div>
++        </div>
++        <div class="dw-h mt-4">MEASUREMENTS</div>
 +        <div v-if="!measList.length" class="dw-empty">Pick Measure, then Line or Implant T. An implant T on a cross-section shows its distance to the traced nerve.</div>
 +        <div v-for="(m, i) in measList" :key="i" class="dw-row">
 +          <div class="d-flex justify-space-between"><span>{{ m.label }}</span><span class="dw-mono">{{ m.value }}</span></div>
@@ -1159,7 +1437,16 @@ index 0000000..278d6ac
 +.dw-step:hover { background: #151B28; }
 +.dw-step.on { background: #27214D; color: #E4D6A9; border-color: #3A3270; }
 +.dw-done { position: absolute; top: 3px; right: 5px; font-size: 10px; color: #6FCF97; }
-+.dw-side { width: 260px; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #0E121B; border-left: 1px solid #1B2232; overflow-y: auto; }
++.dw-sizes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
++.dw-size { padding: 6px 2px; border-radius: 7px; border: 1px solid #1F2738; background: #121826; color: #C9CFDA; font-size: 11px; cursor: pointer; font-family: inherit; }
++.dw-size.on { border-color: #A98B4D; background: rgba(169,139,77,0.16); color: #E4D6A9; }
++.dw-imp { padding: 9px 10px; border-radius: 8px; background: #121826; border: 1px solid transparent; font-size: 12px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
++.dw-imp.on { border-color: #A98B4D; }
++.dw-tooth { width: 90px; background: #0A0D14; border: 1px solid #1F2738; border-radius: 6px; color: #E7EAF0; padding: 3px 6px; font: inherit; font-size: 12px; }
++.dw-x { border: none; background: transparent; color: #8A93A6; font-size: 16px; cursor: pointer; line-height: 1; }
++.dw-kv { display: flex; justify-content: space-between; color: #AEB5C4; font-size: 11px; }
++.dw-kv span:last-child { color: #E7EAF0; }
++.dw-side { width: 280px; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #0E121B; border-left: 1px solid #1B2232; overflow-y: auto; }
 +.dw-h { font-size: 11px; color: #8A93A6; letter-spacing: 0.8px; font-weight: 600; }
 +.dw-empty { font-size: 12px; color: #8A93A6; line-height: 1.5; }
 +.dw-row { padding: 9px 10px; border-radius: 8px; background: #121826; font-size: 12px; }
