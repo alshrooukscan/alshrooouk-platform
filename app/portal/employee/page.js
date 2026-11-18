@@ -1331,7 +1331,7 @@ function StatusPill({ status }) {
 }
 
 function SwapsTab({ onChanged }) {
-  const { t } = useT();
+  const { t, isAr } = useT();
   const [swapData, setSwapData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
