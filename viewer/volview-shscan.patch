@@ -25,10 +25,10 @@ new file mode 100644
 index 0000000..98c668b
 Binary files /dev/null and b/src/assets/shscan-logo.png differ
 diff --git a/src/components/AppBar.vue b/src/components/AppBar.vue
-index ac71948..05727d9 100644
+index ac71948..b0e51ac 100644
 --- a/src/components/AppBar.vue
 +++ b/src/components/AppBar.vue
-@@ -1,49 +1,140 @@
+@@ -1,49 +1,143 @@
  <script setup>
 -import { ref } from 'vue';
 +// ShScan top bar (redesign approved by Mohamed Said, 11 Nov 2026):
@@ -48,10 +48,13 @@ index ac71948..05727d9 100644
 +import { useViewStore } from '@/src/store/views';
 +import { useCurrentImage } from '@/src/composables/useCurrentImage';
 +import { useDICOMStore } from '@/src/store/datasets-dicom';
-+import { wlScope, sharpenAmount, installSharpen } from '@/src/shscan/state';
++import { wlScope, sharpenAmount, installSharpen, installTouchScroll } from '@/src/shscan/state';
++import { useToolStore as useShTools } from '@/src/store/tools';
  
 -const emit = defineEmits(['click:left-menu']);
 +installSharpen();
++const shTools = useShTools();
++installTouchScroll(() => shTools.currentTool);
  
 +const emit = defineEmits(['click:left-menu']);
  const { mobile } = useDisplay();
@@ -197,7 +200,7 @@ index ac71948..05727d9 100644
    <closeable-dialog v-model="aboutBoxDialog">
      <about-box />
    </closeable-dialog>
-@@ -51,7 +142,23 @@ const keyboardStore = useKeyboardShortcutsStore();
+@@ -51,7 +145,23 @@ const keyboardStore = useKeyboardShortcutsStore();
  
  <style src="@/src/components/styles/utils.css"></style>
  <style scoped>
@@ -1469,7 +1472,7 @@ index 0000000..0d1faa7
 +.cv { display: block; width: 100%; height: 100%; background: #000; }
 +</style>
 diff --git a/src/components/ObliqueSliceViewer.vue b/src/components/ObliqueSliceViewer.vue
-index 492acff..3d6122f 100644
+index 492acff..e6506aa 100644
 --- a/src/components/ObliqueSliceViewer.vue
 +++ b/src/components/ObliqueSliceViewer.vue
 @@ -33,7 +33,7 @@
@@ -1506,6 +1509,24 @@ index 492acff..3d6122f 100644
  );
  
  // base image
+@@ -261,6 +263,17 @@ watchImmediate(currentImageID, () => {
+   updateResliceCamera(true);
+ });
+ 
++// ShScan: multi-file series stream in slice by slice. Redraw as the voxels
++// arrive (and once loading finishes), like the stock slice view does,
++// otherwise these views stay grey until the user scrolls.
++onVTKEvent(
++  currentImageData,
++  'onModified',
++  batchForNextTask(() => {
++    vtkView.value?.requestRender();
++  })
++);
++
+ // slicing plane colors
+ const outlineColor = computed(
+   () =>
 diff --git a/src/components/ObliqueViewer.vue b/src/components/ObliqueViewer.vue
 index 44f972c..c509031 100644
 --- a/src/components/ObliqueViewer.vue
@@ -2474,10 +2495,10 @@ index ff3db22..258f6db 100644
  export default vuetify;
 diff --git a/src/shscan/state.ts b/src/shscan/state.ts
 new file mode 100644
-index 0000000..f29f7b0
+index 0000000..c1e2962
 --- /dev/null
 +++ b/src/shscan/state.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,104 @@
 +// ShScan shared viewer settings (Mohamed Said, 11 Nov 2026).
 +import { ref, watch } from 'vue';
 +import { Tools } from '@/src/store/tools/types';
@@ -2522,6 +2543,65 @@ index 0000000..f29f7b0
 +    },
 +    { immediate: true }
 +  );
++}
++
++// Phone / tablet: one-finger up/down drag on a 2D view scrolls the slices
++// (Mohamed Said, 16 Nov 2026). The swipe is turned into the same wheel event
++// a mouse sends, so every view keeps its own slicing logic. Tools that need
++// the finger themselves (zoom, pan, measuring, drawing, crop, crosshairs)
++// are left alone, and so is the 3D view.
++const TOUCH_TOOLS_KEEP = new Set<unknown>([
++  Tools.Zoom, Tools.Pan, Tools.Ruler, Tools.Rectangle, Tools.Polygon,
++  Tools.Paint, Tools.Crop, Tools.Crosshairs,
++]);
++let touchInstalled = false;
++export function installTouchScroll(getTool: () => unknown) {
++  if (touchInstalled || typeof window === 'undefined') return;
++  touchInstalled = true;
++  const style = document.createElement('style');
++  style.textContent = '.vtk-container, .vtk-container canvas { touch-action: none; }';
++  document.head.appendChild(style);
++  let active: { id: number; y: number; el: Element } | null = null;
++  const sliceView = (t: EventTarget | null) => {
++    const el = t instanceof Element ? t : null;
++    if (!el || !el.closest('.vtk-container')) return null;
++    if (el.closest('.volume-viewer-container')) return null;
++    return el;
++  };
++  window.addEventListener('pointerdown', (e) => {
++    if (e.pointerType !== 'touch') return;
++    if (active) { e.stopImmediatePropagation(); e.preventDefault(); return; }
++    if (TOUCH_TOOLS_KEEP.has(getTool())) return;
++    const el = sliceView(e.target);
++    if (!el) return;
++    active = { id: e.pointerId, y: e.clientY, el };
++    e.stopImmediatePropagation();
++    e.preventDefault();
++  }, { capture: true });
++  window.addEventListener('pointermove', (e) => {
++    if (!active || e.pointerType !== 'touch') return;
++    e.stopImmediatePropagation();
++    e.preventDefault();
++    if (e.pointerId !== active.id) return;
++    const step = 14; // px of finger travel per slice
++    let dy = e.clientY - active.y;
++    while (Math.abs(dy) >= step) {
++      const dir = dy > 0 ? 1 : -1;
++      active.el.dispatchEvent(new WheelEvent('wheel', {
++        deltaY: dir * 100, deltaMode: 0, bubbles: true, cancelable: true,
++        clientX: e.clientX, clientY: e.clientY,
++      }));
++      active.y += dir * step;
++      dy -= dir * step;
++    }
++  }, { capture: true });
++  const end = (e: PointerEvent) => {
++    if (!active || e.pointerType !== 'touch') return;
++    e.stopImmediatePropagation();
++    if (e.pointerId === active.id) active = null;
++  };
++  window.addEventListener('pointerup', end, { capture: true });
++  window.addEventListener('pointercancel', end, { capture: true });
 +}
 diff --git a/src/store/views.ts b/src/store/views.ts
 index 481b782..fd66fae 100644
